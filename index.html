@@ -51,7 +51,11 @@ button {
 </div>
 
 <div class="card">
-<h2>Market Scanner</h2>
+<button onclick="loadDerivMarkets()">
+  LOAD ALL DERIV MARKETS
+</button>
+
+<p id="marketStatus">Waiting for markets...</p>
   <div class="card">
   <h3>Available Markets</h3>
   <select id="market">

@@ -84,7 +84,52 @@ button {
 <button disabled>Connect Deriv API (Coming next)</button>
 <p>Trading is not active.</p>
 </div>
+<script>
+async function scanMarket() {
+  const market = document.getElementById("market").value;
+  const result = document.getElementById("scanResult");
 
+  result.textContent = "Connecting to Deriv...";
+
+  let ws;
+
+  try {
+    ws = new WebSocket(
+      "wss://ws.derivws.com/websockets/v3?app_id=1089"
+    );
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        ticks: market,
+        subscribe: 1
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.error) {
+        result.textContent = "Error: " + data.error.message;
+        ws.close();
+        return;
+      }
+
+      if (data.tick) {
+        result.textContent =
+          "Market: " + market +
+          " | Latest price: " + data.tick.quote;
+      }
+    };
+
+    ws.onerror = () => {
+      result.textContent = "Connection error. Try again.";
+    };
+
+  } catch (error) {
+    result.textContent = "Scanner error: " + error.message;
+  }
+}
+</script>
 </body>
 </html>
 

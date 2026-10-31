@@ -52,6 +52,72 @@ button {
 
 <div class="card">
 <button onclick="loadDerivMarkets()">
+  function loadDerivMarkets() {
+  const status = document.getElementById("marketStatus");
+  const marketSelect = document.getElementById("market");
+
+  status.textContent = "Connecting to Deriv...";
+
+  const ws = new WebSocket(
+    "wss://api.derivws.com/trading/v1/options/ws/public"
+  );
+
+  ws.onopen = function () {
+    status.textContent = "Connected. Loading markets...";
+
+    ws.send(JSON.stringify({
+      active_symbols: "brief",
+      req_id: 1
+    }));
+  };
+
+  ws.onmessage = function (event) {
+    const data = JSON.parse(event.data);
+
+    if (data.error) {
+      status.textContent = "Deriv error: " + data.error.message;
+      ws.close();
+      return;
+    }
+
+    if (data.msg_type === "active_symbols") {
+      const symbols = data.active_symbols || [];
+
+      const indices = symbols.filter(function (item) {
+        return item.market === "synthetic_index";
+      });
+
+      if (indices.length === 0) {
+        status.textContent =
+          "Markets received, but no synthetic indices were found.";
+        ws.close();
+        return;
+      }
+
+      marketSelect.innerHTML = "";
+
+      indices.forEach(function (item) {
+        const option = document.createElement("option");
+        option.value = item.symbol;
+        option.textContent = item.display_name;
+        marketSelect.appendChild(option);
+      });
+
+      status.textContent =
+        indices.length + " synthetic markets loaded successfully.";
+
+      ws.close();
+    }
+  };
+
+  ws.onerror = function () {
+    status.textContent = "Connection failed. Please try again.";
+  };
+
+  ws.onclose = function () {
+    console.log("Market list connection closed.");
+  };
+}
   <h3>Available Markets</h3>
   <button onclick="loadDerivMarkets()">
   LOAD ALL DERIV MARKETS

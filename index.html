@@ -52,6 +52,20 @@ button {
 
 <div class="card">
 <h2>Market Scanner</h2>
+  <div class="card">
+  <h3>Available Markets</h3>
+  <select id="market">
+    <option value="R_10">Volatility 10 Index</option>
+    <option value="R_25">Volatility 25 Index</option>
+    <option value="R_50">Volatility 50 Index</option>
+    <option value="R_75">Volatility 75 Index</option>
+    <option value="R_100">Volatility 100 Index</option>
+  </select>
+
+  <button onclick="scanMarket()">SCAN MARKET</button>
+
+  <p id="scanResult">Waiting for scan...</p>
+  </div>
 <p>Scan available Deriv indices.</p>
 <p>Waiting for market data...</p>
 </div>

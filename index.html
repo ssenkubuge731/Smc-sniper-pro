@@ -95,7 +95,7 @@ async function scanMarket() {
 
   try {
     ws = new WebSocket(
-      "wss://ws.derivws.com/websockets/v3?app_id=1089"
+      "wss://api.derivws.com/trading/v1/options/ws/public"
     );
 
     ws.onopen = () => {

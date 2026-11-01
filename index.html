@@ -51,6 +51,14 @@ button {
 </div>
 
 <div class="card">
+  <h3>Available Markets</h3>
+
+<p id="marketStatus">Waiting for markets...</p>
+
+<select id="market">
+  <option value="">Select a market</option>
+</select>
+  
 <button onclick="loadDerivMarkets()">LOAD ALL DERIV MARKETS</button>
 <script>
   function loadDerivMarkets() {

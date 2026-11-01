@@ -308,6 +308,43 @@ document.addEventListener("DOMContentLoaded", function () {
 
   <p id="riskStatus">Default settings loaded.</p>
 </section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.getElementById("riskSettingsForm");
+  const status = document.getElementById("riskStatus");
+
+  if (!form || !status) return;
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const risk = Number(document.getElementById("riskPercent").value);
+    const trades = Number(document.getElementById("maxTrades").value);
+    const daily = Number(document.getElementById("dailyLoss").value);
+    const losses = Number(document.getElementById("lossLimit").value);
+
+    if (risk < 0.01 || risk > 5 ||
+        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
+        daily < 0.1 || daily > 20 ||
+        !Number.isInteger(losses) || losses < 1 || losses > 20) {
+      status.textContent = "Invalid settings. Check your values.";
+      return;
+    }
+
+    window.smcRiskSettings = {
+      riskPercent: risk,
+      maxTrades: trades,
+      dailyLossLimit: daily,
+      pauseAfterLosses: losses,
+      tradingMode: "DEMO"
+    };
+
+    status.textContent =
+      "Settings saved for this session. DEMO ONLY.";
+  });
+});
+</script>  
 </body>
 </html>
 

@@ -204,36 +204,80 @@ async function scanMarket() {
     result.textContent = "Scanner error: " + error.message;
   }
 }
-</script>
-<section class="card">
-  <h2>APA Risk Management Settings</h2>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const riskForm = document.getElementById("riskSettingsForm");
+  const status = document.getElementById("riskStatus");
 
-  <p>Trading Mode:
-    <strong style="color:green;">DEMO ONLY</strong>
-  </p>
+  if (!riskForm || !status) {
+    console.log("Risk settings section not found.");
+    return;
+  }
 
-  <form id="riskSettingsForm">
-    <label>Risk per trade (%)</label>
-    <input type="number" id="riskPercent"
-      value="0.5" min="0.01" max="5" step="0.01" required>
+  riskForm.addEventListener("submit", function (event) {
+    event.preventDefault();
 
-    <label>Maximum open trades</label>
-    <input type="number" id="maxTrades"
-      value="2" min="1" max="20" step="1" required>
+    const risk = Number(document.getElementById("riskPercent").value);
+    const trades = Number(document.getElementById("maxTrades").value);
+    const daily = Number(document.getElementById("dailyLoss").value);
+    const losses = Number(document.getElementById("lossLimit").value);
 
-    <label>Daily loss limit (%)</label>
-    <input type="number" id="dailyLoss"
-      value="2" min="0.1" max="20" step="0.1" required>
+    if (!Number.isFinite(risk) || risk < 0.01 || risk > 5 ||
+        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
+        !Number.isFinite(daily) || daily < 0.1 || daily > 20 ||
+        !Number.isInteger(losses) || losses < 1 || losses > 20) {
+      status.textContent = "Invalid settings. Check your values.";
+      return;
+    }
 
-    <label>Pause after consecutive losses</label>
-    <input type="number" id="lossLimit"
-      value="3" min="1" max="20" step="1" required>
+    window.smcRiskSettings = {
+      riskPercent: risk,
+      maxTrades: trades,
+      dailyLossLimit: daily,
+      pauseAfterLosses: losses,
+      tradingMode: "DEMO"
+    };
 
-    <button type="submit">SAVE RISK SETTINGS</button>
-  </form>
+    status.textContent = "Settings saved for this session. Demo mode only.";
+  });
+});
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const riskForm = document.getElementById("riskSettingsForm");
+  const status = document.getElementById("riskStatus");
 
-  <p id="riskStatus">Default settings loaded.</p>
-</section>
+  if (!riskForm || !status) {
+    console.log("Risk settings section not found.");
+    return;
+  }
+
+  riskForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const risk = Number(document.getElementById("riskPercent").value);
+    const trades = Number(document.getElementById("maxTrades").value);
+    const daily = Number(document.getElementById("dailyLoss").value);
+    const losses = Number(document.getElementById("lossLimit").value);
+
+    if (!Number.isFinite(risk) || risk < 0.01 || risk > 5 ||
+        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
+        !Number.isFinite(daily) || daily < 0.1 || daily > 20 ||
+        !Number.isInteger(losses) || losses < 1 || losses > 20) {
+      status.textContent = "Invalid settings. Check your values.";
+      return;
+    }
+
+    window.smcRiskSettings = {
+      riskPercent: risk,
+      maxTrades: trades,
+      dailyLossLimit: daily,
+      pauseAfterLosses: losses,
+      tradingMode: "DEMO"
+    };
+
+    status.textContent = "Settings saved for this session. Demo mode only.";
+  });
+});
   
 </body>
 </html>

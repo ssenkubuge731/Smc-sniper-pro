@@ -279,7 +279,35 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 </script>
-  
+  <section class="card">
+  <h2>APA Risk Management Settings</h2>
+
+  <p>Trading Mode:
+    <strong style="color:green;">DEMO ONLY</strong>
+  </p>
+
+  <form id="riskSettingsForm">
+    <label>Risk per trade (%)</label>
+    <input type="number" id="riskPercent" value="0.5"
+      min="0.01" max="5" step="0.01" required>
+
+    <label>Maximum open trades</label>
+    <input type="number" id="maxTrades" value="2"
+      min="1" max="20" step="1" required>
+
+    <label>Daily loss limit (%)</label>
+    <input type="number" id="dailyLoss" value="2"
+      min="0.1" max="20" step="0.1" required>
+
+    <label>Pause after consecutive losses</label>
+    <input type="number" id="lossLimit" value="3"
+      min="1" max="20" step="1" required>
+
+    <button type="submit">SAVE RISK SETTINGS</button>
+  </form>
+
+  <p id="riskStatus">Default settings loaded.</p>
+</section>
 </body>
 </html>
 

@@ -305,7 +305,20 @@ function derivDisconnect(){
  derivSocket=null;
  derivConnected=false;
 }
- 
+ async function checkCloudAPI() {
+  try {
+    const response = await fetch(
+      "https://smc-sniper-oauth.henrysskw.workers.dev/"
+    );
+    const data = await response.json();
+
+    console.log("SMC Cloud:", data);
+  } catch (error) {
+    console.log("Cloud connection failed:", error);
+  }
+}
+
+checkCloudAPI();
 </script>
 </body>
 </html>

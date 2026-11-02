@@ -84,6 +84,8 @@ BOS • MSS • Liquidity Sweeps • Order Blocks • FVG • APA Confirmation
 <label>Broker</label><input id="brokerName" value="Deriv">
 <label>Account Type</label><select id="accountType"><option>Demo</option><option>Live (Locked)</option></select>
 <label>API Application ID</label><input id="appId" placeholder="Enter your Deriv App ID">
+ <button type="button" id="connectDeriv" onclick="derivConnect()">Connect Deriv</button>
+<button type="button" id="disconnectDeriv" onclick="derivDisconnect()">Disconnect</button>
 <button id="saveBroker">Save Information</button>
 <div id="brokerResult" class="result">Not connected.</div>
 <div class="notice">Never enter your API token in this public website.</div>

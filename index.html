@@ -501,22 +501,75 @@ function loadDerivMarkets() {
 /* STARTUP */
 updateTimeframes();
   /* LOAD TRADING SYMBOLS */
-const symbolList = [
-  {name:"Volatility 10 Index", code:"R_10", category:"Deriv Indices"},
-  {name:"Volatility 25 Index", code:"R_25", category:"Deriv Indices"},
-  {name:"Volatility 50 Index", code:"R_50", category:"Deriv Indices"},
-  {name:"Volatility 75 Index", code:"R_75", category:"Deriv Indices"},
-  {name:"Volatility 100 Index", code:"R_100", category:"Deriv Indices"},
-  {name:"Volatility 10 (1s) Index", code:"1HZ10V", category:"Deriv Indices"},
-  {name:"Volatility 25 (1s) Index", code:"1HZ25V", category:"Deriv Indices"},
-  {name:"Volatility 50 (1s) Index", code:"1HZ50V", category:"Deriv Indices"},
-  {name:"Volatility 75 (1s) Index", code:"1HZ75V", category:"Deriv Indices"},
-  {name:"Volatility 100 (1s) Index", code:"1HZ100V", category:"Deriv Indices"},
-  {name:"EUR/USD", code:"frxEURUSD", category:"Forex"},
-  {name:"GBP/USD", code:"frxGBPUSD", category:"Forex"},
-  {name:"USD/JPY", code:"frxUSDJPY", category:"Forex"},
-  {name:"Gold", code:"frxXAUUSD", category:"Others"}
+
+const symbolList = [];
+
+function loadDerivSymbols() {
+  const status = document.getElementById("marketStatus");
+  const socket = new WebSocket(
+    "wss://ws.derivws.com/websockets/v3?app_id=1089"
+  );
+
+  if (status) status.textContent = "Loading Deriv markets...";
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({
+      active_symbols: "brief",
+      product_type: "basic"
+    }));
+  };
+
+  socket.onmessage = event => {
+    const response = JSON.parse(event.data);
+
+    if (response.error) {
+      if (status) status.textContent = response.error.message;
+      socket.close();
+      return;
+    }
+
+    if (response.active_symbols) {
+      symbolList.length = 0;
+
+      response.active_symbols.forEach(item => {
+        let category = "Other";
+
+        if (item.market === "synthetic_index") {
+          category = "Deriv Indices";
+        } else if (item.market === "forex") {
+          category = "Forex";
+        } else if (
+          item.display_name.toLowerCase().includes("gold")
+        ) {
+          category = "Gold";
+        }
+
+        symbolList.push({
+          name: item.display_name,
+          code: item.symbol,
+          category: category
+        });
+      });
+
+      populateSymbols();
+
+      if (status) {
+        status.textContent =
+          symbolList.length + " Deriv symbols loaded.";
+      }
+
+      socket.close();
+    }
+  };
+
+  socket.onerror = () => {
+    if (status) status.textContent = "Could not load Deriv markets.";
+  };
+}
+loadDerivsymbols();
 ];
+
+
 
 function populateSymbols() {
   const market = document.getElementById("market");

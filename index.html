@@ -4,646 +4,247 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SMC Sniper Pro V2</title>
+<meta name="theme-color" content="#0b1220">
+<title>SMC Sniper Pro APA</title>
 <style>
+:root{--bg:#0b1220;--panel:#111c2e;--line:#263750;--text:#edf3ff;--muted:#9fb0c8;--green:#37d39a;--red:#ff6b78;--blue:#72a7ff}
 *{box-sizing:border-box}
-body{margin:0;background:#0b1220;color:#edf3ff;font:15px Arial,sans-serif}
-header{padding:18px;background:#111c2e;border-bottom:1px solid #263750}
-h1{font-size:21px;margin:0}
-.sub{color:#9fb0c8;font-size:12px}
-nav{display:flex;gap:7px;overflow:auto;margin-top:15px}
-button,select,input{padding:11px;border-radius:8px;border:1px solid #30435f;background:#0b1728;color:#edf3ff}
-button{cursor:pointer}
-button.active,.primary{background:#1c4770}
-main{max-width:1000px;margin:auto;padding:16px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Arial}
+header{padding:18px;background:#111c2e;border-bottom:1px solid var(--line)}
+main{max-width:1000px;margin:auto;padding:15px}
+nav{display:flex;gap:8px;overflow:auto;margin-top:15px}
+button{background:#17243a;color:white;border:1px solid #30435f;padding:10px 14px;border-radius:9px}
+button.active{background:#1c4770}
 .page{display:none}
 .page.active{display:block}
-.card{background:#142137;border:1px solid #263750;border-radius:13px;padding:16px;margin-bottom:14px}
-h2{font-size:18px}
-label{display:block;margin-top:12px;font-size:13px;color:#c3d0e3}
-input,select{width:100%;margin-top:5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.check{display:block;background:#0b1728;padding:10px;border-radius:8px;margin:8px 0}
-.check input{width:auto}
-.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-.result,.notice{padding:12px;margin-top:12px;border-radius:9px;background:#0b1728;border:1px solid #30435f;white-space:pre-line}
-.notice{background:#172b43}
-.warning{background:#34291b;border-color:#66502c}
-.muted,footer{color:#9fb0c8}
-footer{text-align:center;padding:20px;font-size:12px}
-@media(max-width:650px){.grid{grid-template-columns:1fr}}
+label{display:block;margin:10px 0 5px;color:var(--muted)}
+select,input{width:100%;padding:11px;background:#0b1627;color:white;border:1px solid #30435f;border-radius:9px}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.check{background:#0b1627;padding:10px;border:1px solid #263750;border-radius:9px}
+.result,.notice{background:#0b1627;padding:12px;border-radius:10px;margin-top:12px;white-space:pre-line}
+.notice{background:#34291b;color:#ffe3a6}
+.muted{color:var(--muted)}
+@media(max-width:650px){.grid,.formgrid,.checklist{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
-<h1>SMC SNIPER PRO APA</h1>
-<div class="sub">Advanced Price Action • Smart Money Concepts</div>
+<h2>SMC SNIPER PRO APA</h2>
+<div class="muted">Smart Money Concepts • Advanced Price Action</div>
 <nav>
 <button class="active" data-page="dashboard">Dashboard</button>
-<button data-page="scanner">APA / SMC Scanner</button>
-<button data-page="broker">Broker Information</button>
-<button data-page="settings">Trading & Risk</button>
+<button data-page="scanner">Scanner</button>
+<button data-page="broker">Broker</button>
+<button data-page="settings">Risk Settings</button>
 </nav>
 </header>
 <main>
-
-<!-- DASHBOARD -->
 <section id="dashboard" class="page active">
 <div class="card">
-<h2>System Overview</h2>
-<p>Trading style: <b id="dashMode">Day Trading</b></p>
-<p>Selected symbol: <b id="dashSymbol">XAUUSD</b></p>
+<h3>System Overview</h3>
+<p>Trading mode: <b id="modeStat">Day Trading</b></p>
+<p>Selected symbol: <b id="symbolStat">EURUSD</b></p>
 <p>Automatic execution: <b>OFF</b></p>
-<p>Account mode: Demo preparation</p>
+<div class="notice">Demo preparation only. This dashboard does not place trades yet.</div>
 </div>
-
 <div class="card">
-<h2>Our SMC + APA Strategy</h2>
-<p>✓ BOS — Break of Structure</p>
-<p>✓ MSS — Market Structure Shift</p>
-<p>✓ Liquidity Sweep and Rejection</p>
-<p>✓ Order Blocks</p>
-<p>✓ Fair Value Gaps (FVG)</p>
-<p>✓ Displacement and Price Action Confirmation</p>
-<div class="notice warning">
-This website is currently a dashboard and manual scanner. It is not connected to live broker prices or trade execution.
-</div>
+<h3>Strategy Features</h3>
+BOS • MSS • Liquidity Sweeps • Order Blocks • FVG • APA Confirmation
 </div>
 </section>
-
-<!-- APA / SMC SCANNER -->
 <section id="scanner" class="page">
 <div class="card">
-<h2>APA / SMC Market Scanner</h2>
-
-<div class="grid">
-<div>
-<label>Trading Style</label>
-<select id="mode">
-<option>Scalping</option>
-<option selected>Day Trading</option>
-<option>Swing Trading</option>
-</select>
+<h3>APA / SMC Scanner</h3>
+<div class="formgrid">
+<div><label>Trading Style</label><select id="mode"><option>Scalping</option><option selected>Day Trading</option><option>Swing Trading</option></select></div>
+<div><label>Market</label><select id="market"><option>Deriv Indices</option><option>Forex</option><option>Gold</option><option>Other</option></select></div>
+<div><label>Trading Pair / Index</label><select id="symbol"></select></div>
+<div><label>Timeframe</label><select id="timeframe"><option>M1 / M5</option><option selected>M15 / H1</option><option>H1 / H4 / D1</option></select></div>
 </div>
-
-<div>
-
-<label>Market Category</label>
-<select id="market">
-<option>Deriv Indices</option>
-<option>Forex</option>
-<option>Gold</option>
-<option>Other</option>
-</select>
-
-<div>
-<label>Choose Trading Symbol</label>
-<select id="symbol"></select> <select id="symbol">
-  <!-- existing symbol options stay here -->
-</select>
-
-<label>Confirmation Timeframe</label>
-<select id="timeframe">
-  <option value="M5">M5</option>
-  <option value="M15" selected>M15</option>
-  <option value="H1">H1</option>
-  <option value="H4">H4</option>
-  <option value="D1">D1</option>
-</select>
+<h3>Confirm your setup</h3>
+<div class="checklist">
+<label class="check"><input type="checkbox" class="condition"> Trend confirmed</label>
+<label class="check"><input type="checkbox" class="condition"> Liquidity sweep</label>
+<label class="check"><input type="checkbox" class="condition"> BOS / MSS</label>
+<label class="check"><input type="checkbox" class="condition"> Strong displacement</label>
+<label class="check"><input type="checkbox" class="condition"> Order Block</label>
+<label class="check"><input type="checkbox" class="condition"> FVG confirmation</label>
 </div>
-
-<div>
-<label>Timeframes</label>
-<select id="timeframe">
-<option>M1 / M5</option>
-<option selected>M15 / H1</option>
-<option>H1 / H4 / D1</option>
-</select>
-</div>
-</div>
-
-<h3>Setup Confirmation</h3>
-
-<label class="check">
-<input type="checkbox" class="condition">
-Higher-timeframe trend agrees
-</label>
-
-<label class="check">
-<input type="checkbox" class="condition">
-Liquidity sweep and rejection confirmed
-</label>
-
-<label class="check">
-<input type="checkbox" class="condition">
-BOS or MSS confirmed on candle close
-</label>
-
-<label class="check">
-<input type="checkbox" class="condition">
-Strong price displacement present
-</label>
-
-<label class="check">
-<input type="checkbox" class="condition">
-Valid Order Block identified
-</label>
-
-<label class="check">
-<input type="checkbox" class="condition">
-FVG / retest supports the setup
-</label>
-
-<div class="actions">
-<button class="primary" id="analyse">Check Setup</button>
-<button id="clear">Clear Checklist</button>
-</div>
-
-<div id="scanResult" class="result">
-No analysis run yet.
-</div>
-
-<div class="notice">
-This is a manual checklist. It does not automatically read chart data.
-</div>
+<button id="analyse">Check Setup</button>
+<button id="clearChecks">Clear</button>
+<div id="scanResult" class="result">Ready.</div>
 </div>
 </section>
-
-<!-- BROKER INFORMATION -->
 <section id="broker" class="page">
 <div class="card">
-<h2>Broker Information</h2>
-
-<p class="muted">
-Enter your broker's MT5 details. Do not enter passwords or API tokens here.
-</p>
-
-<div class="grid">
-<div>
-<label>Broker Name</label>
-<input id="brokerName" placeholder="e.g. Deriv">
-</div>
-
-<div>
-<label>MT5 Server Name</label>
-<input id="server" placeholder="Exact server name">
-</div>
-
-<div>
-<label>Account Type</label>
-<select id="accountType">
-<option>Demo</option>
-<option>Live (locked)</option>
-</select>
-</div>
-
-<div>
-<label>Account Currency</label>
-<input id="currency" placeholder="e.g. USD">
-</div>
-
-<div>
-<label>Leverage</label>
-<input id="leverage" placeholder="e.g. 1:500">
-</div>
-
-<div>
-<label>Broker Symbol Name</label>
-<input id="brokerSymbol" placeholder="Exact symbol in MT5 Market Watch">
-</div>
-</div>
-
-<div class="actions">
-<button class="primary" id="saveBroker">Save Broker Information</button>
-<button id="testBroker">Check Information</button>
-</div>
-
-<div id="brokerResult" class="result">
-No broker information checked yet.
-</div>
-
-<div class="notice warning">
-Saving information does not connect to MT5. Never publish account passwords or API tokens on GitHub.
-</div>
+<h3>Deriv Broker Information</h3>
+<label>Broker</label><input id="brokerName" value="Deriv">
+<label>Account Type</label><select id="accountType"><option>Demo</option><option>Live (Locked)</option></select>
+<label>API Application ID</label><input id="appId" placeholder="Enter your Deriv App ID">
+<button id="saveBroker">Save Information</button>
+<div id="brokerResult" class="result">Not connected.</div>
+<div class="notice">Never enter your API token in this public website.</div>
 </div>
 </section>
-
-<!-- TRADING AND RISK -->
 <section id="settings" class="page">
 <div class="card">
-<h2>Trading Style & Manual Risk Management</h2>
-
-<div class="grid">
-<div>
-<label>Trading Style</label>
-<select id="riskMode">
-<option>Scalping</option>
-<option selected>Day Trading</option>
-<option>Swing Trading</option>
-</select>
-</div>
-
-<div>
-<label>Account Mode</label>
-<select id="tradeMode">
-<option>Demo only</option>
-<option>Live — locked</option>
-</select>
-</div>
-
-<div>
-<label>Fixed Lot Size</label>
-<input id="lots" type="number" min="0.01" step="0.01" value="0.01">
-</div>
-
-<div>
-<label>Stop Loss (points)</label>
-<input id="sl" type="number" min="1" value="300">
-</div>
-
-<div>
-<label>Take Profit (points)</label>
-<input id="tp" type="number" min="1" value="600">
-</div>
-
-<div>
-<label>Maximum Open Trades</label>
-<input id="maxTrades" type="number" min="1" value="1">
-</div>
-
-<div>
-<label>Daily Loss Limit</label>
-<input id="dailyLoss" type="number" min="0" value="10">
-</div>
-
-<div>
-<label>Maximum Spread (points)</label>
-<input id="spread" type="number" min="0" value="30">
-</div>
-</div>
-
-<div class="actions">
-<button class="primary" id="saveRisk">Save Risk Settings</button>
-<button id="lockLive">Keep Live Trading Locked</button>
-</div>
-
-<div id="riskResult" class="result">
-Example settings only. Not yet connected to MT5.
-</div>
-
-<div class="notice warning">
-These settings are saved in this browser only. They are not yet enforced by an MT5 robot. Demo testing first.
-</div>
+<h3>Risk Management</h3>
+<label>Account Mode</label><select id="tradeMode"><option>Demo only</option><option>Live Locked</option></select>
+<label>Risk %</label><input id="riskPercent" type="number" value="0.5" min="0.1" max="1">
+<label>Stop Loss Points</label><input id="sl" type="number" value="300">
+<label>Take Profit Points</label><input id="tp" type="number" value="600">
+<label>Maximum Trades</label><input id="maxTrades" type="number" value="1">
+<button id="saveRisk">Save Risk Settings</button>
+<button id="lockLive">Lock Live Trading</button>
+<div id="riskResult" class="result">Demo mode active.</div>
+<div class="notice">Risk values are saved locally only. They do not control broker trades.</div>
 </div>
 </section>
 
+
+<div class="footer">SMC Sniper Pro APA • Demo First • Live Locked</div>
+</main>
+
 <script>
-/* PAGE NAVIGATION */
-document.querySelectorAll("nav button[data-page]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+"use strict";
 
-    button.classList.add("active");
-    const page = document.getElementById(button.dataset.page);
-    if (page) page.classList.add("active");
-  });
+const $ = id => document.getElementById(id);
+
+/* SYMBOLS */
+const symbols = {
+ "Deriv Indices":[
+ "Volatility 10 Index","Volatility 10 (1s) Index",
+ "Volatility 15 Index","Volatility 15 (1s) Index",
+ "Volatility 25 Index","Volatility 25 (1s) Index",
+ "Volatility 30 Index","Volatility 30 (1s) Index",
+ "Volatility 50 Index","Volatility 50 (1s) Index",
+ "Volatility 60 Index","Volatility 60 (1s) Index",
+ "Volatility 75 Index","Volatility 75 (1s) Index",
+ "Volatility 90 Index","Volatility 90 (1s) Index",
+ "Volatility 100 Index","Volatility 100 (1s) Index",
+ "Boom 300 Index","Boom 500 Index","Boom 1000 Index",
+ "Crash 300 Index","Crash 500 Index","Crash 1000 Index",
+ "Step Index","Step Index 200","Step Index 300",
+ "Range Break 100 Index","Range Break 200 Index",
+ "Jump 10 Index","Jump 25 Index","Jump 50 Index",
+ "Jump 75 Index","Jump 100 Index"
+ ],
+ "Forex":[
+ "EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD",
+ "EURGBP","EURJPY","GBPJPY","AUDJPY","EURAUD","EURCHF",
+ "GBPAUD","GBPCAD","GBPCHF","AUDCAD","AUDCHF","CADJPY",
+ "CHFJPY","NZDJPY","NZDCAD","NZDCHF","EURNZD","GBPNZD","AUDNZD"
+ ],
+ "Gold":["XAUUSD","GOLD"],
+ "Other":["BTCUSD","ETHUSD","US30","NAS100","SPX500"]
+};
+
+/* SYMBOL DROPDOWN */
+function populateSymbols(){
+ const market=$("market").value;
+ const list=symbols[market]||[];
+ $("symbol").innerHTML=list.map(s=>`<option>${s}</option>`).join("");
+ updateSymbol();
+}
+
+function updateSymbol(){
+ $("symbolStat").textContent=$("symbol").value||"-";
+}
+
+/* AUTOMATIC TIMEFRAME */
+function updateTimeframe(){
+ const mode=$("mode").value;
+ $("modeStat").textContent=mode;
+
+ if(mode==="Scalping"){
+  $("timeframe").value="M1 / M5";
+ }else if(mode==="Swing Trading"){
+  $("timeframe").value="H1 / H4 / D1";
+ }else{
+  $("timeframe").value="M15 / H1";
+ }
+}
+
+/* NAVIGATION */
+document.querySelectorAll("nav button").forEach(btn=>{
+ btn.addEventListener("click",()=>{
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  btn.classList.add("active");
+  $(btn.dataset.page).classList.add("active");
+ });
 });
 
-/* AUTOMATIC TIMEFRAME SETTINGS */
-function updateTimeframes() {
-  const mode = document.getElementById("mode");
-  const timeframe = document.getElementById("timeframe");
-  if (!mode || !timeframe) return;
+/* EVENTS */
+$("market").addEventListener("change",populateSymbols);
+$("symbol").addEventListener("change",updateSymbol);
+$("mode").addEventListener("change",updateTimeframe);
 
-  const settings = {
-    scalping: "M5",
-    "day trading": "M15",
-    swing: "H1"
-  };
-
-  const selected = mode.value.toLowerCase();
-  timeframe.value = settings[selected] || "M15";
-}
-
-document.getElementById("mode")?.addEventListener("change", updateTimeframes);
-
-/* COPY DASHBOARD SELECTIONS */
-function updateDashboard() {
-  const mode = document.getElementById("dashMode");
-  const symbol = document.getElementById("dashSymbol");
-  if (mode && document.getElementById("mode")) {
-    mode.textContent = document.getElementById("mode").value;
-  }
-  if (symbol && document.getElementById("symbol")) {
-    symbol.textContent = document.getElementById("symbol").value;
-  }
-}
-
-/* SMC CHECKLIST SCANNER */
-const analyseButton = document.getElementById("analyse");
-const clearButton = document.getElementById("clear");
-const scanResult = document.getElementById("scanResult");
-
-if (analyseButton) {
-  analyseButton.addEventListener("click", () => {
-    const checks = document.querySelectorAll("#scanner input[type='checkbox']");
-    const checked = [...checks].filter(item => item.checked).length;
-
-    if (scanResult) {
-      scanResult.textContent =
-        "Checklist completed: " + checked + " of " + checks.length +
-        "\n\nThis is a manual SMC checklist, not a live market signal." +
-        "\nConfirm BOS, MSS, liquidity sweep, displacement, order block, FVG and higher-timeframe direction before considering a trade.";
-    }
-    updateDashboard();
-  });
-}
-
-if (clearButton) {
-  clearButton.addEventListener("click", () => {
-    document.querySelectorAll("#scanner input[type='checkbox']").forEach(item => {
-      item.checked = false;
-    });
-    if (scanResult) scanResult.textContent = "Checklist cleared. Waiting for analysis.";
-  });
-}
-
-/* BROKER INFORMATION */
-document.getElementById("saveBroker")?.addEventListener("click", () => {
-  const fields = ["brokerName", "server", "accountType", "currency", "leverage", "brokerSymbol"];
-  const data = {};
-
-  fields.forEach(id => {
-    const field = document.getElementById(id);
-    if (field) data[id] = field.value;
-  });
-
-  try {
-    localStorage.setItem("smcBrokerInfo", JSON.stringify(data));
-    const result = document.getElementById("brokerResult");
-    if (result) result.textContent = "Broker information saved on this device. This does not connect to Deriv or MT5.";
-  } catch (error) {
-    const result = document.getElementById("brokerResult");
-    if (result) result.textContent = "Could not save information in this browser.";
-  }
+/* SCANNER */
+$("analyse").addEventListener("click",()=>{
+ const checks=[...document.querySelectorAll(".condition")];
+ const count=checks.filter(c=>c.checked).length;
+ $("scanResult").textContent=
+ count===6
+ ?"All 6 conditions marked. Verify them on your chart before any trade."
+ :count+" of 6 conditions checked. Setup incomplete.";
 });
 
-document.getElementById("testBroker")?.addEventListener("click", () => {
-  const result = document.getElementById("brokerResult");
-  if (result) {
-    result.textContent = "Connection not tested. This website is not yet connected to Deriv or MT5.";
-  }
+$("clearChecks").addEventListener("click",()=>{
+ document.querySelectorAll(".condition").forEach(c=>c.checked=false);
+ $("scanResult").textContent="Checklist cleared.";
+});
+
+/* BROKER SETTINGS */
+$("saveBroker").addEventListener("click",()=>{
+ const data={
+  broker:$("brokerName").value,
+  account:$("accountType").value,
+  appId:$("appId").value
+ };
+ localStorage.setItem("smcBroker",JSON.stringify(data));
+ $("brokerResult").textContent="Saved locally. Deriv is NOT connected.";
 });
 
 /* RISK SETTINGS */
-document.getElementById("saveRisk")?.addEventListener("click", () => {
-  const fields = ["riskMode", "tradeMode", "lots", "sl", "tp", "maxTrades", "dailyLoss", "spread"];
-  const data = {};
-
-  fields.forEach(id => {
-    const field = document.getElementById(id);
-    if (field) data[id] = field.value;
-  });
-
-  try {
-    localStorage.setItem("smcRiskSettings", JSON.stringify(data));
-    const result = document.getElementById("riskResult");
-    if (result) result.textContent = "Risk settings saved on this device. No trades have been placed.";
-  } catch (error) {
-    const result = document.getElementById("riskResult");
-    if (result) result.textContent = "Could not save risk settings.";
-  }
+$("saveRisk").addEventListener("click",()=>{
+ const data={
+  mode:$("tradeMode").value,
+  risk:$("riskPercent").value,
+  sl:$("sl").value,
+  tp:$("tp").value,
+  maxTrades:$("maxTrades").value
+ };
+ localStorage.setItem("smcRisk",JSON.stringify(data));
+ $("riskResult").textContent="Risk settings saved locally.";
 });
 
-/* LIVE TRADING SAFETY LOCK */
-document.getElementById("lockLive")?.addEventListener("click", () => {
-  const result = document.getElementById("riskResult");
-  if (result) {
-    result.textContent = "LIVE TRADING LOCKED. This website cannot place trades. Keep testing in demo until a properly connected and tested trading system is ready.";
-  }
+/* LIVE LOCK */
+$("lockLive").addEventListener("click",()=>{
+ $("tradeMode").value="Demo only";
+ $("riskResult").textContent="Live trading locked. Demo mode selected.";
 });
 
-/* RESTORE SAVED SETTINGS */
-try {
-  const broker = JSON.parse(localStorage.getItem("smcBrokerInfo") || "{}");
-  Object.keys(broker).forEach(id => {
-    const field = document.getElementById(id);
-    if (field) field.value = broker[id];
-  });
+/* LOAD SAVED SETTINGS */
+try{
+ const b=JSON.parse(localStorage.getItem("smcBroker")||"{}");
+ if(b.broker)$("brokerName").value=b.broker;
+ if(b.account)$("accountType").value=b.account;
+ if(b.appId)$("appId").value=b.appId;
 
-  const risk = JSON.parse(localStorage.getItem("smcRiskSettings") || "{}");
-  Object.keys(risk).forEach(id => {
-    const field = document.getElementById(id);
-    if (field) field.value = risk[id];
-  });
-} catch (error) {
-  console.log("Saved settings could not be restored.");
-}
+ const r=JSON.parse(localStorage.getItem("smcRisk")||"{}");
+ if(r.mode)$("tradeMode").value=r.mode;
+ if(r.risk)$("riskPercent").value=r.risk;
+ if(r.sl)$("sl").value=r.sl;
+ if(r.tp)$("tp").value=r.tp;
+ if(r.maxTrades)$("maxTrades").value=r.maxTrades;
+}catch(e){}
 
-/* OPTIONAL DERIV MARKET SYMBOL LOADER */
-function loadDerivMarkets() {
-  const market = document.getElementById("market");
-  const status = document.getElementById("marketStatus");
-
-  if (!market || !status) {
-    alert("Market selector or market status field was not found.");
-    return;
-  }
-
-  status.textContent = "Connecting to Deriv market list...";
-
-  const socket = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({
-      active_symbols: "brief",
-      product_type: "basic"
-    }));
-  };
-
-  socket.onmessage = event => {
-    const response = JSON.parse(event.data);
-
-    if (response.error) {
-      status.textContent = "Could not load markets: " + response.error.message;
-      socket.close();
-      return;
-    }
-
-    if (response.active_symbols) {
-      const symbols = response.active_symbols.filter(item =>
-        item.market === "synthetic_index" ||
-        item.market === "forex" ||
-        item.market === "commodities" ||
-        item.market === "indices"
-      );
-
-      market.innerHTML = '<option value="">Choose a market</option>';
-
-      symbols.forEach(item => {
-        const option = document.createElement("option");
-        option.value = item.symbol;
-        option.textContent = item.display_name + " (" + item.symbol + ")";
-        market.appendChild(option);
-      });
-
-      status.textContent = symbols.length + " available symbols loaded. This does not enable trading.";
-      socket.close();
-    }
-  };
-
-  socket.onerror = () => {
-    status.textContent = "Market list connection failed. Try again later.";
-  };
-}
-
-/* STARTUP */
-updateTimeframes();
-  /* LOAD TRADING SYMBOLS */
-
-const symbolList = [];
-
-function populateSymbols() {
-  const market = document.getElementById("market");
-  const symbol = document.getElementById("symbol");
-
-  if (!market || !symbol) return;
-
-  const filtered = symbolList.filter(item =>
-    item.category === market.value
-  );
-
-  symbol.innerHTML = '<option value="">Choose a symbol</option>';
-
-  filtered.forEach(item => {
-    const option = document.createElement("option");
-    option.value = item.code;
-    option.textContent = item.name;
-    symbol.appendChild(option);
-  });
-}
-
-function loadDerivSymbols() {
-  const status = document.getElementById("marketStatus");
-  const socket = new WebSocket(
-    "wss://ws.derivws.com/websockets/v3?app_id=1089"
-  );
-
-  if (status) status.textContent = "Loading Deriv markets...";
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({
-      active_symbols: "brief",
-      product_type: "basic"
-    }));
-  };
-
-  socket.onmessage = event => {
-    const response = JSON.parse(event.data);
-
-    if (response.error) {
-      if (status) status.textContent = response.error.message;
-      socket.close();
-      return;
-    }
-
-    if (response.active_symbols) {
-      symbolList.length = 0;
-
-      response.active_symbols.forEach(item => {
-        let category = "Other";
-
-        if (item.market === "synthetic_index") {
-          category = "Deriv Indices";
-        } else if (item.market === "forex") {
-          category = "Forex";
-        } else if (
-          item.display_name.toLowerCase().includes("gold")
-        ) {
-          category = "Gold";
-        }
-
-        symbolList.push({
-          name: item.display_name,
-          code: item.symbol,
-          category: category
-        });
-      });
-
-      populateSymbols();
-
-      if (status) {
-        status.textContent =
-          symbolList.length + " Deriv symbols loaded.";
-      }
-
-      socket.close();
-    }
-  };
-
-  socket.onerror = () => {
-    if (status) status.textContent = "Could not load Deriv markets.";
-  };
-}
-
-document.getElementById("market")?.addEventListener("change", populateSymbols);
-
-loadDerivSymbols();
-
-
-
-      populateSymbols();
-
-      if (status) {
-        status.textContent =
-          symbolList.length + " Deriv symbols loaded.";
-      }
-
-      socket.close();
-    }
-  };
-
-  socket.onerror = () => {
-    if (status) status.textContent = "Could not load Deriv markets.";
-  };
-}
-loadDerivsymbols();
-];
-
-
-
-function populateSymbols() {
-  const market = document.getElementById("market");
-  const symbol = document.getElementById("symbol");
-
-  if (!market || !symbol) return;
-
-  const selectedCategory = market.value;
-  const filtered = symbolList.filter(item =>
-    item.category === selectedCategory
-  );
-
-  symbol.innerHTML = '<option value="">Choose a symbol</option>';
-
-  filtered.forEach(item => {
-    const option = document.createElement("option");
-    option.value = item.code;
-    option.textContent = item.name;
-    symbol.appendChild(option);
-  });
-}
-
-document.getElementById("market")?.addEventListener("change", populateSymbols);
-];
 populateSymbols();
-
+updateTimeframe();
 </script>
-
-</main>
-<footer>
-SMC Sniper Pro APA — Scanner and settings dashboard.
-Demo testing only. No live trading connection.
-</footer>
 </body>
 </html>

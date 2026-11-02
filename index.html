@@ -317,6 +317,8 @@ function derivDisconnect(){
     const data = await response.json();
 
     console.log("SMC Cloud:", data);
+   document.getElementById("cloudStatus").textContent =
+  data.status + " | " + data.mode;
   } catch (error) {
     console.log("Cloud connection failed:", error);
   }

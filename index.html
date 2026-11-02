@@ -543,18 +543,7 @@ document.getElementById("market")?.addEventListener("change", populateSymbols);
 
 populateSymbols();
 
-const symbolDropdown = document.getElementById("symbol");
 
-if (symbolDropdown) {
-  symbolDropdown.innerHTML = '<option value="">Choose a symbol</option>';
-
-  symbolList.forEach(item => {
-    const option = document.createElement("option");
-    option.value = item[1];
-    option.textContent = item[0];
-    symbolDropdown.appendChild(option);
-  });
-}
 </script>
 
 </main>

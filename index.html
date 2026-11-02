@@ -245,6 +245,65 @@ try{
 
 populateSymbols();
 updateTimeframe();
+
+/* DERIV DEMO MARKET CONNECTION */
+let derivSocket=null;
+let derivConnected=false;
+
+function derivConnect(){
+ const appId=document.getElementById("appId").value.trim();
+ const result=document.getElementById("brokerResult");
+
+ if(!appId){
+  result.textContent="Enter your Deriv App ID first.";
+  return;
+ }
+
+ if(derivSocket){
+  derivSocket.close();
+ }
+
+ result.textContent="Connecting to Deriv Demo...";
+
+ derivSocket=new WebSocket(
+  "wss://ws.derivws.com/websockets/v3?app_id="+encodeURIComponent(appId)
+ );
+
+ derivSocket.onopen=()=>{
+  derivConnected=true;
+  result.textContent="Connected to Deriv WebSocket. Requesting demo market data...";
+  derivSocket.send(JSON.stringify({active_symbols:"brief",product_type:"basic"}));
+ };
+
+ derivSocket.onmessage=(event)=>{
+  const data=JSON.parse(event.data);
+
+  if(data.error){
+   result.textContent="Deriv error: "+data.error.message;
+   return;
+  }
+
+  if(data.msg_type==="active_symbols"){
+   result.textContent="Connected. Deriv symbols received: "+data.active_symbols.length;
+  }
+ };
+
+ derivSocket.onerror=()=>{
+  result.textContent="Connection error. Check internet and App ID.";
+ };
+
+ derivSocket.onclose=()=>{
+  derivConnected=false;
+  result.textContent="Deriv connection closed.";
+ };
+}
+
+function derivDisconnect(){
+ if(derivSocket)derivSocket.close();
+ derivSocket=null;
+ derivConnected=false;
+}
+ 
 </script>
 </body>
 </html>

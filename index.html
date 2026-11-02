@@ -1,360 +1,357 @@
+ 
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SMC Sniper Pro</title>
-<style>
-body {
-  margin: 0;
-  background: #101827;
-  color: white;
-  font-family: Arial, sans-serif;
-  padding: 20px;
+```cpp
+//+------------------------------------------------------------------+
+//| SMC Sniper Pro APA - MT5 Expert Advisor                         |
+//| Advanced Price Action + Smart Money Concepts                     |
+//| Starter build - Demo testing only                                |
+//+------------------------------------------------------------------+
+#property strict
+#property version "1.00"
+
+#include <Trade/Trade.mqh>
+CTrade trade;
+
+enum TradingStyle
+{
+   STYLE_SCALPING=0,
+   STYLE_DAY=1,
+   STYLE_SWING=2
+};
+
+input TradingStyle Mode = STYLE_DAY;
+input bool DemoOnly = true;
+input bool AllowTrading = false;
+
+input double FixedLots = 0.01;
+input int StopLossPoints = 300;
+input int TakeProfitPoints = 600;
+input int MaxOpenPositions = 1;
+input int MaxSpreadPoints = 50;
+
+input ulong MagicNumber = 7312026;
+input int SwingLookback = 20;
+input int FastEMA = 9;
+input int SlowEMA = 21;
+input int RSI_Period = 14;
+input double BuyRSIMin = 52.0;
+input double SellRSIMax = 48.0;
+
+input bool RequireLiquiditySweep = true;
+input bool RequireStructureBreak = true;
+input bool RequireOBorFVG = false;
+
+int hFast=INVALID_HANDLE;
+int hSlow=INVALID_HANDLE;
+int hRSI=INVALID_HANDLE;
+datetime lastBar=0;
+
+// Timeframes
+ENUM_TIMEFRAMES SignalTF()
+{
+   if(Mode==STYLE_SCALPING) return PERIOD_M1;
+   if(Mode==STYLE_DAY) return PERIOD_M15;
+   return PERIOD_H1;
 }
-header {
-  text-align: center;
-  padding: 25px 5px;
+
+ENUM_TIMEFRAMES TrendTF()
+{
+   if(Mode==STYLE_SCALPING) return PERIOD_M15;
+   if(Mode==STYLE_DAY) return PERIOD_H1;
+   return PERIOD_D1;
 }
-h1 { color: #20d69a; }
-.card {
-  background: #1d2a3d;
-  padding: 20px;
-  border-radius: 12px;
-  margin: 15px 0;
+
+// New candle detection
+bool NewBar()
+{
+   datetime t=iTime(_Symbol,SignalTF(),0);
+   if(t!=lastBar && t>0)
+   {
+      lastBar=t;
+      return true;
+   }
+   return false;
 }
-button {
-  background: #20d69a;
-  color: #101827;
-  border: none;
-  padding: 14px;
-  border-radius: 8px;
-  width: 100%;
-  font-size: 16px;
-  font-weight: bold;
+
+// Indicator data
+double Buf(int handle,int shift)
+{
+   double a[];
+   ArraySetAsSeries(a,true);
+
+   if(handle==INVALID_HANDLE)
+      return EMPTY_VALUE;
+
+   if(CopyBuffer(handle,0,shift,1,a)!=1)
+      return EMPTY_VALUE;
+
+   return a[0];
 }
-.status { color: #20d69a; }
-</style>
-</head>
-<body>
-<header>
-<h1>SMC SNIPER PRO</h1>
-<p>Deriv Trading Assistant</p>
-</header>
 
-<div class="card">
-<h2>Dashboard</h2>
-<p>Connection: <span class="status">Not connected</span></p>
-<p>Platform: Deriv</p>
-<p>Trading mode: Demo</p>
-</div>
+// Spread filter
+bool SpreadOK()
+{
+   long sp=SymbolInfoInteger(_Symbol,SYMBOL_SPREAD);
+   return sp>0 && sp<=MaxSpreadPoints;
+}
 
-<div class="card">
-  <h2>Deriv Market Scanner</h2>
-  <h3>Available Markets</h3>
+// Count EA positions
+int CountPositions()
+{
+   int n=0;
 
-<p id="marketStatus">Waiting for markets...</p>
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
 
-<select id="market">
-  <option value="">Select a market</option>
-</select>
-  <button onclick="loadDerivMarkets()">LOAD ALL DERIV MARKETS</button>
+      if(ticket>0 &&
+         PositionGetString(POSITION_SYMBOL)==_Symbol &&
+         (ulong)PositionGetInteger(POSITION_MAGIC)==MagicNumber)
+         n++;
+   }
 
-<script>
-  function loadDerivMarkets() {
-  const status = document.getElementById("marketStatus");
-  const marketSelect = document.getElementById("market");
+   return n;
+}
 
-  status.textContent = "Connecting to Deriv...";
+// Demo protection
+bool IsDemoAccount()
+{
+   ENUM_ACCOUNT_TRADE_MODE m=
+      (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
 
-  const ws = new WebSocket(
-    "wss://api.derivws.com/trading/v1/options/ws/public"
-  );
+   return m==ACCOUNT_TRADE_MODE_DEMO;
+}
 
-  ws.onopen = function () {
-    status.textContent = "Connected. Loading markets...";
+// Bullish liquidity sweep
+bool BullSweep()
+{
+   double low1=iLow(_Symbol,SignalTF(),1);
+   double close1=iClose(_Symbol,SignalTF(),1);
+   double ref=DBL_MAX;
 
-    ws.send(JSON.stringify({
-      active_symbols: "brief",
-      req_id: 1
-    }));
-  };
+   for(int i=2;i<=SwingLookback+1;i++)
+      ref=MathMin(ref,iLow(_Symbol,SignalTF(),i));
 
-  ws.onmessage = function (event) {
-    const data = JSON.parse(event.data);
+   return low1<ref && close1>ref;
+}
 
-    if (data.error) {
-      status.textContent = "Deriv error: " + data.error.message;
-      ws.close();
+// Bearish liquidity sweep
+bool BearSweep()
+{
+   double high1=iHigh(_Symbol,SignalTF(),1);
+   double close1=iClose(_Symbol,SignalTF(),1);
+   double ref=-DBL_MAX;
+
+   for(int i=2;i<=SwingLookback+1;i++)
+      ref=MathMax(ref,iHigh(_Symbol,SignalTF(),i));
+
+   return high1>ref && close1<ref;
+}
+
+// Bullish structure break
+bool BullBreak()
+{
+   double c=iClose(_Symbol,SignalTF(),1);
+   double ref=-DBL_MAX;
+
+   for(int i=2;i<=SwingLookback+1;i++)
+      ref=MathMax(ref,iHigh(_Symbol,SignalTF(),i));
+
+   return c>ref;
+}
+
+// Bearish structure break
+bool BearBreak()
+{
+   double c=iClose(_Symbol,SignalTF(),1);
+   double ref=DBL_MAX;
+
+   for(int i=2;i<=SwingLookback+1;i++)
+      ref=MathMin(ref,iLow(_Symbol,SignalTF(),i));
+
+   return c<ref;
+}
+
+// Trend confirmation
+bool TrendBull()
+{
+   return Buf(hFast,1)>Buf(hSlow,1);
+}
+
+bool TrendBear()
+{
+   return Buf(hFast,1)<Buf(hSlow,1);
+}
+
+// Candle confirmation
+bool BullCandle()
+{
+   return iClose(_Symbol,SignalTF(),1)>
+          iOpen(_Symbol,SignalTF(),1);
+}
+
+bool BearCandle()
+{
+   return iClose(_Symbol,SignalTF(),1)<
+          iOpen(_Symbol,SignalTF(),1);
+}
+
+// Approximate OB/FVG filters
+bool BullZoneApprox()
+{
+   return iClose(_Symbol,SignalTF(),1)>
+          iHigh(_Symbol,SignalTF(),2);
+}
+
+bool BearZoneApprox()
+{
+   return iClose(_Symbol,SignalTF(),1)<
+          iLow(_Symbol,SignalTF(),2);
+}
+
+// BUY conditions
+bool BuySignal()
+{
+   bool sweep=!RequireLiquiditySweep || BullSweep();
+   bool brk=!RequireStructureBreak || BullBreak();
+   bool zone=!RequireOBorFVG || BullZoneApprox();
+
+   return TrendBull() &&
+          sweep &&
+          brk &&
+          zone &&
+          BullCandle() &&
+          Buf(hRSI,1)>=BuyRSIMin;
+}
+
+// SELL conditions
+bool SellSignal()
+{
+   bool sweep=!RequireLiquiditySweep || BearSweep();
+   bool brk=!RequireStructureBreak || BearBreak();
+   bool zone=!RequireOBorFVG || BearZoneApprox();
+
+   return TrendBear() &&
+          sweep &&
+          brk &&
+          zone &&
+          BearCandle() &&
+          Buf(hRSI,1)<=SellRSIMax;
+}
+
+// Normalize lot size
+double NormalizeLots(double lots)
+{
+   double minv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double maxv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+
+   lots=MathMax(minv,MathMin(maxv,lots));
+   lots=MathFloor(lots/step)*step;
+
+   return NormalizeDouble(lots,2);
+}
+
+// BUY order
+void OpenBuy()
+{
+   double ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
+
+   double sl=ask-StopLossPoints*_Point;
+   double tp=ask+TakeProfitPoints*_Point;
+
+   trade.SetExpertMagicNumber(MagicNumber);
+
+   trade.Buy(
+      NormalizeLots(FixedLots),
+      _Symbol,
+      ask,
+      sl,
+      tp,
+      "SMC APA BUY"
+   );
+}
+
+// SELL order
+void OpenSell()
+{
+   double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+
+   double sl=bid+StopLossPoints*_Point;
+   double tp=bid-TakeProfitPoints*_Point;
+
+   trade.SetExpertMagicNumber(MagicNumber);
+
+   trade.Sell(
+      NormalizeLots(FixedLots),
+      _Symbol,
+      bid,
+      sl,
+      tp,
+      "SMC APA SELL"
+   );
+}
+
+// Initialize EA
+int OnInit()
+{
+   hFast=iMA(
+      _Symbol,TrendTF(),FastEMA,0,MODE_EMA,PRICE_CLOSE
+   );
+
+   hSlow=iMA(
+      _Symbol,TrendTF(),SlowEMA,0,MODE_EMA,PRICE_CLOSE
+   );
+
+   hRSI=iRSI(
+      _Symbol,SignalTF(),RSI_Period,PRICE_CLOSE
+   );
+
+   if(hFast==INVALID_HANDLE ||
+      hSlow==INVALID_HANDLE ||
+      hRSI==INVALID_HANDLE)
+      return INIT_FAILED;
+
+   trade.SetExpertMagicNumber(MagicNumber);
+
+   return INIT_SUCCEEDED;
+}
+
+// Release indicators
+void OnDeinit(const int reason)
+{
+   if(hFast!=INVALID_HANDLE)
+      IndicatorRelease(hFast);
+
+   if(hSlow!=INVALID_HANDLE)
+      IndicatorRelease(hSlow);
+
+   if(hRSI!=INVALID_HANDLE)
+      IndicatorRelease(hRSI);
+}
+
+// Main trading engine
+void OnTick()
+{
+   if(!NewBar())
       return;
-    }
 
-    if (data.msg_type === "active_symbols") {
-      const symbols = data.active_symbols || [];
+   if(DemoOnly && !IsDemoAccount())
+      return;
 
-      const indices = symbols.filter(function (item) {
-        return item.market === "synthetic_index";
-      });
+   if(!AllowTrading)
+      return;
 
-      if (indices.length === 0) {
-        status.textContent =
-          "Markets received, but no synthetic indices were found.";
-        ws.close();
-        return;
-      }
+   if(!SpreadOK())
+      return;
 
-      marketSelect.innerHTML = "";
+   if(CountPositions()>=MaxOpenPositions)
+      return;
 
-      indices.forEach(function (item) {
-        const option = document.createElement("option");
-        option.value = item.symbol;
-        option.textContent = item.display_name;
-        marketSelect.appendChild(option);
-      });
+   if(BuySignal())
+      OpenBuy();
 
-      status.textContent =
-        indices.length + " synthetic markets loaded successfully.";
-
-      ws.close();
-    }
-  };
-
-  ws.onerror = function () {
-    status.textContent = "Connection failed. Please try again.";
-  };
-
-  ws.onclose = function () {
-    console.log("Market list connection closed.");
-  };
+   else if(SellSignal())
+      OpenSell();
 }
-  <h3>Available Markets</h3>
-  <button onclick="loadDerivMarkets()">
-  LOAD ALL DERIV MARKETS
-</button>
-
-<p id="marketStatus">Waiting for markets...</p>
-</button>
-
-<p id="marketStatus">Waiting for markets...</p>
-  <div class="card">
-  <h3>Available Markets</h3>
-  <select id="market">
-    <option value="R_10">Volatility 10 Index</option>
-    <option value="R_25">Volatility 25 Index</option>
-    <option value="R_50">Volatility 50 Index</option>
-    <option value="R_75">Volatility 75 Index</option>
-    <option value="R_100">Volatility 100 Index</option>
-  </select>
-
-  <button onclick="scanMarket()">SCAN MARKET</button>
-
-  <p id="scanResult">Waiting for scan...</p>
-  </div>
-<p>Scan available Deriv indices.</p>
-<p>Waiting for market data...</p>
-</div>
-
-<div class="card">
-<h2>Smart Money Concepts</h2>
-<p>Order Blocks: Ready</p>
-<p>Supply and Demand: Ready</p>
-<p>Break of Structure: Ready</p>
-<p>Liquidity Sweeps: Ready</p>
-</div>
-
-<div class="card">
-<h2>Trading Controls</h2>
-<p>Risk management: 0.5%</p>
-<button disabled>Connect Deriv API (Coming next)</button>
-<p>Trading is not active.</p>
-</div>
-<script>
-async function scanMarket() {
-  const market = document.getElementById("market").value;
-  const result = document.getElementById("scanResult");
-
-  result.textContent = "Connecting to Deriv...";
-
-  let ws;
-
-  try {
-    ws = new WebSocket(
-      "wss://api.derivws.com/trading/v1/options/ws/public"
-    );
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        ticks: market,
-        subscribe: 1
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.error) {
-        result.textContent = "Error: " + data.error.message;
-        ws.close();
-        return;
-      }
-
-      if (data.tick) {
-        result.textContent =
-          "Market: " + market +
-          " | Latest price: " + data.tick.quote;
-      }
-    };
-
-    ws.onerror = () => {
-      result.textContent = "Connection error. Try again.";
-    };
-
-  } catch (error) {
-    result.textContent = "Scanner error: " + error.message;
-  }
-}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const riskForm = document.getElementById("riskSettingsForm");
-  const status = document.getElementById("riskStatus");
-
-  if (!riskForm || !status) {
-    console.log("Risk settings section not found.");
-    return;
-  }
-
-  riskForm.addEventListener("submit", function (event) {
-    event.preventDefault();
-
-    const risk = Number(document.getElementById("riskPercent").value);
-    const trades = Number(document.getElementById("maxTrades").value);
-    const daily = Number(document.getElementById("dailyLoss").value);
-    const losses = Number(document.getElementById("lossLimit").value);
-
-    if (!Number.isFinite(risk) || risk < 0.01 || risk > 5 ||
-        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
-        !Number.isFinite(daily) || daily < 0.1 || daily > 20 ||
-        !Number.isInteger(losses) || losses < 1 || losses > 20) {
-      status.textContent = "Invalid settings. Check your values.";
-      return;
-    }
-
-    window.smcRiskSettings = {
-      riskPercent: risk,
-      maxTrades: trades,
-      dailyLossLimit: daily,
-      pauseAfterLosses: losses,
-      tradingMode: "DEMO"
-    };
-
-    status.textContent = "Settings saved for this session. Demo mode only.";
-  });
-});
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const riskForm = document.getElementById("riskSettingsForm");
-  const status = document.getElementById("riskStatus");
-
-  if (!riskForm || !status) {
-    console.log("Risk settings section not found.");
-    return;
-  }
-
-  riskForm.addEventListener("submit", function (event) {
-    event.preventDefault();
-
-    const risk = Number(document.getElementById("riskPercent").value);
-    const trades = Number(document.getElementById("maxTrades").value);
-    const daily = Number(document.getElementById("dailyLoss").value);
-    const losses = Number(document.getElementById("lossLimit").value);
-
-    if (!Number.isFinite(risk) || risk < 0.01 || risk > 5 ||
-        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
-        !Number.isFinite(daily) || daily < 0.1 || daily > 20 ||
-        !Number.isInteger(losses) || losses < 1 || losses > 20) {
-      status.textContent = "Invalid settings. Check your values.";
-      return;
-    }
-
-    window.smcRiskSettings = {
-      riskPercent: risk,
-      maxTrades: trades,
-      dailyLossLimit: daily,
-      pauseAfterLosses: losses,
-      tradingMode: "DEMO"
-    };
-
-    status.textContent = "Settings saved for this session. Demo mode only.";
-  });
-});
-</script>
-  <section class="card">
-  <h2>APA Risk Management Settings</h2>
-
-  <p>Trading Mode:
-    <strong style="color:green;">DEMO ONLY</strong>
-  </p>
-
-  <form id="riskSettingsForm">
-    <label>Risk per trade (%)</label>
-    <input type="number" id="riskPercent" value="0.5"
-      min="0.01" max="5" step="0.01" required>
-
-    <label>Maximum open trades</label>
-    <input type="number" id="maxTrades" value="2"
-      min="1" max="20" step="1" required>
-
-    <label>Daily loss limit (%)</label>
-    <input type="number" id="dailyLoss" value="2"
-      min="0.1" max="20" step="0.1" required>
-
-    <label>Pause after consecutive losses</label>
-    <input type="number" id="lossLimit" value="3"
-      min="1" max="20" step="1" required>
-
-    <button type="submit">SAVE RISK SETTINGS</button>
-  </form>
-
-  <p id="riskStatus">Default settings loaded.</p>
-</section>
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const form = document.getElementById("riskSettingsForm");
-  const status = document.getElementById("riskStatus");
-
-  if (!form || !status) return;
-
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-
-    const risk = Number(document.getElementById("riskPercent").value);
-    const trades = Number(document.getElementById("maxTrades").value);
-    const daily = Number(document.getElementById("dailyLoss").value);
-    const losses = Number(document.getElementById("lossLimit").value);
-
-    if (risk < 0.01 || risk > 5 ||
-        !Number.isInteger(trades) || trades < 1 || trades > 20 ||
-        daily < 0.1 || daily > 20 ||
-        !Number.isInteger(losses) || losses < 1 || losses > 20) {
-      status.textContent = "Invalid settings. Check your values.";
-      return;
-    }
-
-    window.smcRiskSettings = {
-      riskPercent: risk,
-      maxTrades: trades,
-      dailyLossLimit: daily,
-      pauseAfterLosses: losses,
-      tradingMode: "DEMO"
-    };
-
-    status.textContent =
-      "Settings saved for this session. DEMO ONLY.";
-  });
-});
-</script>  
-</body>
-</html>
-
+```

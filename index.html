@@ -504,6 +504,26 @@ updateTimeframes();
 
 const symbolList = [];
 
+function populateSymbols() {
+  const market = document.getElementById("market");
+  const symbol = document.getElementById("symbol");
+
+  if (!market || !symbol) return;
+
+  const filtered = symbolList.filter(item =>
+    item.category === market.value
+  );
+
+  symbol.innerHTML = '<option value="">Choose a symbol</option>';
+
+  filtered.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.code;
+    option.textContent = item.name;
+    symbol.appendChild(option);
+  });
+}
+
 function loadDerivSymbols() {
   const status = document.getElementById("marketStatus");
   const socket = new WebSocket(
@@ -550,6 +570,28 @@ function loadDerivSymbols() {
           category: category
         });
       });
+
+      populateSymbols();
+
+      if (status) {
+        status.textContent =
+          symbolList.length + " Deriv symbols loaded.";
+      }
+
+      socket.close();
+    }
+  };
+
+  socket.onerror = () => {
+    if (status) status.textContent = "Could not load Deriv markets.";
+  };
+}
+
+document.getElementById("market")?.addEventListener("change", populateSymbols);
+
+loadDerivSymbols();
+
+
 
       populateSymbols();
 

@@ -502,21 +502,46 @@ function loadDerivMarkets() {
 updateTimeframes();
   /* LOAD TRADING SYMBOLS */
 const symbolList = [
-  ["Volatility 10 Index", "R_10"],
-  ["Volatility 25 Index", "R_25"],
-  ["Volatility 50 Index", "R_50"],
-  ["Volatility 75 Index", "R_75"],
-  ["Volatility 100 Index", "R_100"],
-  ["Volatility 10 (1s) Index", "1HZ10V"],
-  ["Volatility 25 (1s) Index", "1HZ25V"],
-  ["Volatility 50 (1s) Index", "1HZ50V"],
-  ["Volatility 75 (1s) Index", "1HZ75V"],
-  ["Volatility 100 (1s) Index", "1HZ100V"],
-  ["Gold", "frxXAUUSD"],
-  ["EUR/USD", "frxEURUSD"],
-  ["GBP/USD", "frxGBPUSD"],
-  ["USD/JPY", "frxUSDJPY"]
+  {name:"Volatility 10 Index", code:"R_10", category:"Deriv Indices"},
+  {name:"Volatility 25 Index", code:"R_25", category:"Deriv Indices"},
+  {name:"Volatility 50 Index", code:"R_50", category:"Deriv Indices"},
+  {name:"Volatility 75 Index", code:"R_75", category:"Deriv Indices"},
+  {name:"Volatility 100 Index", code:"R_100", category:"Deriv Indices"},
+  {name:"Volatility 10 (1s) Index", code:"1HZ10V", category:"Deriv Indices"},
+  {name:"Volatility 25 (1s) Index", code:"1HZ25V", category:"Deriv Indices"},
+  {name:"Volatility 50 (1s) Index", code:"1HZ50V", category:"Deriv Indices"},
+  {name:"Volatility 75 (1s) Index", code:"1HZ75V", category:"Deriv Indices"},
+  {name:"Volatility 100 (1s) Index", code:"1HZ100V", category:"Deriv Indices"},
+  {name:"EUR/USD", code:"frxEURUSD", category:"Forex"},
+  {name:"GBP/USD", code:"frxGBPUSD", category:"Forex"},
+  {name:"USD/JPY", code:"frxUSDJPY", category:"Forex"},
+  {name:"Gold", code:"frxXAUUSD", category:"Others"}
 ];
+
+function populateSymbols() {
+  const market = document.getElementById("market");
+  const symbol = document.getElementById("symbol");
+
+  if (!market || !symbol) return;
+
+  const selectedCategory = market.value;
+  const filtered = symbolList.filter(item =>
+    item.category === selectedCategory
+  );
+
+  symbol.innerHTML = '<option value="">Choose a symbol</option>';
+
+  filtered.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.code;
+    option.textContent = item.name;
+    symbol.appendChild(option);
+  });
+}
+
+document.getElementById("market")?.addEventListener("change", populateSymbols);
+
+populateSymbols();
 
 const symbolDropdown = document.getElementById("symbol");
 

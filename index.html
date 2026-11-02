@@ -98,7 +98,18 @@ This website is currently a dashboard and manual scanner. It is not connected to
 
 <div>
 <label>Choose Trading Symbol</label>
-<select id="symbol"></select>
+<select id="symbol"></select> <select id="symbol">
+  <!-- existing symbol options stay here -->
+</select>
+
+<label>Confirmation Timeframe</label>
+<select id="timeframe">
+  <option value="M5">M5</option>
+  <option value="M15" selected>M15</option>
+  <option value="H1">H1</option>
+  <option value="H4">H4</option>
+  <option value="D1">D1</option>
+</select>
 </div>
 
 <div>

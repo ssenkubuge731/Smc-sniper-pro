@@ -298,9 +298,12 @@ function derivConnect(){
   result.textContent="Connection error. Check internet and App ID.";
  };
 
- derivSocket.onclose=()=>{
+ derivSocket.onclose=(event)=>{
   derivConnected=false;
-  result.textContent="Deriv connection closed.";
+  result.textContent=
+    "Connection closed. Code: "+event.code+
+    " Reason: "+(event.reason || "No reason provided");
+};
  };
 }
 

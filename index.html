@@ -1,335 +1,304 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0b1220">
-<title>SMC Sniper Pro APA</title>
-<style>
-:root{--bg:#0b1220;--panel:#111c2e;--line:#263750;--text:#edf3ff;--muted:#9fb0c8;--green:#37d39a;--red:#ff6b78;--blue:#72a7ff}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Arial}
-header{padding:18px;background:#111c2e;border-bottom:1px solid var(--line)}
-main{max-width:1000px;margin:auto;padding:15px}
-nav{display:flex;gap:8px;overflow:auto;margin-top:15px}
-button{background:#17243a;color:white;border:1px solid #30435f;padding:10px 14px;border-radius:9px}
-button.active{background:#1c4770}
-.page{display:none}
-.page.active{display:block}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-label{display:block;margin:10px 0 5px;color:var(--muted)}
-select,input{width:100%;padding:11px;background:#0b1627;color:white;border:1px solid #30435f;border-radius:9px}
-.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.check{background:#0b1627;padding:10px;border:1px solid #263750;border-radius:9px}
-.result,.notice{background:#0b1627;padding:12px;border-radius:10px;margin-top:12px;white-space:pre-line}
-.notice{background:#34291b;color:#ffe3a6}
-.muted{color:var(--muted)}
-@media(max-width:650px){.grid,.formgrid,.checklist{grid-template-columns:1fr}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101827">
+  <title>SMC Sniper Pro APA</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-<h2>SMC SNIPER PRO APA</h2>
-<div class="muted">Smart Money Concepts • Advanced Price Action</div>
-<nav>
-<button class="active" data-page="dashboard">Dashboard</button>
-<button data-page="scanner">Scanner</button>
-<button data-page="broker">Broker</button>
-<button data-page="settings">Risk Settings</button>
-</nav>
+
+<header class="topbar">
+  <div>
+    <h1>SMC SNIPER <span>PRO APA</span></h1>
+    <p>Advanced Price Action Trading System</p>
+  </div>
+  <div class="mode-badge">DEMO MODE</div>
 </header>
+
+<nav class="navigation">
+  <button class="nav-btn active" data-page="dashboard">Dashboard</button>
+  <button class="nav-btn" data-page="scanner">Scanner</button>
+  <button class="nav-btn" data-page="trading">Trading</button>
+  <button class="nav-btn" data-page="brokers">Brokers</button>
+  <button class="nav-btn" data-page="settings">Settings</button>
+</nav>
+
 <main>
+
+<!-- DASHBOARD -->
 <section id="dashboard" class="page active">
-<div class="card">
-<h3>System Overview</h3>
- <div class="card">
-  <h3>Cloud Connection</h3>
-  <p id="cloudStatus">Checking connection...</p>
-</div>
-<p>Trading mode: <b id="modeStat">Day Trading</b></p>
-<p>Selected symbol: <b id="symbolStat">EURUSD</b></p>
-<p>Automatic execution: <b>OFF</b></p>
-<div class="notice">Demo preparation only. This dashboard does not place trades yet.</div>
-</div>
-<div class="card">
-<h3>Strategy Features</h3>
-BOS • MSS • Liquidity Sweeps • Order Blocks • FVG • APA Confirmation
-</div>
+  <h2>Trading Dashboard</h2>
+
+  <div class="status-grid">
+    <div class="panel">
+      <small>System status</small>
+      <h3 id="systemStatus">Not connected</h3>
+    </div>
+    <div class="panel">
+      <small>Account mode</small>
+      <h3 class="green">DEMO ONLY</h3>
+    </div>
+    <div class="panel">
+      <small>Selected pairs</small>
+      <h3 id="pairCount">0</h3>
+    </div>
+    <div class="panel">
+      <small>Open trades</small>
+      <h3 id="openTrades">0</h3>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Trading engine</h3>
+    <p id="cloudStatus">Checking cloud connection...</p>
+    <p id="brokerStatus">Broker: Not connected</p>
+    <p id="scannerStatus">Scanner: Stopped</p>
+  </div>
+
+  <div class="panel">
+    <h3>Trading style</h3>
+    <select id="tradingStyle">
+      <option value="scalping">Scalping</option>
+      <option value="intraday">Intraday trading</option>
+      <option value="swing">Swing trading</option>
+    </select>
+
+    <label for="timeframe">Analysis timeframe</label>
+    <select id="timeframe"></select>
+  </div>
+
+  <div class="panel">
+    <h3>Quick actions</h3>
+    <button id="startScanner" class="primary">Start Scanner</button>
+    <button id="stopScanner" class="danger">Stop Scanner</button>
+  </div>
 </section>
+
+<!-- SCANNER -->
 <section id="scanner" class="page">
-<div class="card">
-<h3>APA / SMC Scanner</h3>
-<div class="formgrid">
-<div><label>Trading Style</label><select id="mode"><option>Scalping</option><option selected>Day Trading</option><option>Swing Trading</option></select></div>
-<div><label>Market</label><select id="market"><option>Deriv Indices</option><option>Forex</option><option>Gold</option><option>Other</option></select></div>
-<div><label>Trading Pair / Index</label><select id="symbol"></select></div>
-<div><label>Timeframe</label><select id="timeframe"><option>M1 / M5</option><option selected>M15 / H1</option><option>H1 / H4 / D1</option></select></div>
-</div>
-<h3>Confirm your setup</h3>
-<div class="checklist">
-<label class="check"><input type="checkbox" class="condition"> Trend confirmed</label>
-<label class="check"><input type="checkbox" class="condition"> Liquidity sweep</label>
-<label class="check"><input type="checkbox" class="condition"> BOS / MSS</label>
-<label class="check"><input type="checkbox" class="condition"> Strong displacement</label>
-<label class="check"><input type="checkbox" class="condition"> Order Block</label>
-<label class="check"><input type="checkbox" class="condition"> FVG confirmation</label>
-</div>
-<button id="analyse">Check Setup</button>
-<button id="clearChecks">Clear</button>
-<div id="scanResult" class="result">Ready.</div>
-</div>
+  <h2>Market Scanner</h2>
+
+  <div class="panel">
+    <h3>Select broker</h3>
+    <select id="scannerBroker">
+      <option value="deriv">Deriv</option>
+      <option value="mt5">MT5 broker</option>
+    </select>
+  </div>
+
+  <div class="panel">
+    <h3>Select trading pairs</h3>
+    <p>Select only the instruments you want the scanner to monitor.</p>
+
+    <div class="pair-actions">
+      <button id="selectAllPairs">Select all available</button>
+      <button id="clearPairs">Clear selection</button>
+    </div>
+
+    <div id="pairList" class="pair-list"></div>
+
+    <p id="selectedPairCount">0 pairs selected</p>
+  </div>
+
+  <div class="panel">
+    <h3>APA entry style</h3>
+    <select id="apaEntryStyle">
+      <option value="confirmed">Confirmed APA entry</option>
+      <option value="early">Early APA entry</option>
+    </select>
+    <p>Confirmed entry waits for CHoCH/BOS confirmation.
+       Early entry allows reaction-zone entries with stricter risk controls.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Market analysis</h3>
+    <div class="analysis-row">
+      <span>Market trend</span>
+      <strong id="marketTrend">Waiting for data</strong>
+    </div>
+    <div class="analysis-row">
+      <span>APA structure</span>
+      <strong id="apaStructure">Not analysed</strong>
+    </div>
+    <div class="analysis-row">
+      <span>Liquidity</span>
+      <strong id="liquidityStatus">Not analysed</strong>
+    </div>
+    <div class="analysis-row">
+      <span>Entry opportunity</span>
+      <strong id="entrySignal">No signal</strong>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Scanner results</h3>
+    <div id="scannerResults">
+      Scanner has not started.
+    </div>
+  </div>
 </section>
-<section id="broker" class="page">
-<div class="card">
-<h3>Deriv Broker Information</h3>
-<label>Broker</label><input id="brokerName" value="Deriv">
-<label>Account Type</label><select id="accountType"><option>Demo</option><option>Live (Locked)</option></select>
-<label>API Application ID</label><input id="appId" placeholder="Enter your Deriv App ID">
- <button type="button" id="connectDeriv" onclick="derivConnect()">Connect Deriv</button>
-<button type="button" id="disconnectDeriv" onclick="derivDisconnect()">Disconnect</button>
-<button id="saveBroker">Save Information</button>
-<div id="brokerResult" class="result">Not connected.</div>
-<div class="notice">Never enter your API token in this public website.</div>
-</div>
+
+<!-- TRADING -->
+<section id="trading" class="page">
+  <h2>Automated Trading</h2>
+
+  <div class="panel">
+    <h3>Trading mode</h3>
+    <select id="executionMode">
+      <option value="demo">Demo trading</option>
+      <option value="live" disabled>Live trading — Locked</option>
+    </select>
+    <p class="warning">Live execution is disabled in this version.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Scalping behaviour</h3>
+    <label class="check">
+      <input type="checkbox" id="continuousScanning" checked>
+      Continuous scanning
+    </label>
+    <label class="check">
+      <input type="checkbox" id="multipleEntries" checked>
+      Allow additional valid entries
+    </label>
+    <label class="check">
+      <input type="checkbox" id="manageTrades" checked>
+      Automatic trade management
+    </label>
+    <p>Additional entries must have independent valid confirmations and pass account-wide risk checks.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Open positions</h3>
+    <div id="positionsList">No positions available.</div>
+  </div>
+
+  <div class="panel">
+    <h3>Trade history</h3>
+    <div id="tradeHistory">No completed trades available.</div>
+  </div>
 </section>
+
+<!-- BROKERS -->
+<section id="brokers" class="page">
+  <h2>Broker Connections</h2>
+
+  <div class="panel">
+    <h3>Choose connection type</h3>
+    <select id="brokerType">
+      <option value="deriv">Deriv API</option>
+      <option value="mt5">MT5 broker bridge</option>
+    </select>
+  </div>
+
+  <div class="panel" id="derivPanel">
+    <h3>Deriv connection</h3>
+    <label for="derivAppId">Deriv App ID</label>
+    <input id="derivAppId" type="text" placeholder="Enter App ID">
+
+    <p>API tokens and account credentials must never be stored in this public website.</p>
+
+    <button id="connectDeriv" class="primary">Connect Deriv</button>
+    <button id="disconnectDeriv" class="danger">Disconnect</button>
+    <p id="derivConnectionStatus">Not connected</p>
+  </div>
+
+  <div class="panel hidden" id="mt5Panel">
+    <h3>MT5 broker connection</h3>
+
+    <label for="mt5Broker">Select broker</label>
+    <select id="mt5Broker">
+      <option value="">Choose broker</option>
+      <option value="exness">Exness</option>
+      <option value="icmarkets">IC Markets</option>
+      <option value="pepperstone">Pepperstone</option>
+      <option value="xm">XM</option>
+      <option value="other">Other MT5 broker</option>
+    </select>
+
+    <label for="mt5Server">Broker server</label>
+    <input id="mt5Server" placeholder="Enter MT5 server name">
+
+    <p>MT5 accounts connect through a secure execution bridge running alongside an MT5 terminal. Broker availability must be verified.</p>
+
+    <button id="connectMT5" class="primary">Connect MT5 Bridge</button>
+    <p id="mt5ConnectionStatus">Not connected</p>
+  </div>
+
+  <div class="panel">
+    <h3>Connection security</h3>
+    <p>Never paste broker passwords, API tokens or secret keys into GitHub files or public website code.</p>
+  </div>
+</section>
+
+<!-- SETTINGS -->
 <section id="settings" class="page">
-<div class="card">
-<h3>Risk Management</h3>
-<label>Account Mode</label><select id="tradeMode"><option>Demo only</option><option>Live Locked</option></select>
-<label>Risk %</label><input id="riskPercent" type="number" value="0.5" min="0.1" max="1">
-<label>Stop Loss Points</label><input id="sl" type="number" value="300">
-<label>Take Profit Points</label><input id="tp" type="number" value="600">
-<label>Maximum Trades</label><input id="maxTrades" type="number" value="1">
-<button id="saveRisk">Save Risk Settings</button>
-<button id="lockLive">Lock Live Trading</button>
-<div id="riskResult" class="result">Demo mode active.</div>
-<div class="notice">Risk values are saved locally only. They do not control broker trades.</div>
-</div>
+  <h2>Strategy & Risk Settings</h2>
+
+  <div class="panel">
+    <h3>APA strategy</h3>
+    <label class="check"><input type="checkbox" id="useAPA" checked> Enable APA analysis</label>
+    <label class="check"><input type="checkbox" id="useSMC" checked> Enable SMC confirmations</label>
+    <label class="check"><input type="checkbox" id="useEMA" checked> EMA 9 / 21 filter</label>
+    <label class="check"><input type="checkbox" id="useRSI" checked> RSI confirmation</label>
+    <label class="check"><input type="checkbox" id="useATR" checked> ATR stop-loss calculation</label>
+  </div>
+
+  <div class="panel">
+    <h3>SMC analysis</h3>
+    <label class="check"><input type="checkbox" id="useBOS" checked> Break of Structure (BOS)</label>
+    <label class="check"><input type="checkbox" id="useMSS" checked> Market Structure Shift (MSS)</label>
+    <label class="check"><input type="checkbox" id="useCHoCH" checked> Change of Character (CHoCH)</label>
+    <label class="check"><input type="checkbox" id="useLiquidity" checked> Liquidity sweeps</label>
+    <label class="check"><input type="checkbox" id="useOB" checked> Order Blocks</label>
+    <label class="check"><input type="checkbox" id="useFVG" checked> Fair Value Gaps</label>
+    <label class="check"><input type="checkbox" id="useBreaker" checked> Breaker Blocks</label>
+    <label class="check"><input type="checkbox" id="useSupplyDemand" checked> Supply and Demand</label>
+  </div>
+
+  <div class="panel">
+    <h3>Manual risk management</h3>
+
+    <label for="riskPercent">Risk per trade (%)</label>
+    <input id="riskPercent" type="number" min="0.1" max="1" step="0.1" value="0.5">
+
+    <label for="lotSize">Fixed lot size (optional)</label>
+    <input id="lotSize" type="number" min="0.01" step="0.01" value="0.01">
+
+    <label for="stopLoss">Stop-loss (points)</label>
+    <input id="stopLoss" type="number" min="1" value="300">
+
+    <label for="takeProfit">Take-profit (points)</label>
+    <input id="takeProfit" type="number" min="1" value="600">
+
+    <label for="maxTrades">Maximum open trades</label>
+    <input id="maxTrades" type="number" min="1" max="20" value="1">
+
+    <label for="dailyLossLimit">Daily loss limit (%)</label>
+    <input id="dailyLossLimit" type="number" min="0.1" max="10" step="0.1" value="2">
+
+    <button id="saveSettings" class="primary">Save Settings</button>
+    <p id="settingsStatus">Settings not saved.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Live trading protection</h3>
+    <p class="warning">Live trading is locked. Demo mode only.</p>
+    <button id="liveLock" class="danger" disabled>Live Trading Locked</button>
+  </div>
 </section>
 
-
-<div class="footer">SMC Sniper Pro APA • Demo First • Live Locked</div>
 </main>
 
-<script>
-"use strict";
+<footer>
+  <p>SMC Sniper Pro APA</p>
+  <small>Demo testing system. Trading involves financial risk.</small>
+</footer>
 
-const $ = id => document.getElementById(id);
-
-/* SYMBOLS */
-const symbols = {
- "Deriv Indices":[
- "Volatility 10 Index","Volatility 10 (1s) Index",
- "Volatility 15 Index","Volatility 15 (1s) Index",
- "Volatility 25 Index","Volatility 25 (1s) Index",
- "Volatility 30 Index","Volatility 30 (1s) Index",
- "Volatility 50 Index","Volatility 50 (1s) Index",
- "Volatility 60 Index","Volatility 60 (1s) Index",
- "Volatility 75 Index","Volatility 75 (1s) Index",
- "Volatility 90 Index","Volatility 90 (1s) Index",
- "Volatility 100 Index","Volatility 100 (1s) Index",
- "Boom 300 Index","Boom 500 Index","Boom 1000 Index",
- "Crash 300 Index","Crash 500 Index","Crash 1000 Index",
- "Step Index","Step Index 200","Step Index 300",
- "Range Break 100 Index","Range Break 200 Index",
- "Jump 10 Index","Jump 25 Index","Jump 50 Index",
- "Jump 75 Index","Jump 100 Index"
- ],
- "Forex":[
- "EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD",
- "EURGBP","EURJPY","GBPJPY","AUDJPY","EURAUD","EURCHF",
- "GBPAUD","GBPCAD","GBPCHF","AUDCAD","AUDCHF","CADJPY",
- "CHFJPY","NZDJPY","NZDCAD","NZDCHF","EURNZD","GBPNZD","AUDNZD"
- ],
- "Gold":["XAUUSD","GOLD"],
- "Other":["BTCUSD","ETHUSD","US30","NAS100","SPX500"]
-};
-
-/* SYMBOL DROPDOWN */
-function populateSymbols(){
- const market=$("market").value;
- const list=symbols[market]||[];
- $("symbol").innerHTML=list.map(s=>`<option>${s}</option>`).join("");
- updateSymbol();
-}
-
-function updateSymbol(){
- $("symbolStat").textContent=$("symbol").value||"-";
-}
-
-/* AUTOMATIC TIMEFRAME */
-function updateTimeframe(){
- const mode=$("mode").value;
- $("modeStat").textContent=mode;
-
- if(mode==="Scalping"){
-  $("timeframe").value="M1 / M5";
- }else if(mode==="Swing Trading"){
-  $("timeframe").value="H1 / H4 / D1";
- }else{
-  $("timeframe").value="M15 / H1";
- }
-}
-
-/* NAVIGATION */
-document.querySelectorAll("nav button").forEach(btn=>{
- btn.addEventListener("click",()=>{
-  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  btn.classList.add("active");
-  $(btn.dataset.page).classList.add("active");
- });
-});
-
-/* EVENTS */
-$("market").addEventListener("change",populateSymbols);
-$("symbol").addEventListener("change",updateSymbol);
-$("mode").addEventListener("change",updateTimeframe);
-
-/* SCANNER */
-$("analyse").addEventListener("click",()=>{
- const checks=[...document.querySelectorAll(".condition")];
- const count=checks.filter(c=>c.checked).length;
- $("scanResult").textContent=
- count===6
- ?"All 6 conditions marked. Verify them on your chart before any trade."
- :count+" of 6 conditions checked. Setup incomplete.";
-});
-
-$("clearChecks").addEventListener("click",()=>{
- document.querySelectorAll(".condition").forEach(c=>c.checked=false);
- $("scanResult").textContent="Checklist cleared.";
-});
-
-/* BROKER SETTINGS */
-$("saveBroker").addEventListener("click",()=>{
- const data={
-  broker:$("brokerName").value,
-  account:$("accountType").value,
-  appId:$("appId").value
- };
- localStorage.setItem("smcBroker",JSON.stringify(data));
- $("brokerResult").textContent="Saved locally. Deriv is NOT connected.";
-});
-
-/* RISK SETTINGS */
-$("saveRisk").addEventListener("click",()=>{
- const data={
-  mode:$("tradeMode").value,
-  risk:$("riskPercent").value,
-  sl:$("sl").value,
-  tp:$("tp").value,
-  maxTrades:$("maxTrades").value
- };
- localStorage.setItem("smcRisk",JSON.stringify(data));
- $("riskResult").textContent="Risk settings saved locally.";
-});
-
-/* LIVE LOCK */
-$("lockLive").addEventListener("click",()=>{
- $("tradeMode").value="Demo only";
- $("riskResult").textContent="Live trading locked. Demo mode selected.";
-});
-
-/* LOAD SAVED SETTINGS */
-try{
- const b=JSON.parse(localStorage.getItem("smcBroker")||"{}");
- if(b.broker)$("brokerName").value=b.broker;
- if(b.account)$("accountType").value=b.account;
- if(b.appId)$("appId").value=b.appId;
-
- const r=JSON.parse(localStorage.getItem("smcRisk")||"{}");
- if(r.mode)$("tradeMode").value=r.mode;
- if(r.risk)$("riskPercent").value=r.risk;
- if(r.sl)$("sl").value=r.sl;
- if(r.tp)$("tp").value=r.tp;
- if(r.maxTrades)$("maxTrades").value=r.maxTrades;
-}catch(e){}
-
-populateSymbols();
-updateTimeframe();
-
-/* DERIV DEMO MARKET CONNECTION */
-let derivSocket=null;
-let derivConnected=false;
-
-function derivConnect(){
- const appId=document.getElementById("appId").value.trim();
- const result=document.getElementById("brokerResult");
-
- if(!appId){
-  result.textContent="Enter your Deriv App ID first.";
-  return;
- }
-
- if(derivSocket){
-  derivSocket.close();
- }
-
- result.textContent="Connecting to Deriv Demo...";
-
- derivSocket=new WebSocket(
-  "wss://ws.derivws.com/websockets/v3?app_id="+encodeURIComponent(appId)
- );
-
- derivSocket.onopen=()=>{
-  derivConnected=true;
-  result.textContent="Connected to Deriv WebSocket. Requesting demo market data...";
-  derivSocket.send(JSON.stringify({active_symbols:"brief",product_type:"basic"}));
- };
-
- derivSocket.onmessage=(event)=>{
-  const data=JSON.parse(event.data);
-
-  if(data.error){
-   result.textContent="Deriv error: "+data.error.message;
-   return;
-  }
-
-  if(data.msg_type==="active_symbols"){
-   result.textContent="Connected. Deriv symbols received: "+data.active_symbols.length;
-  }
- };
-
- derivSocket.onerror=()=>{
-  result.textContent="Connection error. Check internet and App ID.";
- };
-
- derivSocket.onclose=(event)=>{
-  derivConnected=false;
-  result.textContent=
-    "Connection closed. Code: "+event.code+
-    " Reason: "+(event.reason || "No reason provided");
-};
- };
-}
-
-function derivDisconnect(){
- if(derivSocket)derivSocket.close();
- derivSocket=null;
- derivConnected=false;
-}
- async function checkCloudAPI() {
-  try {
-    const response = await fetch(
-      "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/"
-    );
-    const data = await response.json();
-
-    console.log("SMC Cloud:", data);
-   document.getElementById("cloudStatus").textContent =
-  data.status + " | " + data.mode;
-  } catch (error) {
-console.log("Cloud connection failed:", error);
-document.getElementById("cloudStatus").textContent =
-  "Cloud connection failed"; 
-  }
-}
-
-checkCloudAPI();
-</script>
+<script src="app.js"></script>
 </body>
 </html>

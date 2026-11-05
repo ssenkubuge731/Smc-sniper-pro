@@ -248,7 +248,7 @@ function clearPairs() {
 function connectDeriv() {
     const appId = getElement("derivAppId").value.trim();
 
-    if (!/^\d+$/.test(appId)) {
+    if (!appId) {
         setText("derivConnectionStatus", "Enter a valid numeric App ID.");
         return;
     }

@@ -245,8 +245,67 @@ function clearPairs() {
 }
 
 // Deriv public market-data connection
+
 function connectDeriv() {
-    const appId = getElement("derivAppId").value.trim();
+    const CLIENT_ID = "34PG0A117Y8MMt1O0h3IW";
+    const REDIRECT_URI =
+        "https://ssenkubuge731.github.io/Smc-sniper-pro/";
+
+    const verifierBytes = crypto.getRandomValues(
+        new Uint8Array(64)
+    );
+
+    const chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+
+    const verifier = Array.from(verifierBytes)
+        .map(b => chars[b % chars.length])
+        .join("");
+
+    crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(verifier)
+    ).then(hash => {
+        const challenge = btoa(
+            String.fromCharCode(...new Uint8Array(hash))
+        )
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+        const stateBytes = crypto.getRandomValues(
+            new Uint8Array(16)
+        );
+
+        const state = Array.from(stateBytes)
+            .map(b => b.toString(16).padStart(2, "0"))
+            .join("");
+
+        sessionStorage.setItem("deriv_pkce_verifier", verifier);
+        sessionStorage.setItem("deriv_oauth_state", state);
+
+        const params = new URLSearchParams({
+            response_type: "code",
+            client_id: CLIENT_ID,
+            redirect_uri: REDIRECT_URI,
+            scope: "trade",
+            state: state,
+            code_challenge: challenge,
+            code_challenge_method: "S256"
+        });
+
+        window.location.href =
+            "https://auth.deriv.com/oauth2/auth?" +
+            params.toString();
+    }).catch(error => {
+        console.error(error);
+        setText(
+            "derivConnectionStatus",
+            "Could not start Deriv OAuth."
+        );
+    });
+}
+
 
     if (!appId) {
         setText("derivConnectionStatus","Enter your Deriv App ID."

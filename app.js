@@ -249,7 +249,7 @@ function connectDeriv() {
     const appId = getElement("derivAppId").value.trim();
 
     if (!appId) {
-        setText("derivConnectionStatus", "Enter a valid numeric App ID.");
+        setText("derivConnectionStatus","Enter your Deriv App ID."
         return;
     }
 

@@ -2,8 +2,7 @@
 "use strict";
 
 // SMC Sniper Pro APA
-// Dashboard and connection foundation.
-// Live trading is deliberately disabled.
+// Demo only. Live trading remains locked.
 
 const tradingState = {
     mode: "scalping",
@@ -21,20 +20,21 @@ const tradingState = {
 const CLOUD_WORKER_URL =
     "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/";
 
-// HTML helper
+// YOUR DERIV OAUTH APP ID
+const DERIV_CLIENT_ID = "34PG0A117Y8MMt1O0h3IW";
+const DERIV_REDIRECT_URI =
+    "https://ssenkubuge731.github.io/Smc-sniper-pro/";
+
 function getElement(id) {
     return document.getElementById(id);
 }
 
 function setText(id, message) {
     const element = getElement(id);
-
-    if (element) {
-        element.textContent = message;
-    }
+    if (element) element.textContent = message;
 }
 
-// Navigation
+// NAVIGATION
 function showSection(sectionId) {
     document.querySelectorAll(".page").forEach(page => {
         page.classList.remove("active");
@@ -42,7 +42,6 @@ function showSection(sectionId) {
     });
 
     const section = getElement(sectionId);
-
     if (section) {
         section.classList.remove("hidden");
         section.classList.add("active");
@@ -56,16 +55,15 @@ function showSection(sectionId) {
     });
 }
 
-// Trading style and timeframes
+// TIMEFRAMES
 function updateMode() {
     const selector = getElement("tradingStyle");
+    const timeframe = getElement("timeframe");
 
-    if (!selector) return;
+    if (!selector || !timeframe) return;
 
     const mode = selector.value;
     tradingState.mode = mode;
-
-    const timeframe = getElement("timeframe");
 
     const choices = {
         scalping: ["M1", "M5", "M15"],
@@ -73,19 +71,17 @@ function updateMode() {
         swing: ["H1", "H4", "D1"]
     };
 
-    timeframe.innerHTML = "";
+    timeframe.replaceChildren();
 
     (choices[mode] || choices.scalping).forEach(tf => {
         const option = document.createElement("option");
-
         option.value = tf;
         option.textContent = tf;
-
         timeframe.appendChild(option);
     });
 }
 
-// Dashboard status
+// DASHBOARD
 function updateDashboard() {
     setText(
         "systemStatus",
@@ -106,126 +102,106 @@ function updateDashboard() {
     setText(
         "scannerStatus",
         tradingState.running
-            ? "Scanner request received; APA engine not connected"
+            ? "Scanner request received"
             : "Scanner: Stopped"
     );
 
-    setText(
-        "pairCount",
-        tradingState.selectedSymbols.length
-    );
-
+    setText("pairCount", String(tradingState.selectedSymbols.length));
     setText(
         "selectedPairCount",
         tradingState.selectedSymbols.length + " pairs selected"
     );
 }
 
-// Broker selection
+// BROKER PANELS
 function updateBrokerPanels() {
-    const type = getElement("brokerType").value;
+    const selector = getElement("brokerType");
+    const derivPanel = getElement("derivPanel");
+    const mt5Panel = getElement("mt5Panel");
 
-    getElement("derivPanel").classList.toggle(
-        "hidden",
-        type !== "deriv"
-    );
+    if (!selector || !derivPanel || !mt5Panel) return;
 
-    getElement("mt5Panel").classList.toggle(
-        "hidden",
-        type !== "mt5"
-    );
+    const isDeriv = selector.value === "deriv";
+
+    derivPanel.classList.toggle("hidden", !isDeriv);
+    mt5Panel.classList.toggle("hidden", isDeriv);
 }
 
-// Scanner broker selection
+// SCANNER BROKER
 function updateScannerBroker() {
-    const broker = getElement("scannerBroker").value;
+    const selector = getElement("scannerBroker");
+    if (!selector) return;
 
-    tradingState.broker = broker;
-
+    tradingState.broker = selector.value;
     tradingState.selectedSymbols = [];
 
     renderPairs();
 
-    if (broker === "deriv") {
-        setText(
-            "scannerResults",
-            "Select Deriv instruments after connecting to Deriv."
-        );
-    } else {
-        setText(
-            "scannerResults",
-            "MT5 instruments will appear after a compatible MT5 bridge is configured."
-        );
-    }
+    setText(
+        "scannerResults",
+        tradingState.broker === "deriv"
+            ? "Select Deriv instruments after connecting."
+            : "MT5 instruments require a compatible MT5 bridge."
+    );
 
     updateDashboard();
 }
 
-// Render available instruments
+// PAIRS
 function renderPairs() {
     const container = getElement("pairList");
+    if (!container) return;
 
-    container.innerHTML = "";
+    container.replaceChildren();
 
-    if (tradingState.broker === "deriv") {
-        if (tradingState.availableSymbols.length === 0) {
-            container.textContent =
-                "Connect Deriv to discover available instruments.";
+    if (tradingState.broker !== "deriv") {
+        container.textContent =
+            "MT5 symbol discovery requires the MT5 bridge.";
+        return;
+    }
 
-            return;
-        }
+    if (!tradingState.availableSymbols.length) {
+        container.textContent =
+            "Connect Deriv to discover available instruments.";
+        return;
+    }
 
-        tradingState.availableSymbols.forEach(symbol => {
-            const label = document.createElement("label");
+    tradingState.availableSymbols.forEach(symbol => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
 
-            const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = symbol.symbol;
+        checkbox.checked =
+            tradingState.selectedSymbols.includes(symbol.symbol);
 
-            checkbox.type = "checkbox";
-            checkbox.value = symbol.symbol;
-
-            checkbox.checked =
-                tradingState.selectedSymbols.includes(symbol.symbol);
-
-            checkbox.addEventListener("change", () => {
-                if (checkbox.checked) {
-                    if (!tradingState.selectedSymbols.includes(symbol.symbol)) {
-                        tradingState.selectedSymbols.push(symbol.symbol);
-                    }
-                } else {
-                    tradingState.selectedSymbols =
-                        tradingState.selectedSymbols.filter(
-                            item => item !== symbol.symbol
-                        );
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+                if (!tradingState.selectedSymbols.includes(symbol.symbol)) {
+                    tradingState.selectedSymbols.push(symbol.symbol);
                 }
+            } else {
+                tradingState.selectedSymbols =
+                    tradingState.selectedSymbols.filter(
+                        item => item !== symbol.symbol
+                    );
+            }
 
-                updateDashboard();
-            });
-
-            const name = document.createElement("span");
-
-            name.textContent =
-                symbol.display_name + " (" + symbol.symbol + ")";
-
-            label.appendChild(checkbox);
-            label.appendChild(name);
-
-            container.appendChild(label);
+            updateDashboard();
         });
 
-    } else {
-        container.textContent =
-            "MT5 symbol discovery requires the MT5 execution bridge.";
-    }
+        const name = document.createElement("span");
+        name.textContent =
+            symbol.display_name + " (" + symbol.symbol + ")";
+
+        label.append(checkbox, name);
+        container.appendChild(label);
+    });
 }
 
-// Select all available pairs
 function selectAllPairs() {
     if (tradingState.broker !== "deriv") {
-        setText(
-            "scannerResults",
-            "Connect the MT5 bridge before selecting MT5 instruments."
-        );
-
+        setText("scannerResults", "Connect the MT5 bridge first.");
         return;
     }
 
@@ -236,31 +212,34 @@ function selectAllPairs() {
     updateDashboard();
 }
 
-// Clear selected pairs
 function clearPairs() {
     tradingState.selectedSymbols = [];
-
     renderPairs();
     updateDashboard();
 }
 
-// Deriv public market-data connection
-
+// DERIV OAUTH CONNECTION
 function connectDeriv() {
-    const CLIENT_ID = "34PG0A117Y8MMt1O0h3IW";
-    const REDIRECT_URI =
-        "https://ssenkubuge731.github.io/Smc-sniper-pro/";
+    const clientId = DERIV_CLIENT_ID;
+    const redirectUri = DERIV_REDIRECT_URI;
 
-    const verifierBytes = crypto.getRandomValues(
-        new Uint8Array(64)
-    );
+    if (!window.crypto || !crypto.subtle) {
+        setText(
+            "derivConnectionStatus",
+            "Secure OAuth requires HTTPS and a supported browser."
+        );
+        return;
+    }
+
+    const bytes = crypto.getRandomValues(new Uint8Array(64));
 
     const chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 
-    const verifier = Array.from(verifierBytes)
-        .map(b => chars[b % chars.length])
-        .join("");
+    const verifier = Array.from(
+        bytes,
+        byte => chars[byte % chars.length]
+    ).join("");
 
     crypto.subtle.digest(
         "SHA-256",
@@ -269,25 +248,26 @@ function connectDeriv() {
         const challenge = btoa(
             String.fromCharCode(...new Uint8Array(hash))
         )
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, "");
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
 
         const stateBytes = crypto.getRandomValues(
             new Uint8Array(16)
         );
 
-        const state = Array.from(stateBytes)
-            .map(b => b.toString(16).padStart(2, "0"))
-            .join("");
+        const state = Array.from(
+            stateBytes,
+            byte => byte.toString(16).padStart(2, "0")
+        ).join("");
 
         sessionStorage.setItem("deriv_pkce_verifier", verifier);
         sessionStorage.setItem("deriv_oauth_state", state);
 
         const params = new URLSearchParams({
             response_type: "code",
-            client_id: CLIENT_ID,
-            redirect_uri: REDIRECT_URI,
+            client_id: clientId,
+            redirect_uri: redirectUri,
             scope: "trade",
             state: state,
             code_challenge: challenge,
@@ -297,6 +277,7 @@ function connectDeriv() {
         window.location.href =
             "https://auth.deriv.com/oauth2/auth?" +
             params.toString();
+
     }).catch(error => {
         console.error(error);
         setText(
@@ -306,131 +287,28 @@ function connectDeriv() {
     });
 }
 
-
-    
-
-    disconnectDeriv(false);
-
-    setText(
-        "derivConnectionStatus",
-        "Connecting to Deriv market data..."
-    );
-
-    let socket;
-
-    try {
-        socket = new WebSocket(
-            "wss://ws.derivws.com/websockets/v3?app_id=" + appId
-        );
-
-        tradingState.derivSocket = socket;
-
-        socket.onopen = () => {
-            setText(
-                "derivConnectionStatus",
-                "Connected. Requesting available instruments..."
-            );
-
-            socket.send(JSON.stringify({
-                active_symbols: "brief",
-                product_type: "basic"
-            }));
-        };
-
-        socket.onmessage = event => {
-            let data;
-
-            try {
-                data = JSON.parse(event.data);
-            } catch (error) {
-                return;
-            }
-
-            if (data.error) {
-                setText(
-                    "derivConnectionStatus",
-                    "Deriv error: " + data.error.message
-                );
-
-                return;
-            }
-
-            if (data.msg_type === "active_symbols") {
-                tradingState.availableSymbols =
-                    (data.active_symbols || []).map(item => ({
-                        symbol: item.symbol,
-                        display_name:
-                            item.display_name || item.symbol
-                    }));
-
-                tradingState.derivConnected = true;
-
-                setText(
-                    "derivConnectionStatus",
-                    "Connected. " +
-                    tradingState.availableSymbols.length +
-                    " instruments discovered."
-                );
-
-                setText(
-                    "marketTrend",
-                    "Market data connection available"
-                );
-
-                renderPairs();
-                updateDashboard();
-            }
-        };
-
-        socket.onerror = () => {
-            setText(
-                "derivConnectionStatus",
-                "Connection error. Check your internet and App ID."
-            );
-        };
-
-        socket.onclose = () => {
-            tradingState.derivConnected = false;
-            tradingState.derivSocket = null;
-
-            setText(
-                "derivConnectionStatus",
-                "Deriv connection closed."
-            );
-
-            updateDashboard();
-        };
-
-    } catch (error) {
-        setText(
-            "derivConnectionStatus",
-            "Could not create Deriv connection."
-        );
-    }
-}
-
-// Disconnect Deriv
+// DISCONNECT DERIV
 function disconnectDeriv(updateStatus = true) {
     const socket = tradingState.derivSocket;
 
+    tradingState.derivSocket = null;
     tradingState.derivConnected = false;
     tradingState.availableSymbols = [];
     tradingState.selectedSymbols = [];
 
     if (socket) {
-        tradingState.derivSocket = null;
+        socket.onclose = null;
         socket.close();
     }
 
     if (updateStatus) {
         setText("derivConnectionStatus", "Disconnected.");
-
         renderPairs();
         updateDashboard();
     }
 }
 
-// Cloud Worker health check
+// CLOUD WORKER
 async function checkCloudWorker() {
     setText("cloudStatus", "Checking Cloudflare Worker...");
 
@@ -446,28 +324,32 @@ async function checkCloudWorker() {
 
         setText(
             "cloudStatus",
-            "Cloudflare Worker responded successfully. Trading services not yet verified."
+            "Worker responded. Trading services not yet verified."
         );
 
     } catch (error) {
         setText(
             "cloudStatus",
-            "Worker could not be verified. Check its existing endpoint and settings."
+            "Worker could not be verified."
         );
     }
 }
 
-// MT5 bridge placeholder
+// MT5 BRIDGE PLACEHOLDER
 function connectMT5() {
-    const broker = getElement("mt5Broker").value;
-    const server = getElement("mt5Server").value.trim();
+    const brokerField = getElement("mt5Broker");
+    const serverField = getElement("mt5Server");
+
+    if (!brokerField || !serverField) return;
+
+    const broker = brokerField.value;
+    const server = serverField.value.trim();
 
     if (!broker || !server) {
         setText(
             "mt5ConnectionStatus",
             "Choose a broker and enter its server name."
         );
-
         return;
     }
 
@@ -475,20 +357,19 @@ function connectMT5() {
 
     setText(
         "mt5ConnectionStatus",
-        "Details saved locally. A secure MT5 bridge endpoint and running MT5 terminal are still required."
+        "Details entered locally. MT5 bridge and running terminal are still required."
     );
 
     updateDashboard();
 }
 
-// Scanner controls
+// SCANNER
 function startScanner() {
-    if (tradingState.selectedSymbols.length === 0) {
+    if (!tradingState.selectedSymbols.length) {
         setText(
             "scannerResults",
-            "Please connect a broker and select at least one instrument."
+            "Connect a broker and select at least one instrument."
         );
-
         return;
     }
 
@@ -496,20 +377,12 @@ function startScanner() {
         tradingState.broker === "deriv" &&
         !tradingState.derivConnected
     ) {
-        setText(
-            "scannerResults",
-            "Deriv market data is not connected."
-        );
-
+        setText("scannerResults", "Deriv is not connected.");
         return;
     }
 
     if (tradingState.broker === "mt5") {
-        setText(
-            "scannerResults",
-            "MT5 bridge is not connected."
-        );
-
+        setText("scannerResults", "MT5 bridge is not connected.");
         return;
     }
 
@@ -517,45 +390,30 @@ function startScanner() {
 
     setText(
         "scannerResults",
-        "Your " +
-        tradingState.selectedSymbols.length +
-        " selected instruments are ready. The APA strategy engine is not yet connected, so no trading signals are being generated."
+        "Instruments selected. APA strategy engine is not connected; no signals are generated."
     );
 
-    setText(
-        "entrySignal",
-        "Strategy engine not connected"
-    );
-
+    setText("entrySignal", "Strategy engine not connected");
     updateDashboard();
 }
 
 function stopScanner() {
     tradingState.running = false;
-
-    setText(
-        "scannerResults",
-        "Scanner stopped."
-    );
-
+    setText("scannerResults", "Scanner stopped.");
     updateDashboard();
 }
 
-// Save and validate manual risk settings
+// SAVE SETTINGS
 function saveSettings() {
-    const risk = Number(getElement("riskPercent").value);
-    const lot = Number(getElement("lotSize").value);
-    const stopLoss = Number(getElement("stopLoss").value);
-    const takeProfit = Number(getElement("takeProfit").value);
-    const maxTrades = Number(getElement("maxTrades").value);
-    const dailyLimit = Number(getElement("dailyLossLimit").value);
+    const risk = Number(getElement("riskPercent")?.value);
+    const lot = Number(getElement("lotSize")?.value);
+    const stopLoss = Number(getElement("stopLoss")?.value);
+    const takeProfit = Number(getElement("takeProfit")?.value);
+    const maxTrades = Number(getElement("maxTrades")?.value);
+    const dailyLimit = Number(getElement("dailyLossLimit")?.value);
 
     if (!Number.isFinite(risk) || risk <= 0 || risk > 1) {
-        setText(
-            "settingsStatus",
-            "Risk must be greater than 0 and no more than 1%."
-        );
-
+        setText("settingsStatus", "Risk must be above 0 and at most 1%.");
         return;
     }
 
@@ -574,31 +432,21 @@ function saveSettings() {
         return;
     }
 
-    if (
-        !Number.isInteger(maxTrades) ||
-        maxTrades < 1 ||
-        maxTrades > 20
-    ) {
-        setText(
-            "settingsStatus",
-            "Maximum open trades must be between 1 and 20."
-        );
-
+    if (!Number.isInteger(maxTrades) || maxTrades < 1 || maxTrades > 20) {
+        setText("settingsStatus", "Maximum trades must be between 1 and 20.");
         return;
     }
 
-    if (
-        !Number.isFinite(dailyLimit) ||
-        dailyLimit <= 0 ||
-        dailyLimit > 10
-    ) {
-        setText(
-            "settingsStatus",
-            "Daily loss limit must be greater than 0 and no more than 10%."
-        );
-
+    if (!Number.isFinite(dailyLimit) || dailyLimit <= 0 || dailyLimit > 10) {
+        setText("settingsStatus", "Daily loss limit must be above 0 and at most 10%.");
         return;
     }
+
+    const checkboxIds = [
+        "useAPA", "useSMC", "useEMA", "useRSI", "useATR",
+        "useBOS", "useMSS", "useCHoCH", "useLiquidity",
+        "useOB", "useFVG", "useBreaker", "useSupplyDemand"
+    ];
 
     const settings = {
         risk,
@@ -606,21 +454,13 @@ function saveSettings() {
         stopLoss,
         takeProfit,
         maxTrades,
-        dailyLimit,
-        useAPA: getElement("useAPA").checked,
-        useSMC: getElement("useSMC").checked,
-        useEMA: getElement("useEMA").checked,
-        useRSI: getElement("useRSI").checked,
-        useATR: getElement("useATR").checked,
-        useBOS: getElement("useBOS").checked,
-        useMSS: getElement("useMSS").checked,
-        useCHoCH: getElement("useCHoCH").checked,
-        useLiquidity: getElement("useLiquidity").checked,
-        useOB: getElement("useOB").checked,
-        useFVG: getElement("useFVG").checked,
-        useBreaker: getElement("useBreaker").checked,
-        useSupplyDemand: getElement("useSupplyDemand").checked
+        dailyLimit
     };
+
+    checkboxIds.forEach(id => {
+        const field = getElement(id);
+        if (field) settings[id] = field.checked;
+    });
 
     try {
         localStorage.setItem(
@@ -630,22 +470,18 @@ function saveSettings() {
 
         setText(
             "settingsStatus",
-            "Settings saved in this browser. Cloud risk engine not yet connected."
+            "Settings saved in this browser."
         );
 
     } catch (error) {
-        setText(
-            "settingsStatus",
-            "Could not save settings in this browser."
-        );
+        setText("settingsStatus", "Could not save settings.");
     }
 }
 
-// Restore saved settings
+// LOAD SETTINGS
 function loadSettings() {
     try {
         const saved = localStorage.getItem("smcSniperSettings");
-
         if (!saved) return;
 
         const settings = JSON.parse(saved);
@@ -660,21 +496,20 @@ function loadSettings() {
         };
 
         Object.entries(fields).forEach(([id, value]) => {
-            if (value !== undefined && getElement(id)) {
-                getElement(id).value = value;
+            const field = getElement(id);
+            if (field && value !== undefined) {
+                field.value = value;
             }
         });
 
-        const checkboxes = [
-            "useAPA", "useSMC", "useEMA", "useRSI",
-            "useATR", "useBOS", "useMSS", "useCHoCH",
-            "useLiquidity", "useOB", "useFVG",
-            "useBreaker", "useSupplyDemand"
-        ];
-
-        checkboxes.forEach(id => {
-            if (typeof settings[id] === "boolean") {
-                getElement(id).checked = settings[id];
+        [
+            "useAPA", "useSMC", "useEMA", "useRSI", "useATR",
+            "useBOS", "useMSS", "useCHoCH", "useLiquidity",
+            "useOB", "useFVG", "useBreaker", "useSupplyDemand"
+        ].forEach(id => {
+            const field = getElement(id);
+            if (field && typeof settings[id] === "boolean") {
+                field.checked = settings[id];
             }
         });
 
@@ -683,86 +518,38 @@ function loadSettings() {
     }
 }
 
-// Application initialization
-document.addEventListener("DOMContentLoaded", () => {
-
-    // Navigation
+// INITIALIZE APP
+function initializeApp() {
     document.querySelectorAll(".nav-btn").forEach(button => {
         button.addEventListener("click", () => {
             showSection(button.dataset.page);
         });
     });
 
-    // Trading style
-    getElement("tradingStyle").addEventListener(
-        "change",
-        updateMode
-    );
+    const bind = (id, event, handler) => {
+        const element = getElement(id);
+        if (element) element.addEventListener(event, handler);
+    };
 
-    // Broker controls
-    getElement("brokerType").addEventListener(
-        "change",
-        updateBrokerPanels
-    );
+    bind("tradingStyle", "change", updateMode);
+    bind("brokerType", "change", updateBrokerPanels);
+    bind("scannerBroker", "change", updateScannerBroker);
+    bind("connectDeriv", "click", connectDeriv);
+    bind("disconnectDeriv", "click", () => disconnectDeriv());
+    bind("connectMT5", "click", connectMT5);
+    bind("selectAllPairs", "click", selectAllPairs);
+    bind("clearPairs", "click", clearPairs);
+    bind("startScanner", "click", startScanner);
+    bind("stopScanner", "click", stopScanner);
+    bind("saveSettings", "click", saveSettings);
 
-    getElement("scannerBroker").addEventListener(
-        "change",
-        updateScannerBroker
-    );
-
-    getElement("connectDeriv").addEventListener(
-        "click",
-        connectDeriv
-    );
-
-    getElement("disconnectDeriv").addEventListener(
-        "click",
-        () => disconnectDeriv()
-    );
-
-    getElement("connectMT5").addEventListener(
-        "click",
-        connectMT5
-    );
-
-    // Pair controls
-    getElement("selectAllPairs").addEventListener(
-        "click",
-        selectAllPairs
-    );
-
-    getElement("clearPairs").addEventListener(
-        "click",
-        clearPairs
-    );
-
-    // Scanner controls
-    getElement("startScanner").addEventListener(
-        "click",
-        startScanner
-    );
-
-    getElement("stopScanner").addEventListener(
-        "click",
-        stopScanner
-    );
-
-    // Settings
-    getElement("saveSettings").addEventListener(
-        "click",
-        saveSettings
-    );
-
-    // Initialize
     updateMode();
     updateBrokerPanels();
     updateScannerBroker();
     loadSettings();
 
     showSection("dashboard");
-
     checkCloudWorker();
-
     updateDashboard();
 
     setText(
@@ -770,10 +557,13 @@ document.addEventListener("DOMContentLoaded", () => {
         "No live execution connection. No positions are being managed."
     );
 
-    setText(
-        "tradeHistory",
-        "No completed trades available."
-    );
+    setText("tradeHistory", "No completed trades available.");
+}
 
-});
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeApp);
+} else {
+    initializeApp();
+}
+
 

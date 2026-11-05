@@ -307,10 +307,7 @@ function connectDeriv() {
 }
 
 
-    if (!appId) {
-        setText("derivConnectionStatus","Enter your Deriv App ID."
-        return;
-    }
+    
 
     disconnectDeriv(false);
 

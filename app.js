@@ -427,7 +427,7 @@ async function checkCloudWorker() {
     setText("cloudStatus", "Checking Cloudflare Worker...");
 
     try {
-        const response = await fetch(CLOUD_WORKER_URL, {
+    const response = await fetch(CLOUD_WORKER_URL + "health", {
             method: "GET",
             cache: "no-store"
         });

@@ -302,7 +302,13 @@ async function handleDerivCallback() {
         return;
     }
 
-    if (!code) return;
+    if (!code) {
+    setText(
+        "derivConnectionStatus",
+        "Callback received no authorization code. Check redirect URL."
+    );
+    return;
+}
 
 showSection("brokers");
 

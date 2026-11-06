@@ -660,7 +660,7 @@ function initializeApp() {
     updateMode();
     updateBrokerPanels();
     updateScannerBroker();
-    load
+loadSettings();
 showSection("dashboard");
 handleDerivCallback();
 checkCloudWorker();

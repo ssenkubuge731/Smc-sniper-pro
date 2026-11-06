@@ -438,7 +438,7 @@ async function checkCloudWorker() {
 
         setText(
             "cloudStatus",
-            "Worker responded. Trading services not yet verified."
+          "Cloud Worker Online. Health check successful."  
         );
 
     } catch (error) {

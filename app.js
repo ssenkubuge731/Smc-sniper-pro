@@ -660,12 +660,11 @@ function initializeApp() {
     updateMode();
     updateBrokerPanels();
     updateScannerBroker();
-    loadSettings();
-
-    showSection("dashboard");
-    checkCloudWorker();
-    updateDashboard();
-
+    load
+showSection("dashboard");
+handleDerivCallback();
+checkCloudWorker();
+updateDashboard();
     setText(
         "positionsList",
         "No live execution connection. No positions are being managed."

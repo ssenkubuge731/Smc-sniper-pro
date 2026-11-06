@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMC Sniper Pro - Deriv Callback</title>
+<style>
+body {
+  background:#08111f;
+  color:#e8eef7;
+  font-family:Arial,sans-serif;
+  padding:30px 15px;
+  text-align:center;
+}
+.panel {
+  max-width:500px;
+  margin:auto;
+  padding:25px;
+  background:#101d30;
+  border-radius:12px;
+}
+h2 {color:#00d4a0}
+</style>
+</head>
+<body>
+<div class="panel">
+<h2>SMC Sniper Pro APA</h2>
+<p id="status">Processing Deriv authorization...</p>
+</div>
+
+<script>
+"use strict";
+
+(async function() {
+  const status = document.getElementById("status");
+  const params = new URLSearchParams(location.search);
+
+  const code = params.get("code");
+  const state = params.get("state");
+  const error = params.get("error");
+
+  if (error) {
+    status.textContent = "Deriv authorization error: " + error;
+    return;
+  }
+
+  if (!code) {
+    status.textContent =
+      "No authorization code received. Please reconnect.";
+    return;
+  }
+
+  const savedState = sessionStorage.getItem("deriv_oauth_state");
+  const verifier = sessionStorage.getItem("deriv_pkce_verifier");
+
+  if (!savedState || state !== savedState || !verifier) {
+    status.textContent =
+      "OAuth verification failed. Please reconnect.";
+    return;
+  }
+
+  status.textContent = "Exchanging authorization code...";
+
+  try {
+    const response = await fetch(
+      "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/oauth/token",
+      {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          code:code,
+          code_verifier:verifier
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success ||
+        !result.access_token) {
+      throw new Error(result.details || result.error ||
+        "Token exchange failed");
+    }
+
+    sessionStorage.setItem(
+      "deriv_access_token",
+      result.access_token
+    );
+
+    sessionStorage.removeItem("deriv_pkce_verifier");
+    sessionStorage.removeItem("deriv_oauth_state");
+
+    status.textContent =
+      "Authorization code exchanged. Returning to dashboard...";
+
+    location.replace("./");
+
+  } catch (e) {
+    status.textContent = "Connection failed: " + e.message;
+  }
+})();
+</script>
+</body>
+</html>

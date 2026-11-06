@@ -304,6 +304,8 @@ async function handleDerivCallback() {
 
     if (!code) return;
 
+showSection("brokers");
+
     const savedState = sessionStorage.getItem("deriv_oauth_state");
     const verifier = sessionStorage.getItem("deriv_pkce_verifier");
 

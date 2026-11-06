@@ -23,7 +23,7 @@ const CLOUD_WORKER_URL =
 // YOUR DERIV OAUTH APP ID
 const DERIV_CLIENT_ID = "34PG0A117Y8MMt1O0h3IW";
 const DERIV_REDIRECT_URI =
-    "https://ssenkubuge731.github.io/Smc-sniper-pro/";
+    "https://ssenkubuge731.github.io/Smc-sniper-pro/callback.html";
 
 function getElement(id) {
     return document.getElementById(id);

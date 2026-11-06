@@ -444,7 +444,7 @@ async function checkCloudWorker() {
     } catch (error) {
         setText(
             "cloudStatus",
-            "Worker could not be verified."
+            "Worker check failed: " + error.message
         );
     }
 }

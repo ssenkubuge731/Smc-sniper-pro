@@ -287,6 +287,112 @@ function connectDeriv() {
     });
 }
 
+async function handleDerivCallback() {
+    const params = new URLSearchParams(window.location.search);
+
+    const code = params.get("code");
+    const returnedState = params.get("state");
+    const oauthError = params.get("error");
+
+    if (oauthError) {
+        setText(
+            "derivConnectionStatus",
+            "Deriv authorization failed: " + oauthError
+        );
+        return;
+    }
+
+    if (!code) return;
+
+    const savedState = sessionStorage.getItem("deriv_oauth_state");
+    const verifier = sessionStorage.getItem("deriv_pkce_verifier");
+
+    if (!savedState || returnedState !== savedState) {
+        setText(
+            "derivConnectionStatus",
+            "OAuth state validation failed. Please reconnect."
+        );
+        return;
+    }
+
+    if (!verifier) {
+        setText(
+            "derivConnectionStatus",
+            "PKCE verifier missing. Please reconnect."
+        );
+        return;
+    }
+
+    setText(
+        "derivConnectionStatus",
+        "Completing secure Deriv connection..."
+    );
+
+    try {
+        const response = await fetch(
+            CLOUD_WORKER_URL + "oauth/token",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    code: code,
+                    code_verifier: verifier
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success ||
+            !result.access_token) {
+            throw new Error(
+                result.details ||
+                result.error ||
+                "Token exchange failed."
+            );
+        }
+
+        sessionStorage.setItem(
+            "deriv_access_token",
+            result.access_token
+        );
+
+        sessionStorage.setItem(
+            "deriv_token_expiry",
+            String(Date.now() + (result.expires_in || 0) * 1000)
+        );
+
+        sessionStorage.removeItem("deriv_pkce_verifier");
+        sessionStorage.removeItem("deriv_oauth_state");
+
+        tradingState.derivConnected = true;
+
+        setText(
+            "derivConnectionStatus",
+            "OAuth completed. Demo connection token received."
+        );
+
+        updateDashboard();
+
+        // Remove the authorization code from the browser address.
+        window.history.replaceState(
+            {},
+            document.title,
+            DERIV_REDIRECT_URI
+        );
+
+    } catch (error) {
+        console.error("Deriv OAuth callback error:", error);
+
+        setText(
+            "derivConnectionStatus",
+            "Connection failed: " + error.message
+        );
+    }
+}
+
 // DISCONNECT DERIV
 function disconnectDeriv(updateStatus = true) {
     const socket = tradingState.derivSocket;

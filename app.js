@@ -370,7 +370,7 @@ showSection("brokers");
         sessionStorage.removeItem("deriv_oauth_state");
 
         tradingState.derivConnected = true;
-
+showSection("brokers");
         setText(
             "derivConnectionStatus",
             "OAuth completed. Demo connection token received."

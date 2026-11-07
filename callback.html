@@ -80,7 +80,7 @@ h2 {color:#00d4a0}
     if (!response.ok || !result.success ||
         !result.access_token) {
       throw new Error(result.details || result.error ||
-        "Token exchange failed");
+        "Token exchange failed: " + (result.error_description || result.error || JSON.stringify(result))
     }
 
     sessionStorage.setItem(

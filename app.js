@@ -662,7 +662,6 @@ function initializeApp() {
     updateScannerBroker();
 loadSettings();
 showSection("dashboard");
-handleDerivCallback();
 checkCloudWorker();
 updateDashboard();
     setText(

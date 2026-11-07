@@ -327,10 +327,44 @@ function loadAvailableSymbols(symbols) {
     if (!Array.isArray(symbols)) {
         setStatus(
             "derivConnectionStatus",
-            "Deriv returned an unexpected market-list format."
+            "Unexpected market-list format."
         );
         return;
     }
+
+    tradingState.availableSymbols = symbols
+        .map(item => ({
+            ...item,
+            symbol: item.symbol || item.underlying_symbol,
+            display_name:
+                item.display_name ||
+                item.underlying_symbol_name,
+            symbol_type:
+                item.symbol_type ||
+                item.underlying_symbol_type,
+            pip: item.pip || item.pip_size
+        }))
+        .filter(item => item.symbol);
+
+    if (tradingState.availableSymbols.length === 0) {
+        setStatus(
+            "derivConnectionStatus",
+            "Deriv responded, but returned zero active markets."
+        );
+        return;
+    }
+
+    renderPairs();
+
+    setStatus(
+        "derivConnectionStatus",
+        "Connected. " +
+        tradingState.availableSymbols.length +
+        " markets loaded successfully."
+    );
+
+    updateDashboard();
+}
 
     tradingState.availableSymbols = symbols.filter(symbol => {
         return symbol && symbol.symbol;

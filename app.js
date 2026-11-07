@@ -1,8 +1,6 @@
-
 "use strict";
 
 /* SMC SNIPER PRO APA
-   Deriv market data connection
    DEMO ONLY - LIVE TRADING LOCKED
 */
 
@@ -28,6 +26,8 @@ const tradingState = {
     settings: {},
     marketRequestTimer: null
 };
+
+/* HELPERS */
 
 function el(id) {
     return document.getElementById(id);
@@ -220,7 +220,7 @@ function connectDeriv() {
             if (tradingState.availableSymbols.length === 0) {
                 setStatus(
                     "derivConnectionStatus",
-                    "Connection open, but no market list received. Check API response."
+                    "Connection open, but no market list received."
                 );
             }
         }, 12000);
@@ -273,9 +273,8 @@ function handleDerivMessage(data) {
     if (data.error) {
         setStatus(
             "derivConnectionStatus",
-            "Deriv error: " + (
-                data.error.message || "Unknown error"
-            )
+            "Deriv error: " +
+            (data.error.message || "Unknown error")
         );
         return;
     }
@@ -283,16 +282,14 @@ function handleDerivMessage(data) {
     if (Array.isArray(data.errors) && data.errors.length > 0) {
         setStatus(
             "derivConnectionStatus",
-            "API error: " + (
-                data.errors[0].message || "Unknown API error"
-            )
+            "API error: " +
+            (data.errors[0].message || "Unknown API error")
         );
         return;
     }
 
     if (data.msg_type === "active_symbols") {
         clearTimeout(tradingState.marketRequestTimer);
-
         loadAvailableSymbols(data.active_symbols || []);
         return;
     }
@@ -365,8 +362,6 @@ function loadAvailableSymbols(symbols) {
 
     updateDashboard();
 }
-
-   
 
 /* DISPLAY PAIRS */
 
@@ -800,8 +795,3 @@ if (document.readyState === "loading") {
 } else {
     initializeApp();
 }
-
- 
-
- 
-        

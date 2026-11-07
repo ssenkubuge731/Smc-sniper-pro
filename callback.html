@@ -64,16 +64,35 @@ h2 {color:#00d4a0}
 
   try {
     const response = await fetch(
-      "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/oauth/token",
-      {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          code:code,
-          code_verifier:verifier
-        })
-      }
-    );
+  "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/oauth/token",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      code: code,
+      code_verifier: verifier
+    })
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok || !result.access_token) {
+  throw new Error(
+    result.error_description ||
+    result.error ||
+    JSON.stringify(result)
+  );
+}
+
+sessionStorage.setItem(
+  "deriv_access_token",
+  result.access_token
+);
+
+window.location.replace("./");
 
     const result = await response.json();
 

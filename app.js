@@ -366,29 +366,7 @@ function loadAvailableSymbols(symbols) {
     updateDashboard();
 }
 
-    tradingState.availableSymbols = symbols.filter(symbol => {
-        return symbol && symbol.symbol;
-    });
-
-    if (tradingState.availableSymbols.length === 0) {
-        setStatus(
-            "derivConnectionStatus",
-            "Deriv responded, but returned zero active markets."
-        );
-        return;
-    }
-
-    renderPairs();
-
-    setStatus(
-        "derivConnectionStatus",
-        "Connected. " +
-        tradingState.availableSymbols.length +
-        " markets loaded successfully."
-    );
-
-    updateDashboard();
-}
+   
 
 /* DISPLAY PAIRS */
 

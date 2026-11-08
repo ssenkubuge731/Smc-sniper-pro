@@ -540,6 +540,33 @@ function startScanner() {
 
     tradingState.running = true;
 
+    const results = el("scannerResults");
+
+    if (results) {
+        results.innerHTML = "Scanner started. Waiting for live prices...";
+    }
+
+    tradingState.selectedSymbols.forEach(symbol => {
+        subscribeSymbol(symbol);
+    });
+
+    setStatus("scannerStatus", "SCANNER RUNNING - Monitoring selected markets.");
+
+    updateDashboard();
+}
+
+    if (!tradingState.derivConnected) {
+        setStatus("scannerStatus", "Connect Deriv first.");
+        return;
+    }
+
+    if (tradingState.selectedSymbols.length === 0) {
+        setStatus("scannerStatus", "Select at least one market.");
+        return;
+    }
+
+    tradingState.running = true;
+
     tradingState.selectedSymbols.forEach(symbol => {
         subscribeSymbol(symbol);
     });

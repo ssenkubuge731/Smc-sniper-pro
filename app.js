@@ -208,16 +208,16 @@ function connectDeriv() {
             tradingState.derivSocket.readyState === WebSocket.CONNECTING
         )
     ) {
-        setStatus("derivStatus", "Deriv connection is already open or connecting.");
+        setStatus("derivconnectionStatus", "Deriv connection is already open or connecting.");
         return;
     }
 
     if (typeof WebSocket === "undefined") {
-        setStatus("derivStatus", "This browser does not support WebSocket.");
+        setStatus("derivconnectionStatus", "This browser does not support WebSocket.");
         return;
     }
 
-    setStatus("derivConnectionStatus", "Connecting to Deriv public market data...");
+    setStatus("derivconnectionStatus", "Connecting to Deriv public market data...");
     setStatus("brokerStatus", "Connecting to Deriv...");
 
     try {
@@ -227,7 +227,7 @@ function connectDeriv() {
         tradingState.connectionTimer = setTimeout(() => {
             if (socket.readyState === WebSocket.CONNECTING) {
                 setStatus(
-                    "derivStatus",
+                    "derivconnectionStatus",
                     "Connection is taking too long. Check your internet and try again."
                 );
                 socket.close();
@@ -239,7 +239,7 @@ function connectDeriv() {
 
             tradingState.derivConnected = true;
 
-            setStatus("derivStatus", "Connected. Loading Deriv markets...");
+            setStatus( "derivConnectionStatus", "Connected. Loading Deriv markets...");
             setStatus("brokerStatus", "Deriv market data connected");
 
             socket.send(JSON.stringify({

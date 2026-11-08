@@ -466,7 +466,7 @@ function renderMarkets() {
 
 function updateSelectedMarkets() {
     const checkboxes = document.querySelectorAll(
-        "#marketList input[data-market-symbol]"
+        "#pairList input[data-market-symbol]"
     );
 
     tradingState.selectedSymbols = [];

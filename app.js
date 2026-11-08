@@ -477,6 +477,11 @@ function updateLivePrice(tick) {
 
     if (tradingState.running) {
         updateScannerResults(tick.symbol, tick.quote);
+
+        setStatus(
+            "scannerStatus",
+            "SCANNER RUNNING - Live prices updating."
+        );
     }
 }
 

@@ -234,7 +234,16 @@ function connectDeriv() {
             }
         }, 15000);
 
-        socket.onopen = function() {
+        socket.send(JSON.stringify({
+    active_symbols: "brief",
+    product_type: "basic",
+    req_id: nextRequestId()
+}));
+
+setStatus(
+    "derivConnectionStatus",
+    "Connected. Market request sent. Waiting for Deriv response..."
+);
             clearTimeout(tradingState.connectionTimer);
 
             tradingState.derivConnected = true;

@@ -217,7 +217,7 @@ function connectDeriv() {
         return;
     }
 
-    setStatus("derivStatus", "Connecting to Deriv public market data...");
+    setStatus("derivConnectionStatus", "Connecting to Deriv public market data...");
     setStatus("brokerStatus", "Connecting to Deriv...");
 
     try {

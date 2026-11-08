@@ -769,7 +769,8 @@ function initializeApp() {
             updateScannerBroker
         );
     }
-
+el("scannerStartButton")?.addEventListener("click", startScanner);
+el("scannerStopButton")?.addEventListener("click", stopScanner);
     loadSettings();
     enforceDemoOnly();
 

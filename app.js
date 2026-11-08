@@ -1,991 +1,923 @@
 
+
 "use strict";
 
-/* =====================================================
-   SMC SNIPER PRO APA
-   Advanced Price Action
-   PUBLIC MARKET DATA
-   DEMO MONITORING ONLY
-   LIVE TRADING LOCKED
-===================================================== */
+/* SMC SNIPER PRO APA
+   Public market data + demo monitoring only.
+   No order placement. Live trading is permanently locked.
+*/
 
-const DERIV_PUBLIC_WS =
-    "wss://api.derivws.com/trading/v1/options/ws/public";
-
-const CLOUD_WORKER_URL =
-    "https://smc-sniper-oauth.henryssenkubuge38.workers.dev/";
-
-/* ================= STATE ================= */
+const DERIV_PUBLIC_WS = "wss://api.derivws.com/trading/v1/options/ws/public";
 
 const tradingState = {
-    mode: "scalping",
-    broker: "deriv",
-    demo: true,
-    liveLocked: true,
-    running: false,
-
-    derivConnected: false,
-    mt5Connected: false,
-
-    derivSocket: null,
-    availableSymbols: [],
-    selectedSymbols: [],
-    lastPrices: {},
-    subscriptions: {},
-
-    requestId: 1,
-    marketTimer: null
+  mode: "scalping",
+  broker: "deriv",
+  demo: true,
+  liveLocked: true,
+  running: false,
+  derivConnected: false,
+  mt5Connected: false,
+  derivSocket: null,
+  availableSymbols: [],
+  selectedSymbols: [],
+  lastPrices: Object.create(null),
+  subscriptions: Object.create(null),
+  requestId: 1,
+  marketTimer: null
 };
 
-/* ================= HELPERS ================= */
+/* HELPERS */
 
 function el(id) {
-    return document.getElementById(id);
+  return document.getElementById(id);
 }
 
 function setText(id, value) {
-    const element = el(id);
-    if (element) element.textContent = String(value);
+  const node = el(id);
+  if (node) node.textContent = String(value);
 }
 
-function setStatus(id, message) {
-    setText(id, message);
-}
-
-function sendRequest(request) {
-    const socket = tradingState.derivSocket;
-
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return false;
-    }
-
-    try {
-        socket.send(JSON.stringify(request));
-        return true;
-    } catch (error) {
-        console.error("WebSocket send error:", error);
-        return false;
-    }
+function setStatus(id, value) {
+  setText(id, value);
 }
 
 function nextRequestId() {
-    return tradingState.requestId++;
+  return tradingState.requestId++;
+}
+
+function sendRequest(payload) {
+  const socket = tradingState.derivSocket;
+
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  try {
+    socket.send(JSON.stringify(payload));
+    return true;
+  } catch (error) {
+    console.error("Deriv send failed:", error);
+    return false;
+  }
 }
 
 function enforceDemoOnly() {
-    tradingState.demo = true;
-    tradingState.liveLocked = true;
+  tradingState.demo = true;
+  tradingState.liveLocked = true;
 
-    const mode = el("executionMode");
-    if (mode) mode.value = "demo";
+  const mode = el("executionMode");
+  if (mode) mode.value = "demo";
 
-    const lock = el("liveLock");
-    if (lock) {
-        lock.textContent = "LIVE TRADING LOCKED";
-        lock.disabled = true;
-    }
+  const live = el("liveLock");
+  if (live) {
+    live.textContent = "LIVE TRADING LOCKED";
+    live.disabled = true;
+  }
+
+  const liveOption = document.querySelector(
+    '#executionMode option[value="live"]'
+  );
+
+  if (liveOption) liveOption.disabled = true;
 }
 
-/* ================= NAVIGATION ================= */
+/* NAVIGATION */
 
 function showSection(name) {
-    document.querySelectorAll(".page").forEach(page => {
-        page.style.display = "none";
-        page.classList.remove("active");
-    });
+  document.querySelectorAll(".page").forEach(page => {
+    page.style.display = "none";
+    page.classList.remove("active");
+  });
 
-    document.querySelectorAll(".nav-btn").forEach(button => {
-        button.classList.remove("active");
-    });
+  document.querySelectorAll(".nav-btn").forEach(button => {
+    button.classList.remove("active");
+  });
 
-    const page = el(name);
+  const page = el(name);
 
-    if (page) {
-        page.style.display = "block";
-        page.classList.add("active");
-    }
+  if (page) {
+    page.style.display = "block";
+    page.classList.add("active");
+  }
 
-    const button = document.querySelector(
-        '.nav-btn[data-page="' + name + '"]'
-    );
+  const button = document.querySelector(
+    '.nav-btn[data-page="' + name + '"]'
+  );
 
-    if (button) button.classList.add("active");
+  if (button) button.classList.add("active");
 }
 
-/* ================= TRADING MODES ================= */
+/* TRADING STYLES */
 
 function updateMode() {
-    const selector = el("tradingStyle");
-    const timeframe = el("timeframe");
+  const selector = el("tradingStyle");
+  const timeframe = el("timeframe");
 
-    if (!selector || !timeframe) return;
+  if (!selector || !timeframe) return;
 
-    tradingState.mode = selector.value;
+  tradingState.mode = selector.value || "scalping";
 
-    const modes = {
-        scalping: ["M1", "M5", "M15"],
-        intraday: ["M30", "H1", "H4"],
-        swing: ["H1", "H4", "D1"]
-    };
+  const modes = {
+    scalping: ["M1", "M5", "M15"],
+    intraday: ["M30", "H1", "H4"],
+    swing: ["H1", "H4", "D1"]
+  };
 
-    const choices = modes[tradingState.mode] || modes.scalping;
-    const previous = timeframe.value;
+  const choices = modes[tradingState.mode] || modes.scalping;
+  const previous = timeframe.value;
 
-    timeframe.innerHTML = "";
+  timeframe.replaceChildren();
 
-    choices.forEach(value => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        timeframe.appendChild(option);
-    });
+  choices.forEach(value => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    timeframe.appendChild(option);
+  });
 
-    timeframe.value = choices.includes(previous)
-        ? previous
-        : choices[0];
+  timeframe.value = choices.includes(previous)
+    ? previous
+    : choices[0];
 }
 
-/* ================= BROKER PANELS ================= */
+/* BROKER PANELS */
 
 function updateBrokerPanels() {
-    const selector = el("brokerType");
-    if (!selector) return;
+  const selector = el("brokerType");
+  if (!selector) return;
 
-    tradingState.broker = selector.value;
+  tradingState.broker = selector.value || "deriv";
 
-    const derivPanel = el("derivPanel");
-    const mt5Panel = el("mt5Panel");
+  const derivPanel = el("derivPanel");
+  const mt5Panel = el("mt5Panel");
 
-    if (derivPanel) {
-        derivPanel.style.display =
-            tradingState.broker === "deriv" ? "block" : "none";
-    }
+  if (derivPanel) {
+    const show = tradingState.broker === "deriv";
+    derivPanel.classList.toggle("hidden", !show);
+    derivPanel.style.display = show ? "block" : "none";
+  }
 
-    if (mt5Panel) {
-        mt5Panel.style.display =
-            tradingState.broker === "mt5" ? "block" : "none";
-    }
+  if (mt5Panel) {
+    const show = tradingState.broker === "mt5";
+    mt5Panel.classList.toggle("hidden", !show);
+    mt5Panel.style.display = show ? "block" : "none";
+  }
 }
 
 function updateScannerBroker() {
-    const selector = el("scannerBroker");
-    if (!selector) return;
+  const selector = el("scannerBroker");
 
-    if (selector.value === "mt5") {
-        setStatus(
-            "scannerStatus",
-            "MT5 bridge required. Deriv scanner is not active."
-        );
-    } else {
-        setStatus(
-            "scannerStatus",
-            tradingState.running
-                ? "Scanner running"
-                : "Scanner stopped"
-        );
-    }
+  if (selector && selector.value === "mt5") {
+    setStatus(
+      "scannerStatus",
+      "MT5 bridge is not configured. Select Deriv to scan public markets."
+    );
+  } else if (!tradingState.running) {
+    setStatus("scannerStatus", "Scanner stopped.");
+  }
 }
 
-/* ================= CLOUD WORKER ================= */
-
-async function checkCloudWorker() {
-    setStatus("cloudStatus", "Checking cloud worker...");
-
-    try {
-        const response = await fetch(CLOUD_WORKER_URL, {
-            method: "GET",
-            cache: "no-store"
-        });
-
-        setStatus(
-            "cloudStatus",
-            response.ok
-                ? "Cloud worker reachable."
-                : "Cloud worker returned HTTP " + response.status
-        );
-    } catch (error) {
-        setStatus(
-            "cloudStatus",
-            "Cloud worker unavailable. Public market data is separate."
-        );
-    }
-}
-
-/* ================= DERIV CONNECTION ================= */
+/* DERIV CONNECTION */
 
 function connectDeriv() {
-    const existing = tradingState.derivSocket;
+  if (typeof WebSocket === "undefined") {
+    setStatus(
+      "derivConnectionStatus",
+      "This browser does not support WebSocket."
+    );
+    return;
+  }
 
-    if (
-        existing &&
-        (
-            existing.readyState === WebSocket.OPEN ||
-            existing.readyState === WebSocket.CONNECTING
-        )
-    ) {
-        setStatus(
-            "derivConnectionStatus",
-            "Deriv is already connected or connecting."
-        );
-        return;
-    }
+  const current = tradingState.derivSocket;
 
-    if (typeof WebSocket === "undefined") {
-        setStatus(
-            "derivConnectionStatus",
-            "Your browser does not support WebSocket."
-        );
-        return;
-    }
+  if (
+    current &&
+    (
+      current.readyState === WebSocket.OPEN ||
+      current.readyState === WebSocket.CONNECTING
+    )
+  ) {
+    setStatus(
+      "derivConnectionStatus",
+      "Deriv is already connected or connecting."
+    );
+    return;
+  }
+
+  tradingState.availableSymbols = [];
+  tradingState.subscriptions = Object.create(null);
+
+  renderMarkets();
+
+  setStatus(
+    "derivConnectionStatus",
+    "Connecting to Deriv public market data..."
+  );
+
+  let socket;
+
+  try {
+    socket = new WebSocket(DERIV_PUBLIC_WS);
+  } catch (error) {
+    setStatus(
+      "derivConnectionStatus",
+      "Could not open Deriv connection: " + error.message
+    );
+    return;
+  }
+
+  tradingState.derivSocket = socket;
+
+  socket.onopen = () => {
+    if (tradingState.derivSocket !== socket) return;
+
+    tradingState.derivConnected = true;
 
     setStatus(
-        "derivConnectionStatus",
-        "Connecting to Deriv public market data..."
+      "derivConnectionStatus",
+      "Connected. Requesting available markets..."
     );
+
+    setStatus(
+      "brokerStatus",
+      "Deriv public market data connected."
+    );
+
+    const reqId = nextRequestId();
+
+    if (!sendRequest({
+      active_symbols: "brief",
+      req_id: reqId
+    })) {
+      setStatus(
+        "derivConnectionStatus",
+        "Connected, but the market request could not be sent."
+      );
+      return;
+    }
+
+    clearTimeout(tradingState.marketTimer);
+
+    tradingState.marketTimer = setTimeout(() => {
+      if (
+        tradingState.derivSocket === socket &&
+        tradingState.availableSymbols.length === 0
+      ) {
+        setStatus(
+          "derivConnectionStatus",
+          "No market list received within 15 seconds. Check connection and retry."
+        );
+      }
+    }, 15000);
+
+    updateDashboard();
+  };
+
+  socket.onmessage = event => {
+    if (tradingState.derivSocket !== socket) return;
+
+    let data;
 
     try {
-        const socket = new WebSocket(DERIV_PUBLIC_WS);
-
-        tradingState.derivSocket = socket;
-
-        socket.onopen = function() {
-            if (tradingState.derivSocket !== socket) return;
-
-            tradingState.derivConnected = true;
-
-            setStatus(
-                "derivConnectionStatus",
-                "Connected. Requesting available markets..."
-            );
-
-            setStatus(
-                "brokerStatus",
-                "Deriv public market data connected."
-            );
-
-            // Official public active-symbols request.
-            // No OAuth or App ID required for public prices.
-
-            const sent = sendRequest({
-                active_symbols: "brief",
-                req_id: nextRequestId()
-            });
-
-            if (!sent) {
-                setStatus(
-                    "derivConnectionStatus",
-                    "Connected, but the market request could not be sent."
-                );
-                return;
-            }
-
-            clearTimeout(tradingState.marketTimer);
-
-            tradingState.marketTimer = setTimeout(() => {
-                if (
-                    tradingState.derivSocket === socket &&
-                    tradingState.availableSymbols.length === 0
-                ) {
-                    setStatus(
-                        "derivConnectionStatus",
-                        "Connected, but no market response arrived. Check the connection and retry."
-                    );
-                }
-            }, 15000);
-
-            updateDashboard();
-        };
-
-        socket.onmessage = function(event) {
-            if (tradingState.derivSocket !== socket) return;
-
-            let data;
-
-            try {
-                data = JSON.parse(event.data);
-            } catch (error) {
-                console.error("Invalid Deriv response:", event.data);
-                return;
-            }
-
-            console.log("Deriv response:", data);
-
-            handleDerivMessage(data);
-        };
-
-        socket.onerror = function(error) {
-            console.error("Deriv WebSocket error:", error);
-
-            setStatus(
-                "derivConnectionStatus",
-                "Deriv connection error. Check internet and try again."
-            );
-        };
-
-        socket.onclose = function(event) {
-            if (tradingState.derivSocket !== socket) return;
-
-            clearTimeout(tradingState.marketTimer);
-
-            tradingState.derivConnected = false;
-            tradingState.running = false;
-            tradingState.derivSocket = null;
-            tradingState.subscriptions = {};
-
-            setStatus(
-                "derivConnectionStatus",
-                "Disconnected. Connection code: " + event.code
-            );
-
-            setStatus("brokerStatus", "Deriv not connected.");
-            setStatus("scannerStatus", "Scanner stopped.");
-
-            updateDashboard();
-        };
-
+      data = JSON.parse(event.data);
     } catch (error) {
-        console.error(error);
-
-        setStatus(
-            "derivConnectionStatus",
-            "Could not start the Deriv connection."
-        );
-    }
-}
-
-function disconnectDeriv() {
-    stopScanner();
-
-    const socket = tradingState.derivSocket;
-
-    if (socket) {
-        socket.close();
-    } else {
-        tradingState.derivConnected = false;
-
-        setStatus("derivConnectionStatus", "Not connected.");
-        setStatus("brokerStatus", "Deriv not connected.");
-
-        updateDashboard();
-    }
-}
-
-/* ================= DERIV RESPONSES ================= */
-
-function handleDerivMessage(data) {
-    if (data.error) {
-        clearTimeout(tradingState.marketTimer);
-
-        setStatus(
-            "derivConnectionStatus",
-            "Deriv error: " + data.error.message
-        );
-
-        console.error("Deriv API error:", data.error);
-        return;
-    }
-
-    if (data.errors) {
-        clearTimeout(tradingState.marketTimer);
-
-        setStatus(
-            "derivConnectionStatus",
-            "Deriv error: " + JSON.stringify(data.errors)
-        );
-        return;
-    }
-
-    if (data.msg_type === "active_symbols") {
-        clearTimeout(tradingState.marketTimer);
-
-        if (!Array.isArray(data.active_symbols)) {
-            setStatus(
-                "derivConnectionStatus",
-                "Deriv replied without a valid market list."
-            );
-            return;
-        }
-
-        loadMarkets(data.active_symbols);
-        return;
-    }
-
-    if (data.msg_type === "tick" && data.tick) {
-        updateLivePrice(data.tick, data.subscription);
-        return;
-    }
-
-    if (data.msg_type) {
-        console.log("Other Deriv message:", data.msg_type);
-    }
-}
-
-/* ================= MARKET LOADING ================= */
-
-function loadMarkets(markets) {
-    tradingState.availableSymbols = markets
-        .filter(market => market)
-        .map(market => {
-            return {
-                ...market,
-
-                // Support Deriv's new and old API field names.
-                symbol:
-                    market.underlying_symbol ||
-                    market.symbol ||
-                    "",
-
-                display_name:
-                    market.underlying_symbol_name ||
-                    market.display_name ||
-                    market.underlying_symbol ||
-                    market.symbol ||
-                    "Unknown market",
-
-                symbol_type:
-                    market.underlying_symbol_type ||
-                    market.symbol_type ||
-                    "",
-
-                market_display_name:
-                    market.market_display_name ||
-                    market.market ||
-                    "",
-
-                submarket_display_name:
-                    market.submarket_display_name ||
-                    market.submarket ||
-                    ""
-            };
-        })
-        .filter(market => market.symbol);
-
-    renderMarkets();
-    updateDashboard();
-
-    if (tradingState.availableSymbols.length === 0) {
-        setStatus(
-            "derivConnectionStatus",
-            "Deriv replied, but no usable market symbols were found."
-        );
-        return;
-    }
-
-    setStatus(
+      console.error("Unparseable Deriv message:", event.data);
+      setStatus(
         "derivConnectionStatus",
-        "Connected. " +
-        tradingState.availableSymbols.length +
-        " markets loaded successfully."
-    );
-}
+        "Deriv sent an unreadable response. See browser log."
+      );
+      return;
+    }
+
+    console.log("Deriv response:", data);
+    handleDerivMessage(data);
+  };
+
+  socket.onerror = error => {
+    console.error("Deriv WebSocket error:", error);
 
     setStatus(
-        "derivConnectionStatus",
-        "Connected. " +
-        tradingState.availableSymbols.length +
-        " markets loaded successfully."
+      "derivConnectionStatus",
+      "Deriv connection error. Check internet and retry."
     );
-}
+  };
 
-function getMarketCategory(market) {
-    const name = (
-        (market.display_name || "") + " " +
-        (market.market_display_name || "") + " " +
-        (market.submarket_display_name || "") + " " +
-        (market.symbol || "")
-    ).toLowerCase();
+  socket.onclose = event => {
+    if (tradingState.derivSocket !== socket) return;
 
-    if (
-        name.includes("forex") ||
-        name.includes("frx") ||
-        name.includes("currency")
-    ) return "Forex";
+    clearTimeout(tradingState.marketTimer);
 
-    if (
-        name.includes("gold") ||
-        name.includes("xau") ||
-        name.includes("metal")
-    ) return "Gold";
-
-    if (
-        name.includes("index") ||
-        name.includes("volatility") ||
-        name.includes("crash") ||
-        name.includes("boom") ||
-        name.includes("step") ||
-        name.includes("jump") ||
-        name.includes("range")
-    ) return "Deriv Indices";
-
-    return "Other";
-}
-
-function renderMarkets() {
-    const container = el("pairList");
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    if (tradingState.availableSymbols.length === 0) {
-        container.textContent = "No markets loaded yet.";
-        return;
-    }
-
-    const groups = {
-        "Deriv Indices": [],
-        "Forex": [],
-        "Gold": [],
-        "Other": []
-    };
-
-    tradingState.availableSymbols.forEach(market => {
-        groups[getMarketCategory(market)].push(market);
-    });
-
-    Object.keys(groups).forEach(category => {
-        if (groups[category].length === 0) return;
-
-        const heading = document.createElement("h3");
-        heading.textContent =
-            category + " (" + groups[category].length + ")";
-
-        container.appendChild(heading);
-
-        groups[category].forEach(market => {
-            const label = document.createElement("label");
-            label.className = "market-option";
-
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.value = market.symbol;
-            checkbox.dataset.marketSymbol = market.symbol;
-
-            checkbox.checked =
-                tradingState.selectedSymbols.includes(market.symbol);
-
-            checkbox.addEventListener("change", updateSelectedMarkets);
-
-            const name = document.createElement("span");
-            name.textContent =
-                (market.display_name || market.symbol) +
-                " (" + market.symbol + ")";
-
-            const price = document.createElement("span");
-            price.id = "price-" + market.symbol;
-            price.className = "market-price";
-            price.textContent =
-                tradingState.lastPrices[market.symbol] ?? "--";
-
-            label.appendChild(checkbox);
-            label.appendChild(name);
-            label.appendChild(price);
-
-            container.appendChild(label);
-        });
-    });
-
-    updateSelectedCount();
-}
-
-/* ================= PAIR SELECTION ================= */
-
-function updateSelectedMarkets() {
-    const checkboxes = document.querySelectorAll(
-        "#pairList input[data-market-symbol]"
-    );
-
-    tradingState.selectedSymbols = [];
-
-    checkboxes.forEach(checkbox => {
-        if (checkbox.checked) {
-            tradingState.selectedSymbols.push(checkbox.value);
-        }
-    });
-
-    updateSelectedCount();
-    updateDashboard();
-}
-
-function updateSelectedCount() {
-    setText(
-        "selectedPairCount",
-        tradingState.selectedSymbols.length + " pairs selected"
-    );
-}
-
-function selectAllPairs() {
-    tradingState.selectedSymbols =
-        tradingState.availableSymbols.map(market => market.symbol);
-
-    renderMarkets();
-    updateDashboard();
-}
-
-function clearPairs() {
-    tradingState.selectedSymbols = [];
-
-    renderMarkets();
-    updateDashboard();
-}
-
-/* ================= LIVE TICKS ================= */
-
-function subscribeSymbol(symbol) {
-    if (!tradingState.derivConnected) return;
-    if (tradingState.subscriptions[symbol]) return;
-
-    const id = nextRequestId();
-
-    const sent = sendRequest({
-        ticks: symbol,
-        subscribe: 1,
-        req_id: id
-    });
-
-    if (sent) {
-        tradingState.subscriptions[symbol] = {
-            requestId: id,
-            subscriptionId: null
-        };
-    }
-}
-
-function unsubscribeSymbol(symbol) {
-    const subscription = tradingState.subscriptions[symbol];
-
-    if (subscription && subscription.subscriptionId) {
-        sendRequest({
-            forget: subscription.subscriptionId,
-            req_id: nextRequestId()
-        });
-    }
-
-    delete tradingState.subscriptions[symbol];
-}
-
-function updateLivePrice(tick, subscription) {
-    if (!tick || !tick.symbol) return;
-
-    const symbol = tick.symbol;
-    const quote = tick.quote;
-
-    tradingState.lastPrices[symbol] = quote;
-
-    if (
-        subscription &&
-        subscription.id &&
-        tradingState.subscriptions[symbol]
-    ) {
-        tradingState.subscriptions[symbol].subscriptionId =
-            subscription.id;
-    }
-
-    const priceElement = el("price-" + symbol);
-
-    if (priceElement) {
-        priceElement.textContent = quote;
-    }
-
-    if (tradingState.running) {
-        updateScannerResults(symbol, quote);
-
-        setStatus(
-            "scannerStatus",
-            "SCANNER RUNNING — Live prices updating."
-        );
-    }
-}
-
-/* ================= SCANNER ================= */
-
-function startScanner() {
-    const broker = el("scannerBroker");
-
-    if (broker && broker.value === "mt5") {
-        setStatus(
-            "scannerStatus",
-            "MT5 bridge is not connected. Select Deriv for market scanning."
-        );
-        return;
-    }
-
-    if (!tradingState.derivConnected) {
-        setStatus("scannerStatus", "Connect Deriv first.");
-        return;
-    }
-
-    updateSelectedMarkets();
-
-    if (tradingState.selectedSymbols.length === 0) {
-        setStatus(
-            "scannerStatus",
-            "Select at least one market first."
-        );
-        return;
-    }
-
-    tradingState.running = true;
-
-    const results = el("scannerResults");
-
-    if (results) {
-        results.textContent =
-            "Scanner started. Waiting for live prices...";
-    }
-
-    setText("marketTrend", "Waiting for price data");
-    setText("apaStructure", "Analysis not implemented");
-    setText("liquidityStatus", "Analysis not implemented");
-    setText("entrySignal", "No verified APA signal");
-
-    tradingState.selectedSymbols.forEach(symbol => {
-        subscribeSymbol(symbol);
-    });
-
-    updateDashboard();
-
-    setStatus(
-        "scannerStatus",
-        "SCANNER RUNNING — Monitoring " +
-        tradingState.selectedSymbols.length + " markets."
-    );
-}
-
-function stopScanner() {
+    tradingState.derivConnected = false;
     tradingState.running = false;
+    tradingState.derivSocket = null;
+    tradingState.subscriptions = Object.create(null);
 
-    Object.keys(tradingState.subscriptions).forEach(symbol => {
-        unsubscribeSymbol(symbol);
-    });
+    setStatus(
+      "derivConnectionStatus",
+      "Disconnected. Connection code: " + event.code
+    );
 
+    setStatus("brokerStatus", "Deriv not connected.");
     setStatus("scannerStatus", "Scanner stopped.");
 
     updateDashboard();
+  };
 }
 
-function updateScannerResults(symbol, price) {
-    const container = el("scannerResults");
-    if (!container) return;
+function disconnectDeriv() {
+  stopScanner();
 
-    const id = "scanner-result-" + symbol;
-    let row = el(id);
+  const socket = tradingState.derivSocket;
 
-    if (!row) {
-        row = document.createElement("p");
-        row.id = id;
-        container.appendChild(row);
-    }
-
-    row.textContent =
-        symbol + " | Price: " + price +
-        " | APA analysis pending";
+  if (socket) {
+    socket.close();
+  } else {
+    tradingState.derivConnected = false;
+    setStatus("derivConnectionStatus", "Not connected.");
+    setStatus("brokerStatus", "Deriv not connected.");
+    updateDashboard();
+  }
 }
 
-/* ================= SETTINGS ================= */
+/* MARKET RESPONSE HANDLING */
+
+function normalizeMarket(market) {
+  if (!market || typeof market !== "object") return null;
+
+  const symbol =
+    market.underlying_symbol ||
+    market.symbol ||
+    market.underlying ||
+    "";
+
+  if (!symbol) return null;
+
+  return {
+    ...market,
+    symbol,
+    display_name:
+      market.underlying_symbol_name ||
+      market.display_name ||
+      market.display_name_short ||
+      symbol,
+    market_display_name:
+      market.market_display_name ||
+      market.market ||
+      "",
+    submarket_display_name:
+      market.submarket_display_name ||
+      market.submarket ||
+      ""
+  };
+}
+
+function handleDerivMessage(data) {
+  if (data.error) {
+    clearTimeout(tradingState.marketTimer);
+
+    setStatus(
+      "derivConnectionStatus",
+      "Deriv error: " +
+      (data.error.message || JSON.stringify(data.error))
+    );
+
+    return;
+  }
+
+  if (Array.isArray(data.errors) && data.errors.length) {
+    clearTimeout(tradingState.marketTimer);
+
+    setStatus(
+      "derivConnectionStatus",
+      "Deriv error: " +
+      (data.errors[0].message || JSON.stringify(data.errors[0]))
+    );
+
+    return;
+  }
+
+  const payload =
+    data.data && typeof data.data === "object"
+      ? data.data
+      : data;
+
+  const type = payload.msg_type || data.msg_type;
+
+  if (type === "active_symbols" ||
+      Array.isArray(payload.active_symbols)) {
+    clearTimeout(tradingState.marketTimer);
+
+    loadMarkets(
+      payload.active_symbols ||
+      data.active_symbols ||
+      []
+    );
+
+    return;
+  }
+
+  if (type === "tick" && payload.tick) {
+    updateLivePrice(
+      payload.tick,
+      payload.subscription || data.subscription
+    );
+  }
+}
+
+/* LOAD MARKETS */
+
+function loadMarkets(markets) {
+  const list = Array.isArray(markets) ? markets : [];
+
+  tradingState.availableSymbols =
+    list.map(normalizeMarket).filter(Boolean);
+
+  renderMarkets();
+  updateDashboard();
+
+  if (!tradingState.availableSymbols.length) {
+    setStatus(
+      "derivConnectionStatus",
+      "Deriv replied, but no usable active market symbols were found."
+    );
+
+    console.warn("Deriv active_symbols payload:", markets);
+    return;
+  }
+
+  setStatus(
+    "derivConnectionStatus",
+    "Connected. " +
+    tradingState.availableSymbols.length +
+    " markets loaded successfully."
+  );
+}
+
+function marketCategory(market) {
+  const text = [
+    market.display_name,
+    market.market_display_name,
+    market.submarket_display_name,
+    market.symbol,
+    market.symbol_type
+  ].join(" ").toLowerCase();
+
+  if (/forex|frx|currency/.test(text)) return "Forex";
+  if (/gold|xau|metal/.test(text)) return "Gold";
+
+  if (
+    /index|volatility|crash|boom|step|jump|range/.test(text)
+  ) {
+    return "Deriv Indices";
+  }
+
+  return "Other";
+}
+
+function renderMarkets() {
+  const container = el("pairList");
+  if (!container) return;
+
+  container.replaceChildren();
+
+  if (!tradingState.availableSymbols.length) {
+    container.textContent = "No markets loaded yet.";
+    updateSelectedCount();
+    return;
+  }
+
+  const groups = {
+    "Deriv Indices": [],
+    Forex: [],
+    Gold: [],
+    Other: []
+  };
+
+  tradingState.availableSymbols.forEach(market => {
+    groups[marketCategory(market)].push(market);
+  });
+
+  Object.entries(groups).forEach(([category, markets]) => {
+    if (!markets.length) return;
+
+    const heading = document.createElement("h3");
+    heading.textContent =
+      category + " (" + markets.length + ")";
+
+    container.appendChild(heading);
+
+    markets.forEach(market => {
+      const label = document.createElement("label");
+      label.className = "market-option";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = market.symbol;
+      checkbox.dataset.marketSymbol = market.symbol;
+      checkbox.checked =
+        tradingState.selectedSymbols.includes(market.symbol);
+
+      checkbox.addEventListener(
+        "change",
+        updateSelectedMarkets
+      );
+
+      const name = document.createElement("span");
+      name.textContent =
+        market.display_name + " (" + market.symbol + ")";
+
+      const price = document.createElement("span");
+      price.id = priceElementId(market.symbol);
+      price.className = "market-price";
+      price.textContent =
+        tradingState.lastPrices[market.symbol] ?? "--";
+
+      label.append(checkbox, name, price);
+      container.appendChild(label);
+    });
+  });
+
+  updateSelectedCount();
+}
+
+function priceElementId(symbol) {
+  return "price-" +
+    String(symbol).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/* PAIR SELECTION */
+
+function updateSelectedMarkets() {
+  tradingState.selectedSymbols = Array.from(
+    document.querySelectorAll(
+      "#pairList input[data-market-symbol]:checked"
+    ),
+    input => input.value
+  );
+
+  updateSelectedCount();
+  updateDashboard();
+}
+
+function updateSelectedCount() {
+  setText(
+    "selectedPairCount",
+    tradingState.selectedSymbols.length + " pairs selected"
+  );
+}
+
+function selectAllPairs() {
+  tradingState.selectedSymbols =
+    tradingState.availableSymbols.map(market => market.symbol);
+
+  renderMarkets();
+  updateDashboard();
+}
+
+function clearPairs() {
+  tradingState.selectedSymbols = [];
+  renderMarkets();
+  updateDashboard();
+}
+
+/* LIVE TICKS */
+
+function subscribeSymbol(symbol) {
+  if (
+    !tradingState.derivConnected ||
+    tradingState.subscriptions[symbol]
+  ) {
+    return;
+  }
+
+  const requestId = nextRequestId();
+
+  if (sendRequest({
+    ticks: symbol,
+    subscribe: 1,
+    req_id: requestId
+  })) {
+    tradingState.subscriptions[symbol] = {
+      requestId,
+      subscriptionId: null
+    };
+  }
+}
+
+function unsubscribeSymbol(symbol) {
+  const item = tradingState.subscriptions[symbol];
+
+  if (item && item.subscriptionId) {
+    sendRequest({
+      forget: item.subscriptionId,
+      req_id: nextRequestId()
+    });
+  }
+
+  delete tradingState.subscriptions[symbol];
+}
+
+function updateLivePrice(tick, subscription) {
+  if (!tick || !tick.symbol) return;
+
+  const symbol = tick.symbol;
+  const quote = tick.quote;
+
+  tradingState.lastPrices[symbol] = quote;
+
+  if (
+    subscription &&
+    subscription.id &&
+    tradingState.subscriptions[symbol]
+  ) {
+    tradingState.subscriptions[symbol].subscriptionId =
+      subscription.id;
+  }
+
+  const price = el(priceElementId(symbol));
+
+  if (price) price.textContent = quote;
+
+  if (tradingState.running) {
+    updateScannerResults(symbol, quote);
+
+    setStatus(
+      "scannerStatus",
+      "SCANNER RUNNING — Live prices updating. APA signal calculations are not yet enabled."
+    );
+  }
+}
+
+/* SCANNER — PRICE MONITOR ONLY */
+
+function startScanner() {
+  const broker = el("scannerBroker");
+
+  if (broker && broker.value === "mt5") {
+    setStatus(
+      "scannerStatus",
+      "MT5 bridge is not configured. Select Deriv for market monitoring."
+    );
+    return;
+  }
+
+  if (!tradingState.derivConnected) {
+    setStatus("scannerStatus", "Connect Deriv first.");
+    return;
+  }
+
+  updateSelectedMarkets();
+
+  if (!tradingState.selectedSymbols.length) {
+    setStatus(
+      "scannerStatus",
+      "Select at least one market first."
+    );
+    return;
+  }
+
+  tradingState.running = true;
+
+  const results = el("scannerResults");
+
+  if (results) {
+    results.textContent =
+      "Scanner started. Waiting for live prices... APA analysis is not yet enabled.";
+  }
+
+  setText("marketTrend", "Waiting for price data");
+  setText("apaStructure", "APA analysis not yet enabled");
+  setText("liquidityStatus", "Waiting for analysis engine");
+  setText("entrySignal", "No verified APA signal");
+
+  tradingState.selectedSymbols.forEach(subscribeSymbol);
+
+  updateDashboard();
+
+  setStatus(
+    "scannerStatus",
+    "SCANNER RUNNING — Monitoring " +
+    tradingState.selectedSymbols.length +
+    " markets."
+  );
+}
+
+function stopScanner() {
+  tradingState.running = false;
+
+  Object.keys(tradingState.subscriptions).forEach(
+    unsubscribeSymbol
+  );
+
+  setStatus("scannerStatus", "Scanner stopped.");
+  updateDashboard();
+}
+
+function updateScannerResults(symbol, quote) {
+  const container = el("scannerResults");
+  if (!container) return;
+
+  const id = "scanner-result-" +
+    String(symbol).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  let row = el(id);
+
+  if (!row) {
+    row = document.createElement("p");
+    row.id = id;
+    container.appendChild(row);
+  }
+
+  row.textContent =
+    symbol + " | Price: " + quote +
+    " | APA analysis pending";
+}
+
+/* SETTINGS */
 
 function saveSettings() {
-    const numberFields = [
-        ["riskPercent", 0.1, 1],
-        ["lotSize", 0.01, 100],
-        ["stopLoss", 1, 1000000],
-        ["takeProfit", 1, 1000000],
-        ["maxTrades", 1, 20],
-        ["dailyLossLimit", 0.1, 10]
-    ];
+  const fields = [
+    ["riskPercent", 0.1, 1],
+    ["lotSize", 0.01, 100],
+    ["stopLoss", 1, 1000000],
+    ["takeProfit", 1, 1000000],
+    ["maxTrades", 1, 20],
+    ["dailyLossLimit", 0.1, 10]
+  ];
 
-    for (const [id, min, max] of numberFields) {
-        const input = el(id);
-        if (!input) continue;
+  for (const [id, min, max] of fields) {
+    const input = el(id);
+    if (!input) continue;
 
-        const value = Number(input.value);
+    const value = Number(input.value);
 
-        if (!Number.isFinite(value) || value < min || value > max) {
-            setStatus(
-                "settingsStatus",
-                "Invalid value in " + id + ". Check the allowed limits."
-            );
-            return;
-        }
+    if (
+      !Number.isFinite(value) ||
+      value < min ||
+      value > max
+    ) {
+      setStatus(
+        "settingsStatus",
+        "Invalid value in " + id + ". Check the allowed limits."
+      );
+      return;
     }
+  }
 
-    const settings = {};
+  const settings = {};
 
-    document.querySelectorAll(
-        "#settings input[type='checkbox']"
-    ).forEach(input => {
-        settings[input.id] = input.checked;
-    });
+  document.querySelectorAll(
+    "#settings input[type='checkbox']"
+  ).forEach(input => {
+    settings[input.id] = input.checked;
+  });
 
-    numberFields.forEach(([id]) => {
-        if (el(id)) settings[id] = el(id).value;
-    });
+  fields.forEach(([id]) => {
+    if (el(id)) settings[id] = el(id).value;
+  });
 
-    if (el("tradingStyle")) {
-        settings.tradingStyle = el("tradingStyle").value;
-    }
+  ["tradingStyle", "timeframe"].forEach(id => {
+    if (el(id)) settings[id] = el(id).value;
+  });
 
-    if (el("timeframe")) {
-        settings.timeframe = el("timeframe").value;
-    }
+  try {
+    localStorage.setItem(
+      "smcSniperAPASettings",
+      JSON.stringify(settings)
+    );
 
-    try {
-        localStorage.setItem(
-            "smcSniperAPASettings",
-            JSON.stringify(settings)
-        );
-
-        setStatus(
-            "settingsStatus",
-            "Settings saved on this device. Live trading remains locked."
-        );
-    } catch (error) {
-        setStatus(
-            "settingsStatus",
-            "Browser storage unavailable. Settings were not saved."
-        );
-    }
+    setStatus(
+      "settingsStatus",
+      "Settings saved on this device. Live trading remains locked."
+    );
+  } catch (error) {
+    setStatus(
+      "settingsStatus",
+      "Browser storage unavailable. Settings were not saved."
+    );
+  }
 }
 
 function loadSettings() {
-    try {
-        const raw = localStorage.getItem("smcSniperAPASettings");
-        if (!raw) return;
+  try {
+    const raw = localStorage.getItem("smcSniperAPASettings");
+    if (!raw) return;
 
-        const settings = JSON.parse(raw);
+    const settings = JSON.parse(raw);
 
-        Object.keys(settings).forEach(id => {
-            const input = el(id);
-            if (!input) return;
+    Object.entries(settings).forEach(([id, value]) => {
+      const input = el(id);
+      if (!input) return;
 
-            if (input.type === "checkbox") {
-                input.checked = Boolean(settings[id]);
-            } else {
-                input.value = settings[id];
-            }
-        });
-
-    } catch (error) {
-        console.error("Could not load settings:", error);
-    }
+      if (input.type === "checkbox") {
+        input.checked = Boolean(value);
+      } else {
+        input.value = value;
+      }
+    });
+  } catch (error) {
+    console.warn("Could not load saved settings:", error);
+  }
 }
 
-/* ================= MT5 ================= */
+/* MT5 */
 
 function connectMT5() {
-    tradingState.mt5Connected = false;
+  tradingState.mt5Connected = false;
 
-    setStatus(
-        "mt5ConnectionStatus",
-        "MT5 bridge not configured. A separate MT5 terminal bridge or Expert Advisor is required."
-    );
+  setStatus(
+    "mt5ConnectionStatus",
+    "MT5 bridge not configured. A separate MT5 Expert Advisor or bridge is required."
+  );
 }
 
-/* ================= DASHBOARD ================= */
+/* DASHBOARD */
 
 function updateDashboard() {
-    setText(
-        "systemStatus",
-        tradingState.running ? "Scanner Running" : "System Ready"
-    );
+  setText(
+    "systemStatus",
+    tradingState.running ? "Scanner Running" : "System Ready"
+  );
 
-    setText(
-        "pairCount",
-        tradingState.selectedSymbols.length
-    );
+  setText("pairCount", tradingState.selectedSymbols.length);
+  setText("openTrades", "0");
 
-    setText("openTrades", "0");
+  setText(
+    "brokerStatus",
+    tradingState.derivConnected
+      ? "Broker: Deriv market data connected"
+      : "Broker: Not connected"
+  );
 
-    setText(
-        "brokerStatus",
-        tradingState.derivConnected
-            ? "Broker: Deriv market data connected"
-            : "Broker: Not connected"
-    );
+  if (!tradingState.running) {
+    setText("scannerStatus", "Scanner: Stopped");
+  }
 
-    if (!tradingState.running) {
-        setText("scannerStatus", "Scanner: Stopped");
-    }
-
-    enforceDemoOnly();
+  enforceDemoOnly();
 }
 
-/* ================= INITIALIZATION ================= */
+/* INITIALIZATION */
 
 function initializeApp() {
-    console.log("Starting SMC Sniper Pro APA...");
+  console.log("Starting SMC Sniper Pro APA...");
 
-    // Navigation
-
-    document.querySelectorAll(".nav-btn").forEach(button => {
-        button.addEventListener("click", function() {
-            showSection(this.dataset.page);
-        });
+  document.querySelectorAll(".nav-btn").forEach(button => {
+    button.addEventListener("click", () => {
+      showSection(button.dataset.page);
     });
+  });
 
-    // Dashboard and scanner controls
+  const actions = {
+    connectDeriv,
+    disconnectDeriv,
+    selectAllPairs,
+    clearPairs,
+    scannerStartButton: startScanner,
+    scannerStopButton: stopScanner,
+    startScanner,
+    stopScanner,
+    saveSettings,
+    connectMT5
+  };
 
-    const buttons = {
-        connectDeriv: connectDeriv,
-        disconnectDeriv: disconnectDeriv,
+  Object.entries(actions).forEach(([id, action]) => {
+    const button = el(id);
+    if (button) button.addEventListener("click", action);
+  });
 
-        selectAllPairs: selectAllPairs,
-        clearPairs: clearPairs,
+  if (el("tradingStyle")) {
+    el("tradingStyle").addEventListener("change", updateMode);
+  }
 
-        scannerStartButton: startScanner,
-        scannerStopButton: stopScanner,
+  if (el("brokerType")) {
+    el("brokerType").addEventListener("change", updateBrokerPanels);
+  }
 
-        startScanner: startScanner,
-        stopScanner: stopScanner,
+  if (el("scannerBroker")) {
+    el("scannerBroker").addEventListener("change", updateScannerBroker);
+  }
 
-        saveSettings: saveSettings,
-        connectMT5: connectMT5
-    };
+  loadSettings();
+  enforceDemoOnly();
+  updateMode();
+  updateBrokerPanels();
+  updateScannerBroker();
+  updateSelectedCount();
 
-    Object.keys(buttons).forEach(id => {
-        const button = el(id);
+  showSection("dashboard");
+  updateDashboard();
 
-        if (button) {
-            button.addEventListener("click", buttons[id]);
-        }
-    });
-
-    // Select controls
-
-    if (el("tradingStyle")) {
-        el("tradingStyle").addEventListener("change", updateMode);
-    }
-
-    if (el("brokerType")) {
-        el("brokerType").addEventListener("change", updateBrokerPanels);
-    }
-
-    if (el("scannerBroker")) {
-        el("scannerBroker").addEventListener("change", updateScannerBroker);
-    }
-
-    // Load settings and initialize the interface
-
-    loadSettings();
-    enforceDemoOnly();
-    updateMode();
-    updateBrokerPanels();
-    updateScannerBroker();
-    updateSelectedCount();
-
-    showSection("dashboard");
-    updateDashboard();
-
-    checkCloudWorker();
-
-    console.log("SMC Sniper Pro APA initialized.");
+  console.log(
+    "SMC Sniper Pro APA initialized. Public market data only; live trading locked."
+  );
 }
-
-/* ================= START ================= */
 
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeApp);
+  document.addEventListener("DOMContentLoaded", initializeApp);
 } else {
-    initializeApp();
+  initializeApp();
 }
+
+  
 
 

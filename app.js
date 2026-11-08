@@ -309,21 +309,25 @@ function disconnectDeriv() {
 /* -------------------- DERIV MESSAGE HANDLER -------------------- */
 
 function handleDerivMessage(data) {
+    console.log("DERIV RESPONSE:", data);
+
     if (data.error) {
-        console.error("Deriv API error:", data.error);
-
         setStatus(
-            "derivStatus",
-            "Deriv error: " + (
-                data.error.message || "Unknown API error"
-            )
+            "derivConnectionStatus",
+            "Deriv error: " + data.error.message
         );
-
         return;
     }
 
-    if (data.msg_type === "active_symbols" && Array.isArray(data.active_symbols)) {
-        loadMarkets(data.active_symbols);
+    if (data.msg_type === "active_symbols") {
+        if (Array.isArray(data.active_symbols)) {
+            loadMarkets(data.active_symbols);
+        } else {
+            setStatus(
+                "derivConnectionStatus",
+                "Deriv replied, but the market list format was unexpected."
+            );
+        }
         return;
     }
 
@@ -331,6 +335,11 @@ function handleDerivMessage(data) {
         updateLivePrice(data.tick, data.subscription);
         return;
     }
+
+    setStatus(
+        "derivConnectionStatus",
+        "Deriv replied: " + (data.msg_type || "unknown response")
+    );
 }
 
 /* -------------------- MARKET LOADING -------------------- */

@@ -391,7 +391,7 @@ function getMarketCategory(market) {
 }
 
 function renderMarkets() {
-    const container = el("marketList");
+    const container = el("pairList");
 
     if (!container) return;
 

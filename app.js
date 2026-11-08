@@ -818,4 +818,56 @@ function initializeApp() {
 
     const buttonEvents = {
         connectDeriv: connectDeriv,
-        disconnectDeriv: 
+        disconnectDeriv: disconnectDeriv,
+        selectAllPairs: selectAllPairs,
+        clearPairs: clearPairs,
+        startScanner: startScanner,
+        stopScanner: stopScanner,
+        scannerStartButton: startScanner,
+        scannerStopButton: stopScanner,
+        saveSettings: saveSettings,
+        saveSettingsSecondary: saveSettings,
+        connectMT5: connectMT5
+    };
+
+    Object.keys(buttonEvents).forEach(id => {
+        const button = el(id);
+
+        if (button) {
+            button.addEventListener("click", buttonEvents[id]);
+        }
+    });
+
+    if (el("tradingStyle")) {
+        el("tradingStyle").addEventListener("change", updateMode);
+    }
+
+    if (el("brokerType")) {
+        el("brokerType").addEventListener("change", updateBrokerPanels);
+    }
+
+    if (el("scannerBroker")) {
+        el("scannerBroker").addEventListener("change", updateScannerBroker);
+    }
+
+    loadSettings();
+    enforceDemoOnly();
+    updateMode();
+    updateBrokerPanels();
+    updateScannerBroker();
+
+    showSection("dashboard");
+    updateDashboard();
+
+    checkCloudWorker();
+
+    console.log("SMC Sniper Pro APA initialized successfully.");
+}
+
+/* -------------------- START APP -------------------- */
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeApp);
+} else {
+    initializeApp();
+}

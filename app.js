@@ -423,9 +423,42 @@ function handleDerivMessage(data) {
 /* ================= MARKET LOADING ================= */
 
 function loadMarkets(markets) {
-    tradingState.availableSymbols = markets.filter(market => {
-        return market && market.symbol;
-    });
+    tradingState.availableSymbols = markets
+        .filter(market => market)
+        .map(market => {
+            return {
+                ...market,
+
+                // Support Deriv's new and old API field names.
+                symbol:
+                    market.underlying_symbol ||
+                    market.symbol ||
+                    "",
+
+                display_name:
+                    market.underlying_symbol_name ||
+                    market.display_name ||
+                    market.underlying_symbol ||
+                    market.symbol ||
+                    "Unknown market",
+
+                symbol_type:
+                    market.underlying_symbol_type ||
+                    market.symbol_type ||
+                    "",
+
+                market_display_name:
+                    market.market_display_name ||
+                    market.market ||
+                    "",
+
+                submarket_display_name:
+                    market.submarket_display_name ||
+                    market.submarket ||
+                    ""
+            };
+        })
+        .filter(market => market.symbol);
 
     renderMarkets();
     updateDashboard();
@@ -433,10 +466,18 @@ function loadMarkets(markets) {
     if (tradingState.availableSymbols.length === 0) {
         setStatus(
             "derivConnectionStatus",
-            "Deriv responded, but returned zero active markets."
+            "Deriv replied, but no usable market symbols were found."
         );
         return;
     }
+
+    setStatus(
+        "derivConnectionStatus",
+        "Connected. " +
+        tradingState.availableSymbols.length +
+        " markets loaded successfully."
+    );
+}
 
     setStatus(
         "derivConnectionStatus",

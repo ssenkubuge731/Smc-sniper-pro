@@ -1025,14 +1025,20 @@ function initializeApp() {
 
   $("tradingStyle")?.addEventListener("change", updateMode);
 
-  $("strategySelect")?.addEventListener("change", updateStrategy);
+  $("strategySelect")?.addEventListener(
+  "change",
+  event => updateStrategy(event.target.value)
+);
 
-  $("scannerStrategy")?.addEventListener("change", updateStrategy);
+$("scannerStrategy")?.addEventListener(
+  "change",
+  event => updateStrategy(event.target.value)
+);
 
-  $("strategySettings")?.addEventListener(
-    "change",
-    updateStrategySettings
-  );
+$("strategySettings")?.addEventListener(
+  "change",
+  event => updateStrategy(event.target.value)
+);
 
   $("brokerType")?.addEventListener(
     "change",

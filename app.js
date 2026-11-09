@@ -644,7 +644,7 @@ function handleHistory(data) {
 
   tradingState.candles[key] = {
     requested: true,
-    data: data.history?.candles || []
+    data: data.candles || data.history?.candles || []
   };
 
   analyseCandles(symbol, timeframe);

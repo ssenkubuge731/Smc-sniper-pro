@@ -158,7 +158,23 @@ function updateMode() {
    STRATEGY SELECTION
 ===================================================== */
 
-function updateStrategy() {
+function updateStrategy(value) {
+  tradingState.strategy = value ||
+    $("strategySelect")?.value || "apa";
+
+  ["strategySelect", "scannerStrategy", "strategySettings"]
+    .forEach(id => {
+      const field = $(id);
+      if (field) field.value = tradingState.strategy;
+    });
+
+  const name = tradingState.strategy === "apa"
+    ? "APA — Advanced Price Action"
+    : "Trend & Market Structure";
+
+  setText("strategyInfo", "Selected strategy: " + name);
+  updateStrategySettings();
+}
   const dashboardStrategy = $("strategySelect");
   const scannerStrategy = $("scannerStrategy");
   const settingsStrategy = $("strategySettings");

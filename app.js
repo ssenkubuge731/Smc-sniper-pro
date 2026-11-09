@@ -165,7 +165,9 @@ function updateStrategy(value) {
   ["strategySelect", "scannerStrategy", "strategySettings"]
     .forEach(id => {
       const field = $(id);
-      if (field) field.value = tradingState.strategy;
+      if (field) {
+        field.value = tradingState.strategy;
+      }
     });
 
   const name = tradingState.strategy === "apa"
@@ -173,8 +175,10 @@ function updateStrategy(value) {
     : "Trend & Market Structure";
 
   setText("strategyInfo", "Selected strategy: " + name);
+
   updateStrategySettings();
 }
+  
   const dashboardStrategy = $("strategySelect");
   const scannerStrategy = $("scannerStrategy");
   const settingsStrategy = $("strategySettings");

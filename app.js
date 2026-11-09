@@ -818,8 +818,8 @@ function startScanner() {
     tradingState.strategy = scannerStrategy.value;
   }
 
-  updateMode();
-  updateStrategy();
+    updateMode();
+  updateStrategy(tradingState.strategy);
 
   setText("scannerStatus", "Scanner: Running");
   setText("systemStatus", "Scanner running");

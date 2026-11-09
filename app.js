@@ -10,7 +10,8 @@
 ===================================================== */
 
 const DERIV_PUBLIC_WS =
-  "wss://api.derivws.com/trading/v1/options/ws/public";
+  "wss://ws.derivws.com/websockets/v3";
+  
 
 const tradingState = {
   mode: "scalping",

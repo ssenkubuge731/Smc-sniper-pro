@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,46 +27,42 @@
 
 <main>
 
-<!-- DASHBOARD -->
 <section id="dashboard" class="page active">
   <h2>Trading Dashboard</h2>
 
   <div class="status-grid">
-    <div class="panel">
-      <small>System status</small>
-      <h3 id="systemStatus">Not connected</h3>
-    </div>
-    <div class="panel">
-      <small>Account mode</small>
-      <h3 class="green">DEMO ONLY</h3>
-    </div>
-    <div class="panel">
-      <small>Selected pairs</small>
-      <h3 id="pairCount">0</h3>
-    </div>
-    <div class="panel">
-      <small>Open trades</small>
-      <h3 id="openTrades">0</h3>
-    </div>
+    <div class="panel"><small>System status</small><h3 id="systemStatus">Not connected</h3></div>
+    <div class="panel"><small>Account mode</small><h3 class="green">DEMO ONLY</h3></div>
+    <div class="panel"><small>Selected pairs</small><h3 id="pairCount">0</h3></div>
+    <div class="panel"><small>Open trades</small><h3 id="openTrades">0</h3></div>
   </div>
 
   <div class="panel">
     <h3>Trading engine</h3>
-    <p id="cloudStatus">Checking cloud connection...</p>
+    <p id="cloudStatus">Cloud engine status: Not verified</p>
     <p id="brokerStatus">Broker: Not connected</p>
     <p id="scannerStatus">Scanner: Stopped</p>
   </div>
 
   <div class="panel">
-    <h3>Trading style</h3>
+    <h3>Trading configuration</h3>
+    <label for="tradingStyle">Trading style</label>
     <select id="tradingStyle">
       <option value="scalping">Scalping</option>
-      <option value="intraday">Intraday trading</option>
-      <option value="swing">Swing trading</option>
+      <option value="intraday">Intraday / Day Trading</option>
+      <option value="swing">Swing Trading</option>
     </select>
 
     <label for="timeframe">Analysis timeframe</label>
     <select id="timeframe"></select>
+    <p id="timeframeInfo" class="muted">Scalping automatically analyses M1, M5 and M15.</p>
+
+    <label for="strategySelect">Select trading strategy</label>
+    <select id="strategySelect">
+      <option value="apa">APA — Advanced Price Action</option>
+      <option value="smc">Trend & Market Structure</option>
+    </select>
+    <p id="strategyInfo" class="muted">Select the strategy to use for your selected markets.</p>
   </div>
 
   <div class="panel">
@@ -78,12 +72,11 @@
   </div>
 </section>
 
-<!-- SCANNER -->
 <section id="scanner" class="page">
   <h2>Market Scanner</h2>
 
   <div class="panel">
-    <h3>Select broker</h3>
+    <h3>Broker selection</h3>
     <select id="scannerBroker">
       <option value="deriv">Deriv</option>
       <option value="mt5">MT5 broker</option>
@@ -91,88 +84,86 @@
   </div>
 
   <div class="panel">
-    <h3>Select trading pairs</h3>
-    <p>Select only the instruments you want the scanner to monitor.</p>
-
+    <h3>Market selection</h3>
+    <p>Select the instruments you want the scanner to monitor.</p>
     <div class="pair-actions">
-      <button id="selectAllPairs">Select all available</button>
-      <button id="clearPairs">Clear selection</button>
+      <button id="selectAllPairs" class="secondary">Select all available</button>
+      <button id="clearPairs" class="secondary">Clear selection</button>
     </div>
-
-    <div id="pairList" class="pair-list"></div>
-<div class="scanner-controls">
-  <button id="startScanner" class="primary">Start Scanner</button>
-  <button id="stopScanner" class="danger">Stop Scanner</button>
-</div>
+    <div id="pairList" class="pair-list">No markets loaded yet.</div>
     <p id="selectedPairCount">0 pairs selected</p>
+    <div class="scanner-controls">
+      <button id="startScanner" class="primary">Start Scanner</button>
+      <button id="stopScanner" class="danger">Stop Scanner</button>
+    </div>
   </div>
 
   <div class="panel">
-    <h3>APA entry style</h3>
+    <h3>Selected strategy</h3>
+    <select id="scannerStrategy">
+      <option value="apa">APA — Advanced Price Action</option>
+      <option value="smc">Trend & Market Structure</option>
+    </select>
+    <label for="apaEntryStyle">APA entry style</label>
     <select id="apaEntryStyle">
       <option value="confirmed">Confirmed APA entry</option>
       <option value="early">Early APA entry</option>
     </select>
-    <p>Confirmed entry waits for CHoCH/BOS confirmation.
-       Early entry allows reaction-zone entries with stricter risk controls.</p>
+    <p class="muted">APA and Trend & Market Structure are separate strategies. Only the selected strategy should generate signals.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Timeframe analysis</h3>
+    <p id="activeTimeframes">Waiting for scanner configuration.</p>
+    <div id="timeframeResults">No timeframe analysis available.</div>
   </div>
 
   <div class="panel">
     <h3>Market analysis</h3>
-    <div class="analysis-row">
-      <span>Market trend</span>
-      <strong id="marketTrend">Waiting for data</strong>
-    </div>
-    <div class="analysis-row">
-      <span>APA structure</span>
-      <strong id="apaStructure">Not analysed</strong>
-    </div>
-    <div class="analysis-row">
-      <span>Liquidity</span>
-      <strong id="liquidityStatus">Not analysed</strong>
-    </div>
-    <div class="analysis-row">
-      <span>Entry opportunity</span>
-      <strong id="entrySignal">No signal</strong>
-    </div>
+    <div class="analysis-row"><span>Market trend</span><strong id="marketTrend">Waiting for data</strong></div>
+    <div class="analysis-row"><span>Market structure</span><strong id="apaStructure">Not analysed</strong></div>
+    <div class="analysis-row"><span>Liquidity</span><strong id="liquidityStatus">Not analysed</strong></div>
+    <div class="analysis-row"><span>Entry opportunity</span><strong id="entrySignal">No verified signal</strong></div>
+  </div>
+
+  <div class="panel">
+    <h3>Strategy confirmations</h3>
+    <div id="strategyChecklist">Waiting for market analysis.</div>
+  </div>
+
+  <div class="panel">
+    <h3>Trade setup levels</h3>
+    <div class="analysis-row"><span>Entry price</span><strong id="signalEntry">--</strong></div>
+    <div class="analysis-row"><span>Stop loss</span><strong id="signalSL">--</strong></div>
+    <div class="analysis-row"><span>Take profit</span><strong id="signalTP">--</strong></div>
+    <div class="analysis-row"><span>Invalidation</span><strong id="signalInvalidation">--</strong></div>
+    <p class="warning">Scanner signals are analytical information, not guaranteed trade entries.</p>
   </div>
 
   <div class="panel">
     <h3>Scanner results</h3>
-    <div id="scannerResults">
-      Scanner has not started.
-    </div>
+    <div id="scannerResults">Scanner has not started.</div>
   </div>
 </section>
 
-<!-- TRADING -->
 <section id="trading" class="page">
   <h2>Automated Trading</h2>
 
   <div class="panel">
-    <h3>Trading mode</h3>
+    <h3>Execution mode</h3>
     <select id="executionMode">
-      <option value="demo">Demo trading</option>
+      <option value="demo">Demo mode</option>
       <option value="live" disabled>Live trading — Locked</option>
     </select>
-    <p class="warning">Live execution is disabled in this version.</p>
+    <p class="warning">Order execution is not enabled in this scanner version. Live trading remains locked.</p>
   </div>
 
   <div class="panel">
-    <h3>Scalping behaviour</h3>
-    <label class="check">
-      <input type="checkbox" id="continuousScanning" checked>
-      Continuous scanning
-    </label>
-    <label class="check">
-      <input type="checkbox" id="multipleEntries" checked>
-      Allow additional valid entries
-    </label>
-    <label class="check">
-      <input type="checkbox" id="manageTrades" checked>
-      Automatic trade management
-    </label>
-    <p>Additional entries must have independent valid confirmations and pass account-wide risk checks.</p>
+    <h3>Trading behaviour settings</h3>
+    <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
+    <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
+    <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
+    <p class="muted">These are configuration preferences only. They do not activate order execution in this version.</p>
   </div>
 
   <div class="panel">
@@ -186,12 +177,11 @@
   </div>
 </section>
 
-<!-- BROKERS -->
 <section id="brokers" class="page">
   <h2>Broker Connections</h2>
 
   <div class="panel">
-    <h3>Choose connection type</h3>
+    <h3>Connection type</h3>
     <select id="brokerType">
       <option value="deriv">Deriv API</option>
       <option value="mt5">MT5 broker bridge</option>
@@ -199,12 +189,10 @@
   </div>
 
   <div class="panel" id="derivPanel">
-    <h3>Deriv connection</h3>
+    <h3>Deriv market connection</h3>
     <label for="derivAppId">Deriv App ID</label>
-    <input id="derivAppId" type="text" placeholder="Enter App ID">
-
-    <p>API tokens and account credentials must never be stored in this public website.</p>
-
+    <input id="derivAppId" type="text" placeholder="Enter your Deriv App ID">
+    <p class="muted">Public market data connection. Do not enter your API token here.</p>
     <button id="connectDeriv" class="primary">Connect Deriv</button>
     <button id="disconnectDeriv" class="danger">Disconnect</button>
     <p id="derivConnectionStatus">Not connected</p>
@@ -212,7 +200,6 @@
 
   <div class="panel hidden" id="mt5Panel">
     <h3>MT5 broker connection</h3>
-
     <label for="mt5Broker">Select broker</label>
     <select id="mt5Broker">
       <option value="">Choose broker</option>
@@ -222,67 +209,75 @@
       <option value="xm">XM</option>
       <option value="other">Other MT5 broker</option>
     </select>
-
     <label for="mt5Server">Broker server</label>
-    <input id="mt5Server" placeholder="Enter MT5 server name">
-
-    <p>MT5 accounts connect through a secure execution bridge running alongside an MT5 terminal. Broker availability must be verified.</p>
-
+    <input id="mt5Server" type="text" placeholder="Enter MT5 server name">
+    <p class="muted">MT5 requires a separate secure execution bridge and an MT5 terminal.</p>
     <button id="connectMT5" class="primary">Connect MT5 Bridge</button>
     <p id="mt5ConnectionStatus">Not connected</p>
   </div>
 
   <div class="panel">
     <h3>Connection security</h3>
-    <p>Never paste broker passwords, API tokens or secret keys into GitHub files or public website code.</p>
+    <p>Never store broker passwords, API tokens or secret keys in public website code or GitHub.</p>
   </div>
 </section>
 
-<!-- SETTINGS -->
 <section id="settings" class="page">
   <h2>Strategy & Risk Settings</h2>
 
   <div class="panel">
-    <h3>APA strategy</h3>
-    <label class="check"><input type="checkbox" id="useAPA" checked> Enable APA analysis</label>
-    <label class="check"><input type="checkbox" id="useSMC" checked> Enable SMC confirmations</label>
-    <label class="check"><input type="checkbox" id="useEMA" checked> EMA 9 / 21 filter</label>
-    <label class="check"><input type="checkbox" id="useRSI" checked> RSI confirmation</label>
-    <label class="check"><input type="checkbox" id="useATR" checked> ATR stop-loss calculation</label>
-  </div>
+    <h3>Strategy selection</h3>
+    <label for="strategySettings">Active strategy</label>
+    <select id="strategySettings">
+      <option value="apa">APA — Advanced Price Action</option>
+      <option value="smc">Trend & Market Structure</option>
+    </select>
 
-  <div class="panel">
-    <h3>SMC analysis</h3>
-    <label class="check"><input type="checkbox" id="useBOS" checked> Break of Structure (BOS)</label>
-    <label class="check"><input type="checkbox" id="useMSS" checked> Market Structure Shift (MSS)</label>
-    <label class="check"><input type="checkbox" id="useCHoCH" checked> Change of Character (CHoCH)</label>
-    <label class="check"><input type="checkbox" id="useLiquidity" checked> Liquidity sweeps</label>
-    <label class="check"><input type="checkbox" id="useOB" checked> Order Blocks</label>
-    <label class="check"><input type="checkbox" id="useFVG" checked> Fair Value Gaps</label>
-    <label class="check"><input type="checkbox" id="useBreaker" checked> Breaker Blocks</label>
-    <label class="check"><input type="checkbox" id="useSupplyDemand" checked> Supply and Demand</label>
+    <div id="apaSettings">
+      <h4>APA settings</h4>
+      <label class="check"><input type="checkbox" id="useAPA" checked> Enable APA analysis</label>
+      <label class="check"><input type="checkbox" id="useATR" checked> Allow ATR-based risk calculations</label>
+      <label class="check"><input type="checkbox" id="useAPAConfirmation" checked> Require confirmed APA setup</label>
+    </div>
+
+    <div id="smcSettings">
+      <h4>Trend & Market Structure settings</h4>
+      <label class="check"><input type="checkbox" id="useTrend" checked> Trend and market structure</label>
+      <label class="check"><input type="checkbox" id="useLiquidity" checked> Liquidity sweeps</label>
+      <label class="check"><input type="checkbox" id="useBOS" checked> Break of Structure (BOS)</label>
+      <label class="check"><input type="checkbox" id="useMSS" checked> Market Structure Shift (MSS)</label>
+      <label class="check"><input type="checkbox" id="useCHoCH" checked> Change of Character (CHoCH)</label>
+      <label class="check"><input type="checkbox" id="useDisplacement" checked> Strong displacement</label>
+      <label class="check"><input type="checkbox" id="useOB" checked> Order Blocks</label>
+      <label class="check"><input type="checkbox" id="useFVG" checked> Fair Value Gaps (FVG)</label>
+      <label class="check"><input type="checkbox" id="useIFVG" checked> Inverse Fair Value Gaps (IFVG)</label>
+      <label class="check"><input type="checkbox" id="useBreaker" checked> Breaker Blocks</label>
+      <label class="check"><input type="checkbox" id="useSupplyDemand" checked> Supply and Demand</label>
+    </div>
   </div>
 
   <div class="panel">
     <h3>Manual risk management</h3>
-
     <label for="riskPercent">Risk per trade (%)</label>
     <input id="riskPercent" type="number" min="0.1" max="1" step="0.1" value="0.5">
 
-    <label for="lotSize">Fixed lot size (optional)</label>
+    <label for="lotSize">Fixed lot size / stake (optional)</label>
     <input id="lotSize" type="number" min="0.01" step="0.01" value="0.01">
 
-    <label for="stopLoss">Stop-loss (points)</label>
+    <label for="stopLoss">Stop loss (points)</label>
     <input id="stopLoss" type="number" min="1" value="300">
 
-    <label for="takeProfit">Take-profit (points)</label>
+    <label for="takeProfit">Take profit (points)</label>
     <input id="takeProfit" type="number" min="1" value="600">
 
     <label for="maxTrades">Maximum open trades</label>
-    <input id="maxTrades" type="number" min="1" max="20" value="1">
+    <input id="maxTrades" type="number" min="1" max="20" value="2">
 
     <label for="dailyLossLimit">Daily loss limit (%)</label>
     <input id="dailyLossLimit" type="number" min="0.1" max="10" step="0.1" value="2">
+
+    <label for="maxConsecutiveLosses">Pause after consecutive losses</label>
+    <input id="maxConsecutiveLosses" type="number" min="1" max="20" value="3">
 
     <button id="saveSettings" class="primary">Save Settings</button>
     <p id="settingsStatus">Settings not saved.</p>
@@ -290,8 +285,8 @@
 
   <div class="panel">
     <h3>Live trading protection</h3>
-    <p class="warning">Live trading is locked. Demo mode only.</p>
-    <button id="liveLock" class="danger" disabled>Live Trading Locked</button>
+    <p class="warning">Live trading is locked. Demo testing only.</p>
+    <button id="liveLock" class="danger" disabled>LIVE TRADING LOCKED</button>
   </div>
 </section>
 
@@ -299,7 +294,7 @@
 
 <footer>
   <p>SMC Sniper Pro APA</p>
-  <small>Demo testing system. Trading involves financial risk.</small>
+  <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
 <script src="app.js"></script>

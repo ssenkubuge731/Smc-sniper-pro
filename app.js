@@ -577,13 +577,25 @@ function addLivePrice(symbol, price) {
   );
 
   const name = market ? market.name : symbol;
-
   const box = $("scannerResults");
+
   if (!box) return;
 
-  let row = document.querySelector(
-    '[data-market-symbol="' + CSS.escape(symbol) + '"]'
-  );
+  let row = Array.from(
+    box.querySelectorAll("[data-market-symbol]")
+  ).find(item => item.dataset.marketSymbol === symbol);
+
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "result-item";
+    row.dataset.marketSymbol = symbol;
+    box.prepend(row);
+  }
+
+  row.textContent =
+    name + " | Live price: " + price +
+    " | Waiting for candle analysis";
+}
 
   if (!row) {
     row = document.createElement("div");

@@ -1,4 +1,3 @@
-
 "use strict";
 
 /* =====================================================
@@ -11,7 +10,6 @@
 
 const DERIV_PUBLIC_WS =
   "wss://ws.derivws.com/websockets/v3";
-  
 
 const tradingState = {
   mode: "scalping",
@@ -49,6 +47,10 @@ const GRANULARITY = {
 
 const $ = id => document.getElementById(id);
 
+/* =====================================================
+   GENERAL HELPERS
+===================================================== */
+
 function setText(id, value) {
   const node = $(id);
   if (node) node.textContent = value;
@@ -61,6 +63,7 @@ function addResult(message) {
   const item = document.createElement("div");
   item.className = "result-item";
   item.textContent = message;
+
   box.prepend(item);
 
   while (box.children.length > 60) {
@@ -81,16 +84,24 @@ function nextId() {
 function sendRequest(payload) {
   const socket = tradingState.derivSocket;
 
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+  if (
+    !socket ||
+    socket.readyState !== WebSocket.OPEN
+  ) {
     return false;
   }
 
-  socket.send(JSON.stringify({
-    ...payload,
-    req_id: nextId()
-  }));
+  try {
+    socket.send(JSON.stringify({
+      ...payload,
+      req_id: nextId()
+    }));
 
-  return true;
+    return true;
+  } catch (error) {
+    addResult("Request failed: " + error.message);
+    return false;
+  }
 }
 
 /* =====================================================
@@ -98,8 +109,17 @@ function sendRequest(payload) {
 ===================================================== */
 
 function showSection(pageId) {
+  const target = $(pageId);
+
+  if (!target || !target.classList.contains("page")) {
+    return;
+  }
+
   document.querySelectorAll(".page").forEach(page => {
-    page.classList.toggle("active", page.id === pageId);
+    page.classList.toggle(
+      "active",
+      page.id === pageId
+    );
   });
 
   document.querySelectorAll(".nav-btn").forEach(button => {
@@ -115,42 +135,49 @@ function showSection(pageId) {
 ===================================================== */
 
 function getSelectedTimeframes() {
-  return TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
+  return TIMEFRAMES[tradingState.mode] ||
+    TIMEFRAMES.scalping;
 }
 
 function updateMode() {
   const style = $("tradingStyle");
   const timeframe = $("timeframe");
 
-  if (style) {
+  if (style && TIMEFRAMES[style.value]) {
     tradingState.mode = style.value;
   }
 
   const frames = getSelectedTimeframes();
 
   if (timeframe) {
+    const previousValue = timeframe.value;
+
     timeframe.innerHTML = "";
 
     frames.forEach(frame => {
       const option = document.createElement("option");
+
       option.value = frame;
       option.textContent = frame.toUpperCase();
+
       timeframe.appendChild(option);
     });
 
-    timeframe.value = frames[0];
+    timeframe.value = frames.includes(previousValue)
+      ? previousValue
+      : frames[0];
   }
 
   setText(
     "timeframeInfo",
     "Automatic analysis: " +
-    frames.map(x => x.toUpperCase()).join(", ")
+    frames.map(frame => frame.toUpperCase()).join(", ")
   );
 
   setText(
     "activeTimeframes",
     "Selected timeframes: " +
-    frames.map(x => x.toUpperCase()).join(", ")
+    frames.map(frame => frame.toUpperCase()).join(", ")
   );
 }
 
@@ -159,63 +186,40 @@ function updateMode() {
 ===================================================== */
 
 function updateStrategy(value) {
-  tradingState.strategy = value ||
-    $("strategySelect")?.value || "apa";
+  const requested = value ||
+    $("strategySelect")?.value ||
+    tradingState.strategy;
 
-  ["strategySelect", "scannerStrategy", "strategySettings"]
-    .forEach(id => {
-      const field = $(id);
+  tradingState.strategy =
+    requested === "smc" ? "smc" : "apa";
 
-      if (field) {
-        field.value = tradingState.strategy;
-      }
-    });
+  [
+    "strategySelect",
+    "scannerStrategy",
+    "strategySettings"
+  ].forEach(id => {
+    const field = $(id);
 
-  const name = tradingState.strategy === "apa"
-    ? "APA — Advanced Price Action"
-    : "Trend & Market Structure";
-
-  setText("strategyInfo", "Selected strategy: " + name);
-
-  updateStrategySettings();
-}
-
-  updateStrategySettings();
-}
-  
-  const dashboardStrategy = $("strategySelect");
-  const scannerStrategy = $("scannerStrategy");
-  const settingsStrategy = $("strategySettings");
-
-  if (dashboardStrategy) {
-    tradingState.strategy = dashboardStrategy.value;
-  } else if (scannerStrategy) {
-    tradingState.strategy = scannerStrategy.value;
-  }
-
-  if (scannerStrategy) {
-    scannerStrategy.value = tradingState.strategy;
-  }
-
-  if (settingsStrategy) {
-    settingsStrategy.value = tradingState.strategy;
-  }
-
-  if (dashboardStrategy) {
-    dashboardStrategy.value = tradingState.strategy;
-  }
+    if (field) {
+      field.value = tradingState.strategy;
+    }
+  });
 
   const name = tradingState.strategy === "apa"
     ? "APA — Advanced Price Action"
     : "Trend & Market Structure";
 
-  setText("strategyInfo", "Selected strategy: " + name);
+  setText(
+    "strategyInfo",
+    "Selected strategy: " + name
+  );
 
   updateStrategySettings();
 }
 
 function updateStrategySettings() {
-  const strategy = $("strategySettings")?.value ||
+  const strategy =
+    $("strategySettings")?.value ||
     tradingState.strategy;
 
   const apa = $("apaSettings");
@@ -240,8 +244,13 @@ function updateBrokerPanels() {
   const deriv = $("derivPanel");
   const mt5 = $("mt5Panel");
 
-  if (deriv) deriv.classList.toggle("hidden", type !== "deriv");
-  if (mt5) mt5.classList.toggle("hidden", type !== "mt5");
+  if (deriv) {
+    deriv.classList.toggle("hidden", type !== "deriv");
+  }
+
+  if (mt5) {
+    mt5.classList.toggle("hidden", type !== "mt5");
+  }
 
   tradingState.broker = type;
 
@@ -260,9 +269,12 @@ function updateBrokerPanels() {
 function connectDeriv() {
   if (
     tradingState.derivSocket &&
-    tradingState.derivSocket.readyState === WebSocket.OPEN
+    (
+      tradingState.derivSocket.readyState === WebSocket.OPEN ||
+      tradingState.derivSocket.readyState === WebSocket.CONNECTING
+    )
   ) {
-    setConnectionStatus("Already connected.");
+    setConnectionStatus("Connection already active.");
     return;
   }
 
@@ -286,19 +298,28 @@ function connectDeriv() {
 
   try {
     socket = new WebSocket(
-      DERIV_PUBLIC_WS + "?app_id=" + encodeURIComponent(appId)
+      DERIV_PUBLIC_WS +
+      "?app_id=" +
+      encodeURIComponent(appId)
     );
   } catch (error) {
-    setConnectionStatus("Connection error: " + error.message);
+    setConnectionStatus(
+      "Connection error: " + error.message
+    );
     return;
   }
 
   tradingState.derivSocket = socket;
 
   socket.onopen = () => {
+    if (tradingState.derivSocket !== socket) return;
+
     tradingState.derivConnected = true;
 
-    setConnectionStatus("Connected. Loading Deriv markets...");
+    setConnectionStatus(
+      "Connected. Loading Deriv markets..."
+    );
+
     setText("systemStatus", "Connected");
     setText("cloudStatus", "Cloud engine: Not verified");
 
@@ -321,13 +342,18 @@ function connectDeriv() {
   };
 
   socket.onerror = () => {
-    setConnectionStatus("Deriv connection error.");
+    if (tradingState.derivSocket === socket) {
+      setConnectionStatus("Deriv connection error.");
+    }
   };
 
   socket.onclose = () => {
+    if (tradingState.derivSocket !== socket) return;
+
     tradingState.derivConnected = false;
     tradingState.derivSocket = null;
     tradingState.subscriptions = {};
+    tradingState.candles = {};
 
     setConnectionStatus("Disconnected.");
     setText("systemStatus", "Disconnected");
@@ -340,33 +366,40 @@ function connectDeriv() {
 
 function disconnectDeriv() {
   clearTimeout(tradingState.reconnectTimer);
+
   stopScanner();
 
-  if (tradingState.derivSocket) {
-    const socket = tradingState.derivSocket;
-    tradingState.derivSocket = null;
+  const socket = tradingState.derivSocket;
+
+  tradingState.derivSocket = null;
+  tradingState.derivConnected = false;
+
+  if (socket) {
     socket.close();
   }
 
-  tradingState.derivConnected = false;
   tradingState.availableSymbols = [];
   tradingState.selectedSymbols = [];
   tradingState.lastPrices = {};
   tradingState.subscriptions = {};
+  tradingState.candles = {};
 
   renderMarkets();
+
   setConnectionStatus("Disconnected.");
   setText("systemStatus", "Disconnected");
   setText("pairCount", "0");
 }
 
 /* =====================================================
-   MARKET DATA
+   DERIV MESSAGE HANDLING
 ===================================================== */
 
 function handleDerivMessage(data) {
   if (data.error) {
-    addResult("Deriv error: " + data.error.message);
+    addResult(
+      "Deriv error: " + data.error.message
+    );
     return;
   }
 
@@ -380,7 +413,10 @@ function handleDerivMessage(data) {
     return;
   }
 
-  if (data.msg_type === "history" && data.history) {
+  if (
+    data.msg_type === "history" &&
+    (data.candles || data.history)
+  ) {
     handleHistory(data);
     return;
   }
@@ -390,9 +426,15 @@ function handleDerivMessage(data) {
   }
 }
 
-function marketCategory(symbol) {
+/* =====================================================
+   MARKET CATEGORIES
+===================================================== */
+
+function marketCategory(item) {
   const name = (
-    symbol.display_name + " " + symbol.symbol
+    (item.display_name || "") +
+    " " +
+    (item.symbol || "")
   ).toLowerCase();
 
   if (
@@ -416,7 +458,7 @@ function marketCategory(symbol) {
   }
 
   if (
-    symbol.market === "forex" ||
+    item.market === "forex" ||
     name.includes("forex")
   ) {
     return "Forex";
@@ -426,6 +468,8 @@ function marketCategory(symbol) {
 }
 
 function loadMarkets(symbols) {
+  if (!Array.isArray(symbols)) return;
+
   tradingState.availableSymbols = symbols
     .filter(item => item.symbol && item.display_name)
     .map(item => ({
@@ -434,11 +478,22 @@ function loadMarkets(symbols) {
       category: marketCategory(item)
     }));
 
+  const validSymbols = new Set(
+    tradingState.availableSymbols.map(item => item.symbol)
+  );
+
+  tradingState.selectedSymbols =
+    tradingState.selectedSymbols.filter(
+      symbol => validSymbols.has(symbol)
+    );
+
   renderMarkets();
 
   setText(
     "systemStatus",
-    "Connected — " + tradingState.availableSymbols.length + " markets"
+    "Connected — " +
+    tradingState.availableSymbols.length +
+    " markets"
   );
 
   setConnectionStatus(
@@ -452,6 +507,10 @@ function loadMarkets(symbols) {
     " Deriv markets loaded."
   );
 }
+
+/* =====================================================
+   MARKET DISPLAY
+===================================================== */
 
 function renderMarkets() {
   const box = $("pairList");
@@ -480,8 +539,10 @@ function renderMarkets() {
     if (!group.length) return;
 
     const heading = document.createElement("h4");
+
     heading.textContent = category;
     heading.style.gridColumn = "1 / -1";
+
     box.appendChild(heading);
 
     group.forEach(item => {
@@ -489,21 +550,24 @@ function renderMarkets() {
       label.className = "market-option";
 
       const checkbox = document.createElement("input");
+
       checkbox.type = "checkbox";
       checkbox.value = item.symbol;
-      checkbox.checked = tradingState.selectedSymbols.includes(
-        item.symbol
-      );
+
+      checkbox.checked =
+        tradingState.selectedSymbols.includes(item.symbol);
 
       checkbox.addEventListener("change", () => {
         if (checkbox.checked) {
-          if (!tradingState.selectedSymbols.includes(item.symbol)) {
+          if (
+            !tradingState.selectedSymbols.includes(item.symbol)
+          ) {
             tradingState.selectedSymbols.push(item.symbol);
           }
         } else {
           tradingState.selectedSymbols =
             tradingState.selectedSymbols.filter(
-              value => value !== item.symbol
+              symbol => symbol !== item.symbol
             );
         }
 
@@ -511,6 +575,7 @@ function renderMarkets() {
       });
 
       const name = document.createElement("span");
+
       name.textContent = item.name;
 
       label.append(checkbox, name);
@@ -524,7 +589,11 @@ function renderMarkets() {
 function updatePairCount() {
   const count = tradingState.selectedSymbols.length;
 
-  setText("selectedPairCount", count + " pairs selected");
+  setText(
+    "selectedPairCount",
+    count + " pairs selected"
+  );
+
   setText("pairCount", count);
 }
 
@@ -541,7 +610,7 @@ function clearPairs() {
 }
 
 /* =====================================================
-   LIVE TICKS
+   LIVE TICK DATA
 ===================================================== */
 
 function subscribeToTick(symbol) {
@@ -587,40 +656,35 @@ function addLivePrice(symbol, price) {
 
   let row = Array.from(
     box.querySelectorAll("[data-market-symbol]")
-  ).find(item => item.dataset.marketSymbol === symbol);
+  ).find(
+    item => item.dataset.marketSymbol === symbol
+  );
 
   if (!row) {
     row = document.createElement("div");
     row.className = "result-item";
     row.dataset.marketSymbol = symbol;
+
     box.prepend(row);
   }
 
   row.textContent =
-    name + " | Live price: " + price +
-    " | Waiting for candle analysis";
-}
-
-  if (!row) {
-    row = document.createElement("div");
-    row.className = "result-item";
-    row.dataset.marketSymbol = symbol;
-    box.prepend(row);
-  }
-
-  row.textContent =
-    name + " | Live price: " + price +
+    name +
+    " | Live price: " +
+    price +
     " | Waiting for candle analysis";
 }
 
 /* =====================================================
-   CANDLE HISTORY
+   CANDLE SUBSCRIPTIONS
 ===================================================== */
 
 function subscribeToCandles(symbol, timeframe) {
   const key = symbol + "_" + timeframe;
 
-  if (tradingState.candles[key]?.requested) return;
+  if (tradingState.candles[key]?.requested) {
+    return;
+  }
 
   const granularity = GRANULARITY[timeframe];
 
@@ -644,45 +708,80 @@ function subscribeToCandles(symbol, timeframe) {
   }
 }
 
-function handleHistory(data) {
-  if (!data.echo_req || !data.echo_req.ticks_history) return;
+/* =====================================================
+   CANDLE HISTORY
+===================================================== */
 
-  const symbol = data.echo_req.ticks_history;
-  const granularity = Number(data.echo_req.granularity);
-
-  const timeframe = Object.keys(GRANULARITY).find(
-    key => GRANULARITY[key] === granularity
+function findTimeframe(data) {
+  const granularity = Number(
+    data.echo_req?.granularity
   );
 
-  if (!timeframe) return;
+  return Object.keys(GRANULARITY).find(
+    timeframe =>
+      GRANULARITY[timeframe] === granularity
+  );
+}
+
+function handleHistory(data) {
+  const symbol = data.echo_req?.ticks_history;
+  const timeframe = findTimeframe(data);
+
+  if (!symbol || !timeframe) return;
 
   const key = symbol + "_" + timeframe;
 
+  const candles =
+    data.candles ||
+    data.history?.candles ||
+    [];
+
   tradingState.candles[key] = {
     requested: true,
-    data: data.candles || data.history?.candles || []
+    data: Array.isArray(candles) ? candles : []
   };
 
   analyseCandles(symbol, timeframe);
 }
 
 function handleCandles(data) {
-  if (!data.echo_req || !data.echo_req.ticks_history) return;
+  const symbol = data.echo_req?.ticks_history;
+  const timeframe = findTimeframe(data);
 
-  const symbol = data.echo_req.ticks_history;
-  const granularity = Number(data.echo_req.granularity);
-
-  const timeframe = Object.keys(GRANULARITY).find(
-    key => GRANULARITY[key] === granularity
-  );
-
-  if (!timeframe) return;
+  if (!symbol || !timeframe) return;
 
   const key = symbol + "_" + timeframe;
 
+  const incoming = Array.isArray(data.candles)
+    ? data.candles
+    : [];
+
+  const existing =
+    tradingState.candles[key]?.data || [];
+
+  const combined = new Map();
+
+  existing.forEach(candle => {
+    combined.set(
+      Number(candle.epoch),
+      candle
+    );
+  });
+
+  incoming.forEach(candle => {
+    combined.set(
+      Number(candle.epoch),
+      candle
+    );
+  });
+
+  const updated = Array.from(combined.values())
+    .sort((a, b) => Number(a.epoch) - Number(b.epoch))
+    .slice(-150);
+
   tradingState.candles[key] = {
     requested: true,
-    data: data.candles
+    data: updated
   };
 
   analyseCandles(symbol, timeframe);
@@ -694,7 +793,9 @@ function handleCandles(data) {
 
 function analyseCandles(symbol, timeframe) {
   const key = symbol + "_" + timeframe;
-  const candles = tradingState.candles[key]?.data || [];
+
+  const candles =
+    tradingState.candles[key]?.data || [];
 
   if (candles.length < 20) return;
 
@@ -703,11 +804,28 @@ function analyseCandles(symbol, timeframe) {
   const last = recent[recent.length - 1];
   const previous = recent[recent.length - 2];
 
-  const closes = recent.map(c => Number(c.close));
-  const highs = recent.map(c => Number(c.high));
-  const lows = recent.map(c => Number(c.low));
+  const closes = recent.map(
+    candle => Number(candle.close)
+  );
 
-  const average = closes.reduce((sum, value) => sum + value, 0) /
+  const highs = recent.map(
+    candle => Number(candle.high)
+  );
+
+  const lows = recent.map(
+    candle => Number(candle.low)
+  );
+
+  if (
+    closes.some(value => !Number.isFinite(value)) ||
+    highs.some(value => !Number.isFinite(value)) ||
+    lows.some(value => !Number.isFinite(value))
+  ) {
+    return;
+  }
+
+  const average =
+    closes.reduce((sum, value) => sum + value, 0) /
     closes.length;
 
   const current = Number(last.close);
@@ -722,8 +840,13 @@ function analyseCandles(symbol, timeframe) {
 
   let structure = "RANGE";
 
-  if (current > high) structure = "POSSIBLE BULLISH BREAK";
-  if (current < low) structure = "POSSIBLE BEARISH BREAK";
+  if (current > high) {
+    structure = "POSSIBLE BULLISH BREAK";
+  }
+
+  if (current < low) {
+    structure = "POSSIBLE BEARISH BREAK";
+  }
 
   const body = Math.abs(
     Number(last.close) - Number(last.open)
@@ -752,9 +875,14 @@ function analyseCandles(symbol, timeframe) {
   displayAnalysis(symbol, timeframe, result);
 }
 
+/* =====================================================
+   ANALYSIS DISPLAY
+===================================================== */
+
 function displayAnalysis(symbol, timeframe, result) {
   setText("marketTrend", result.trend);
   setText("apaStructure", result.structure);
+
   setText(
     "liquidityStatus",
     "Requires further confirmation"
@@ -781,11 +909,17 @@ function displayAnalysis(symbol, timeframe, result) {
 
   if (box) {
     const item = document.createElement("div");
+
     item.className = "result-item";
+
     item.textContent =
-      symbol + " " + timeframe.toUpperCase() +
-      " | Trend: " + result.trend +
-      " | Structure: " + result.structure;
+      symbol +
+      " " +
+      timeframe.toUpperCase() +
+      " | Trend: " +
+      result.trend +
+      " | Structure: " +
+      result.structure;
 
     box.prepend(item);
 
@@ -801,7 +935,9 @@ function displayAnalysis(symbol, timeframe, result) {
 
 function startScanner() {
   if (!tradingState.derivConnected) {
-    addResult("Connect Deriv before starting the scanner.");
+    addResult(
+      "Connect Deriv before starting the scanner."
+    );
     return;
   }
 
@@ -810,28 +946,40 @@ function startScanner() {
     return;
   }
 
-  tradingState.running = true;
-
   const dashboardStyle = $("tradingStyle");
-  if (dashboardStyle) {
+
+  if (
+    dashboardStyle &&
+    TIMEFRAMES[dashboardStyle.value]
+  ) {
     tradingState.mode = dashboardStyle.value;
   }
 
   const scannerStrategy = $("scannerStrategy");
+
   if (scannerStrategy) {
-    tradingState.strategy = scannerStrategy.value;
+    tradingState.strategy =
+      scannerStrategy.value === "smc" ? "smc" : "apa";
   }
 
-    updateMode();
+  updateMode();
   updateStrategy(tradingState.strategy);
+
+  tradingState.running = true;
+
+  const results = $("scannerResults");
+
+  if (results) {
+    results.innerHTML = "";
+  }
 
   setText("scannerStatus", "Scanner: Running");
   setText("systemStatus", "Scanner running");
-  setText("scannerResults", "");
 
   setText(
     "activeTimeframes",
-    "Scanning " + getSelectedTimeframes().join(", ")
+    "Scanning " +
+    getSelectedTimeframes().join(", ")
   );
 
   addResult(
@@ -905,8 +1053,11 @@ function saveSettings() {
       : field.value;
   }
 
-  settings.strategy = $("strategySettings")?.value || "apa";
-  settings.mode = $("tradingStyle")?.value || "scalping";
+  settings.strategy =
+    $("strategySettings")?.value || "apa";
+
+  settings.mode =
+    $("tradingStyle")?.value || "scalping";
 
   const risk = Number(settings.riskPercent);
   const lot = Number(settings.lotSize);
@@ -921,7 +1072,10 @@ function saveSettings() {
     risk <= 0 ||
     risk > 1
   ) {
-    setText("settingsStatus", "Risk must be above 0 and no more than 1%.");
+    setText(
+      "settingsStatus",
+      "Risk must be above 0 and no more than 1%."
+    );
     return;
   }
 
@@ -942,7 +1096,10 @@ function saveSettings() {
     maxLosses < 1 ||
     maxLosses > 20
   ) {
-    setText("settingsStatus", "Check your risk settings.");
+    setText(
+      "settingsStatus",
+      "Check your risk settings."
+    );
     return;
   }
 
@@ -961,7 +1118,10 @@ function saveSettings() {
 
     updateStrategySettings();
   } catch {
-    setText("settingsStatus", "Unable to save settings on this device.");
+    setText(
+      "settingsStatus",
+      "Unable to save settings on this device."
+    );
   }
 }
 
@@ -973,6 +1133,7 @@ function loadSettings() {
 
     Object.entries(saved).forEach(([id, value]) => {
       const field = $(id);
+
       if (!field) return;
 
       if (field.type === "checkbox") {
@@ -983,22 +1144,27 @@ function loadSettings() {
     });
 
     if (saved.strategy) {
-      tradingState.strategy = saved.strategy;
+      tradingState.strategy =
+        saved.strategy === "smc" ? "smc" : "apa";
 
       if ($("strategySelect")) {
-        $("strategySelect").value = saved.strategy;
+        $("strategySelect").value = tradingState.strategy;
       }
 
       if ($("scannerStrategy")) {
-        $("scannerStrategy").value = saved.strategy;
+        $("scannerStrategy").value = tradingState.strategy;
       }
 
       if ($("strategySettings")) {
-        $("strategySettings").value = saved.strategy;
+        $("strategySettings").value = tradingState.strategy;
       }
     }
 
-    if (saved.mode && $("tradingStyle")) {
+    if (
+      saved.mode &&
+      TIMEFRAMES[saved.mode] &&
+      $("tradingStyle")
+    ) {
       $("tradingStyle").value = saved.mode;
       tradingState.mode = saved.mode;
     }
@@ -1007,7 +1173,7 @@ function loadSettings() {
   }
 
   updateMode();
-  updateStrategy();
+  updateStrategy(tradingState.strategy);
 }
 
 /* =====================================================
@@ -1037,49 +1203,75 @@ function enforceDemoOnly() {
 ===================================================== */
 
 function initializeApp() {
+  /* Navigation */
+
   document.querySelectorAll(".nav-btn").forEach(button => {
     button.addEventListener("click", () => {
       showSection(button.dataset.page);
     });
   });
 
-  $("tradingStyle")?.addEventListener("change", updateMode);
+  /* Trading style */
+
+  $("tradingStyle")?.addEventListener(
+    "change",
+    updateMode
+  );
+
+  /* Strategy selection */
 
   $("strategySelect")?.addEventListener(
-  "change",
-  event => updateStrategy(event.target.value)
-);
+    "change",
+    event => updateStrategy(event.target.value)
+  );
 
-$("scannerStrategy")?.addEventListener(
-  "change",
-  event => updateStrategy(event.target.value)
-);
+  $("scannerStrategy")?.addEventListener(
+    "change",
+    event => updateStrategy(event.target.value)
+  );
 
-$("strategySettings")?.addEventListener(
-  "change",
-  event => updateStrategy(event.target.value)
-);
+  $("strategySettings")?.addEventListener(
+    "change",
+    event => updateStrategy(event.target.value)
+  );
+
+  /* Broker selection */
 
   $("brokerType")?.addEventListener(
     "change",
     updateBrokerPanels
   );
 
-  $("connectDeriv")?.addEventListener("click", connectDeriv);
+  /* Deriv */
+
+  $("connectDeriv")?.addEventListener(
+    "click",
+    connectDeriv
+  );
 
   $("disconnectDeriv")?.addEventListener(
     "click",
     disconnectDeriv
   );
 
+  /* Market selection */
+
   $("selectAllPairs")?.addEventListener(
     "click",
     selectAllPairs
   );
 
-  $("clearPairs")?.addEventListener("click", clearPairs);
+  $("clearPairs")?.addEventListener(
+    "click",
+    clearPairs
+  );
 
-  $("startScanner")?.addEventListener("click", startScanner);
+  /* Scanner controls */
+
+  $("startScanner")?.addEventListener(
+    "click",
+    startScanner
+  );
 
   $("scannerStartButton")?.addEventListener(
     "click",
@@ -1089,32 +1281,52 @@ $("strategySettings")?.addEventListener(
     }
   );
 
-  $("stopScanner")?.addEventListener("click", stopScanner);
+  $("stopScanner")?.addEventListener(
+    "click",
+    stopScanner
+  );
 
   $("scannerStopButton")?.addEventListener(
     "click",
     stopScanner
   );
 
-  $("saveSettings")?.addEventListener("click", saveSettings);
+  /* Settings */
 
-  $("connectMT5")?.addEventListener("click", () => {
-    setText(
-      "mt5ConnectionStatus",
-      "MT5 bridge is not configured. No connection established."
-    );
-  });
+  $("saveSettings")?.addEventListener(
+    "click",
+    saveSettings
+  );
 
-  $("scannerBroker")?.addEventListener("change", event => {
-    if (event.target.value === "mt5") {
-      addResult(
-        "MT5 requires a separately configured secure bridge."
+  /* MT5 placeholder */
+
+  $("connectMT5")?.addEventListener(
+    "click",
+    () => {
+      setText(
+        "mt5ConnectionStatus",
+        "MT5 bridge is not configured. No connection established."
       );
     }
-  });
+  );
+
+  $("scannerBroker")?.addEventListener(
+    "change",
+    event => {
+      if (event.target.value === "mt5") {
+        addResult(
+          "MT5 requires a separately configured secure bridge."
+        );
+      }
+    }
+  );
+
+  /* Start the application */
 
   enforceDemoOnly();
+
   loadSettings();
+
   updateBrokerPanels();
 
   setText("systemStatus", "Not connected");
@@ -1125,10 +1337,24 @@ $("strategySettings")?.addEventListener(
   setText("positionsList", "No positions available.");
   setText("tradeHistory", "No completed trades available.");
 
-  addResult("SMC Sniper Pro APA initialized. Demo monitoring only.");
+  addResult(
+    "SMC Sniper Pro APA initialized. Demo monitoring only."
+  );
 }
 
-document.addEventListener("DOMContentLoaded", initializeApp);
+/* =====================================================
+   START APPLICATION
+===================================================== */
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeApp,
+    { once: true }
+  );
+} else {
+  initializeApp();
+}
   
 
 

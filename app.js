@@ -919,8 +919,36 @@ function analyseSMC(candles) {
   if (demandSupport) bullConfirmations.push("Demand zone reaction");
   if (supplyResistance) bearConfirmations.push("Supply zone reaction");
 
-  const buyReady = bullConfirmations.length >= 2 && bullishCandle;
-  const sellReady = bearConfirmations.length >= 2 && bearishCandle;
+  const rawBuyReady = bullConfirmations.length >= 2 && bullishCandle;
+  const rawSellReady = bearConfirmations.length >= 2 && bearishCandle;
+  const bullishReversalConfirmed = Boolean(
+    (structure.bosUp || structure.mssUp) && liquidity.sweepLow
+  );
+  const bearishReversalConfirmed = Boolean(
+    (structure.bosDown || structure.mssDown) && liquidity.sweepHigh
+  );
+
+  let buyReady = rawBuyReady;
+  let sellReady = rawSellReady;
+  let blockedDirectionReason = "";
+
+  if (buyReady && trend === "Bearish" && !bullishReversalConfirmed) {
+    buyReady = false;
+    blockedDirectionReason = "Bullish candidate blocked: the higher market trend is bearish and there is no bullish structure break plus low-side liquidity sweep to confirm a reversal.";
+  }
+  if (sellReady && trend === "Bullish" && !bearishReversalConfirmed) {
+    sellReady = false;
+    blockedDirectionReason = "Bearish candidate blocked: the higher market trend is bullish and there is no bearish structure break plus high-side liquidity sweep to confirm a reversal.";
+  }
+  if (sellReady && demandSupport && !bearishReversalConfirmed) {
+    sellReady = false;
+    blockedDirectionReason = "SELL blocked: price is reacting at demand and a bearish structural reversal is not confirmed.";
+  }
+  if (buyReady && supplyResistance && !bullishReversalConfirmed) {
+    buyReady = false;
+    blockedDirectionReason = "BUY blocked: price is reacting at supply and a bullish structural reversal is not confirmed.";
+  }
+
   const conflicting = buyReady && sellReady;
   const signal = conflicting
     ? "Conflicting confirmations — no signal"
@@ -950,7 +978,7 @@ function analyseSMC(candles) {
       ? `BUY candidate: ${activeConfirmations.length} compatible confirmations support the bullish direction: ${activeConfirmations.join(", ")}. The latest candle is bullish. This is a candidate, not an executed trade.`
       : activeSide === "sell"
         ? `SELL candidate: ${activeConfirmations.length} compatible confirmations support the bearish direction: ${activeConfirmations.join(", ")}. The latest candle is bearish. This is a candidate, not an executed trade.`
-        : `WAIT: neither side has the required 2 compatible confirmations plus a matching candle. Bullish evidence: ${bullConfirmations.join(", ") || "none"}. Bearish evidence: ${bearConfirmations.join(", ") || "none"}.`;
+        : `WAIT: ${blockedDirectionReason || "neither side has the required 2 compatible confirmations plus a matching candle."} Bullish evidence: ${bullConfirmations.join(", ") || "none"}. Bearish evidence: ${bearConfirmations.join(", ") || "none"}.`;
   const checks = [
     ["Trend direction", trend !== "Sideways" && trend !== "Unknown"],
     ["Liquidity sweep", liquidity.sweepLow || liquidity.sweepHigh],
@@ -1069,8 +1097,13 @@ const NEWS_CURRENCIES = new Set([
 ]);
 
 function getForexPairCurrencies(symbol) {
-  const match = String(symbol || "").toUpperCase().match(/([A-Z]{6})/);
+  // Deriv Forex symbols are prefixed with "frx" (for example frxEURCHF).
+  // Strip only known broker prefixes, then require exactly six currency letters.
+  const raw = String(symbol || "").trim().toUpperCase();
+  const normalized = raw.replace(/^(?:FRX|FOREX)[._-]?/, "");
+  const match = normalized.match(/^([A-Z]{6})$/);
   if (!match) return null;
+
   const base = match[1].slice(0, 3);
   const quote = match[1].slice(3, 6);
   return NEWS_CURRENCIES.has(base) && NEWS_CURRENCIES.has(quote)
@@ -1388,12 +1421,21 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const box = $("timeframeResults");
   if (!box) return;
 
-  const item = document.createElement("div");
-  item.className = "result-item";
-  item.textContent = `${symbol} ${timeframe.toUpperCase()}: ${result.trend} | ${result.structure} | ${result.signal}`;
-  box.prepend(item);
+  const resultKey = `${symbol}|${timeframe}`;
+  let item = Array.from(box.children).find(
+    child => child.dataset && child.dataset.resultKey === resultKey
+  );
 
-  while (box.children.length > 15) {
+  if (!item) {
+    item = document.createElement("div");
+    item.className = "result-item";
+    item.dataset.resultKey = resultKey;
+    box.prepend(item);
+  }
+
+  item.textContent = `${symbol} ${timeframe.toUpperCase()}: ${result.trend} | ${result.structure} | ${result.signal}`;
+
+  while (box.children.length > 30) {
     box.removeChild(box.lastChild);
   }
 }
@@ -1406,9 +1448,11 @@ function analyseMainSelection(symbol) {
   const lowerFrame = frames[0];
   const higherCandles = tradingState.candles[candleKey(symbol, higherFrame)] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, lowerFrame)] || [];
-  const result = tradingState.strategy === "apa"
-    ? analyseAPA(candles, higherCandles, lowerCandles)
-    : analyseSMC(candles);
+  const result = tradingState.strategy === "news"
+    ? analyseNews(symbol, candles)
+    : tradingState.strategy === "apa"
+      ? analyseAPA(candles, higherCandles, lowerCandles)
+      : analyseSMC(candles);
 
   if (!result.ready) return;
   tradingState.lastAnalysedSymbol = symbol;

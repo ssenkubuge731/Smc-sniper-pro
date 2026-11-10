@@ -305,9 +305,9 @@ function connectDeriv() {
       }
     }, 30000);
 
+    // The current Deriv public API no longer accepts product_type.
     sendRequest({
-      active_symbols: "brief",
-      product_type: "basic"
+      active_symbols: "brief"
     });
   };
 
@@ -506,9 +506,9 @@ function loadMarkets(markets) {
 
       return {
         symbol: String(symbol),
-        name: item.display_name || item.name || String(symbol),
+        name: item.underlying_symbol_name || item.display_name || item.name || String(symbol),
         market: item.market_display_name || item.market || "",
-        submarket: item.submarket_display_name || item.submarket || ""
+        submarket: item.submarket_display_name || item.submarket || item.subgroup || ""
       };
     })
     .filter(Boolean);

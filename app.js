@@ -1251,7 +1251,6 @@ function analyseNews(symbol, candles) {
     .sort((a, b) => Number(a.ts) - Number(b.ts))[0];
 
   const last = candles[candles.length - 1];
-  const momentum = "not-yet-evaluated";
 
   if (!recentEvents.length) {
     const nextText = upcoming
@@ -1323,7 +1322,7 @@ function analyseNews(symbol, candles) {
       structure: "Price reaction alone is insufficient",
       liquidity: "Not used by news engine",
       signal: "WAIT — no reliable directional surprise",
-      reasoning: `WAIT on ${pair.pair}: ${eventSummary} The event type or numeric forecast comparison does not support a reliable currency-strength interpretation. Price momentum is ${momentum}, but price movement alone is not enough to call a news trade.`,
+      reasoning: `WAIT on ${pair.pair}: ${eventSummary} The event type or numeric forecast comparison does not support a reliable currency-strength interpretation. Post-release price momentum is ${reactionMomentum}, but price movement alone is not enough to call a news trade.`,
       checks: [["Actual versus forecast", false], ["Post-release price reaction", reactionMomentum !== "mixed"]],
       entry: null, sl: null, tp: null, invalidation: null,
       supply: null, demand: null, breaker: "Not used by News Trading",
@@ -1357,7 +1356,7 @@ function analyseNews(symbol, candles) {
   return {
     ready: true, strategy: "news",
     trend: pairDirection === "bullish" ? "News bias bullish" : "News bias bearish",
-    structure: `Post-release price momentum: ${momentum}`,
+    structure: `Post-release price momentum: ${reactionMomentum}`,
     liquidity: "News event and price reaction",
     signal, reasoning, entry, sl, tp, invalidation: sl,
     checks: [

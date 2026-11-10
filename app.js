@@ -1198,13 +1198,13 @@ async function loadNewsCalendar(force = false) {
 function parseNewsNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const textValue = String(value).trim().replace(/,/g, "");
-  const match = textValue.match(/-?\\d+(?:\\.\\d+)?/);
+  const match = textValue.match(/-?\d+(?:\.\d+)?/);
   if (!match) return null;
   let number = Number(match[0]);
   if (!Number.isFinite(number)) return null;
-  if (/\\bK\\b/i.test(textValue)) number *= 1e3;
-  if (/\\bM\\b/i.test(textValue)) number *= 1e6;
-  if (/\\bB\\b/i.test(textValue)) number *= 1e9;
+  if (/K\s*$/i.test(textValue)) number *= 1e3;
+  if (/M\s*$/i.test(textValue)) number *= 1e6;
+  if (/B\s*$/i.test(textValue)) number *= 1e9;
   return number;
 }
 

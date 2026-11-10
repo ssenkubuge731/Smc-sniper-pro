@@ -1,4 +1,5 @@
 
+
 "use strict";
 
 /* =========================================================
@@ -11,7 +12,9 @@
 
 const DERIV_PUBLIC_WS =
   "wss://api.derivws.com/trading/v1/options/ws/public";
+
 const STORAGE_KEY = "smcSniperProSettingsV2";
+
 const TIMEFRAMES = {
   scalping: ["1m", "5m", "15m"],
   intraday: ["30m", "1h", "4h"],
@@ -28,7 +31,6 @@ const GRANULARITY = {
   "1d": 86400
 };
 
-
 const tradingState = {
   mode: "scalping",
   strategy: "apa",
@@ -36,19 +38,28 @@ const tradingState = {
   demo: true,
   liveLocked: true,
   running: false,
+
   derivConnected: false,
   derivSocket: null,
+
   availableSymbols: [],
   selectedSymbols: new Set(),
+
   lastPrices: {},
   candles: {},
+
   requestContexts: new Map(),
   requestId: 1,
+
   scanQueue: [],
   scanTimer: null,
   lastSignals: {},
   scanGeneration: 0
 };
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 const $ = id => document.getElementById(id);
 
@@ -58,6 +69,32 @@ const setText = (id, value) => {
 };
 
 const valueOf = id => $(id)?.value ?? "";
+
+function isSocketOpen() {
+  return (
+    tradingState.derivSocket &&
+    tradingState.derivSocket.readyState === WebSocket.OPEN
+  );
+}
+
+function candleKey(symbol, timeframe) {
+  return `${symbol}|${timeframe}`;
+}
+
+function formatPrice(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(Number(value))
+  ) {
+    return "--";
+  }
+
+  return Number(value)
+    .toFixed(5)
+    .replace(/0+$/, "")
+    .replace(/\.$/, "");
+}
 
 /* =========================================================
    STATUS AND RESULTS
@@ -103,10 +140,12 @@ function addResult(message, targetId = "scannerResults") {
   }
 }
 
-function sendRequest(payload, context = null) {
-  const socket = tradingState.derivSocket;
+/* =========================================================
+   DERIV REQUEST SENDER
+========================================================= */
 
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+function sendRequest(payload, context = null) {
+  if (!isSocketOpen()) {
     return false;
   }
 
@@ -122,14 +161,19 @@ function sendRequest(payload, context = null) {
   }
 
   try {
-    socket.send(JSON.stringify(request));
-    return true;
-  } catch (error) {
-    if (context) {
-      tradingState.requestContexts.delete(reqId);
-    }
+    tradingState.derivSocket.send(
+      JSON.stringify(request)
+    );
 
-    addResult("Could not send request: " + error.message);
+    return true;
+
+  } catch (error) {
+    tradingState.requestContexts.delete(reqId);
+
+    addResult(
+      "Could not send Deriv request: " + error.message
+    );
+
     return false;
   }
 }
@@ -161,7 +205,7 @@ function showSection(pageId) {
 }
 
 /* =========================================================
-   TRADING TIMEFRAMES
+   TIMEFRAME SETTINGS
 ========================================================= */
 
 function updateMode() {
@@ -170,12 +214,14 @@ function updateMode() {
 
   if (!modeSelect || !timeframeSelect) return;
 
-  tradingState.mode = modeSelect.value;
+  const mode = TIMEFRAMES[modeSelect.value]
+    ? modeSelect.value
+    : "scalping";
 
-  const frames =
-    TIMEFRAMES[tradingState.mode] ||
-    TIMEFRAMES.scalping;
+  tradingState.mode = mode;
+  modeSelect.value = mode;
 
+  const frames = TIMEFRAMES[mode];
   const previous = timeframeSelect.value;
 
   timeframeSelect.replaceChildren();
@@ -189,14 +235,18 @@ function updateMode() {
     timeframeSelect.appendChild(option);
   });
 
-  timeframeSelect.value =
-    frames.includes(previous)
-      ? previous
-      : frames[0];
+  timeframeSelect.value = frames.includes(previous)
+    ? previous
+    : frames[0];
+
+  const selectedOption =
+    modeSelect.options[modeSelect.selectedIndex];
 
   setText(
     "timeframeInfo",
-    `${modeSelect.options[modeSelect.selectedIndex].text}: ${frames.map(frame => frame.toUpperCase()).join(", ")}`
+    `${selectedOption ? selectedOption.text : mode}: ${frames
+      .map(frame => frame.toUpperCase())
+      .join(", ")}`
   );
 
   updateActiveTimeframes();
@@ -212,7 +262,9 @@ function updateActiveTimeframes() {
 
   setText(
     "activeTimeframes",
-    `Available: ${frames.map(frame => frame.toUpperCase()).join(", ")}. Main display: ${selected.toUpperCase()}.`
+    `Available: ${frames
+      .map(frame => frame.toUpperCase())
+      .join(", ")}. Main display: ${selected.toUpperCase()}.`
   );
 }
 
@@ -300,7 +352,7 @@ function updateBrokerPanels() {
 }
 
 /* =========================================================
-   DERIV PUBLIC MARKET CONNECTION
+   DERIV CONNECTION
 ========================================================= */
 
 function connectDeriv() {
@@ -313,24 +365,29 @@ function connectDeriv() {
       existing.readyState === WebSocket.CONNECTING
     )
   ) {
-    setConnectionStatus("Connection already active.");
+    setConnectionStatus("Deriv connection is already active.");
     return;
   }
 
   if (!window.WebSocket) {
-    setConnectionStatus("WebSocket is not supported.");
+    setConnectionStatus("WebSocket is not supported by this browser.");
     return;
   }
 
-  setConnectionStatus("Connecting to Deriv public market data...");
+  setConnectionStatus(
+    "Connecting to Deriv public market data..."
+  );
 
   let socket;
 
   try {
-    // Public market data requires no App ID in the URL.
+    // Public market data does not require an App ID or login.
     socket = new WebSocket(DERIV_PUBLIC_WS);
+
   } catch (error) {
-    setConnectionStatus("Connection error: " + error.message);
+    setConnectionStatus(
+      "Connection error: " + error.message
+    );
     return;
   }
 
@@ -341,191 +398,40 @@ function connectDeriv() {
 
     tradingState.derivConnected = true;
 
-    setConnectionStatus("Connected. Loading markets...");
-
-    setText("cloudStatus", "Cloud engine status: Not verified");
-
-    sendRequest({
-      active_symbols: "brief"
-    });
-  };
-
-  socket.onmessage = event => {
-    if (tradingState.derivSocket !== socket) return;
-
-    console.log("DERIV RESPONSE:", event.data);
-
-    let data;
-
-    try {
-      data = JSON.parse(event.data);
-    } catch (error) {
-      addResult("Could not read Deriv response.");
-      return;
-    }
-
-    handleDerivMessage(data);
-  };
-
-  socket.onerror = () => {
-    if (tradingState.derivSocket === socket) {
-      setConnectionStatus("Deriv connection error.");
-    }
-  };
-
-  socket.onclose = event => {
-    if (tradingState.derivSocket !== socket) return;
-
-    tradingState.derivConnected = false;
-    tradingState.derivSocket = null;
-    tradingState.requestContexts.clear();
-    tradingState.candles = {};
-
-    stopScanner(false);
-
     setConnectionStatus(
-      "Disconnected. Code: " +
-      event.code +
-      (event.reason ? " | " + event.reason : "")
+      "Connected. Requesting active markets..."
     );
-  };
-}
-
-
-  const appId = valueOf("derivAppId").trim();
-
-  if (!appId) {
-    setConnectionStatus("Enter your Deriv App ID first.");
-    return;
-  }
-
-  if (!window.WebSocket) {
-    setConnectionStatus("WebSocket is not supported.");
-    return;
-  }
-
-  setConnectionStatus("Connecting to Deriv...");
-
-  let socket;
-
-  try {
-    socket = new WebSocket(
-      DERIV_PUBLIC_WS +
-      "?app_id=" +
-      encodeURIComponent(appId)
-    );
-  } catch (error) {
-    setConnectionStatus(
-      "Connection error: " + error.message
-    );
-    return;
-  }
-
-  tradingState.derivSocket = socket;
-
-  
-socket.onopen = () => {
-  if (tradingState.derivSocket !== socket) return;
-
-  console.log("DERIV SOCKET OPENED");
-
-  tradingState.derivConnected = true;
-
-  setConnectionStatus("Connected. Testing Deriv API...");
-
-  setText(
-    "cloudStatus",
-    "Cloud engine status: Not verified"
-  );
-
-  socket.send(JSON.stringify({
-    ping: 1,
-    req_id: 999
-  }));
-
-  sendRequest({
-    active_symbols: "brief"
-  });
-};
-
-socket.onmessage = event => {
-  console.log("DERIV RESPONSE:", event.data);
-
-  if (tradingState.derivSocket !== socket) return;
-
-  let data;
-
-  try {
-    data = JSON.parse(event.data);
-  } catch (error) {
-    addResult("Could not read Deriv response.");
-    return;
-  }
-
-  handleDerivMessage(data);
-};
-
-socket.onerror = () => {
-  if (tradingState.derivSocket === socket) {
-    setConnectionStatus("Deriv connection error.");
-  }
-};
-
-socket.onclose = event => {
-  if (tradingState.derivSocket !== socket) return;
-
-  tradingState.derivConnected = false;
-  tradingState.derivSocket = null;
-
-  tradingState.requestContexts.clear();
-  tradingState.candles = {};
-
-  stopScanner(false);
-
-  setConnectionStatus(
-    "Disconnected. Code: " +
-    event.code +
-    (event.reason ? " | " + event.reason : "")
-  );
-};
-
 
     setText(
       "cloudStatus",
       "Cloud engine status: Not verified"
     );
 
-    sendRequest({
-  active_symbols: "brief"
-});
+    const sent = sendRequest({
+      active_symbols: "brief"
+    });
+
+    if (!sent) {
+      setConnectionStatus(
+        "Connected, but could not request market symbols."
+      );
+    }
   };
 
-  socket.onmessage = event => { socket.onmessage = event => {
-  console.log("DERIV RESPONSE:", event.data);
-
-  if (tradingState.derivSocket !== socket) return;
-
-  let data;
-
-  try {
-    data = JSON.parse(event.data);
-  } catch (error) {
-    addResult("Could not read Deriv response.");
-    return;
-  }
-
-  handleDerivMessage(data);
-};
+  socket.onmessage = event => {
     if (tradingState.derivSocket !== socket) return;
 
     let data;
 
     try {
       data = JSON.parse(event.data);
+
     } catch (error) {
       addResult("Could not read Deriv response.");
       return;
     }
+
+    console.log("DERIV RESPONSE:", data);
 
     handleDerivMessage(data);
   };
@@ -533,7 +439,7 @@ socket.onclose = event => {
   socket.onerror = () => {
     if (tradingState.derivSocket === socket) {
       setConnectionStatus(
-        "Deriv connection error. Check your App ID and internet."
+        "Deriv connection error. Check your internet connection."
       );
     }
   };
@@ -583,9 +489,24 @@ function disconnectDeriv() {
 ========================================================= */
 
 function handleDerivMessage(data) {
+  if (!data || typeof data !== "object") {
+    return;
+  }
+
   if (data.error) {
     const message =
-      data.error.message || "Unknown Deriv API error";
+      data.error.message ||
+      "Unknown Deriv API error";
+
+    setConnectionStatus("Deriv API: " + message);
+    addResult("Deriv API error: " + message);
+    return;
+  }
+
+  if (Array.isArray(data.errors) && data.errors.length) {
+    const message =
+      data.errors[0].message ||
+      "Deriv returned an API error.";
 
     setConnectionStatus("Deriv API: " + message);
     addResult("Deriv API error: " + message);
@@ -608,13 +529,13 @@ function handleDerivMessage(data) {
     data.msg_type === "tick" &&
     data.tick
   ) {
-    tradingState.lastPrices[data.tick.symbol] =
-      Number(data.tick.quote);
+    const symbol = data.tick.symbol;
+    const quote = Number(data.tick.quote);
 
-    updateMarketPrice(
-      data.tick.symbol,
-      data.tick.quote
-    );
+    if (symbol && Number.isFinite(quote)) {
+      tradingState.lastPrices[symbol] = quote;
+      updateMarketPrice(symbol, quote);
+    }
   }
 
   if (
@@ -624,25 +545,31 @@ function handleDerivMessage(data) {
     const candleContext =
       context || findCandleContext(data.echo_req);
 
-    if (candleContext) {
-      if (data.req_id) {
-        tradingState.requestContexts.delete(data.req_id);
-      }
-
-      tradingState.candles[
-        candleKey(
-          candleContext.symbol,
-          candleContext.timeframe
-        )
-      ] = data.candles.map(normalizeCandle);
-
-      renderTimeframeAnalysis(
-        candleContext.symbol,
-        candleContext.timeframe
-      );
-
-      analyseMainSelection(candleContext.symbol);
+    if (data.req_id) {
+      tradingState.requestContexts.delete(data.req_id);
     }
+
+    if (!candleContext) {
+      return;
+    }
+
+    const key = candleKey(
+      candleContext.symbol,
+      candleContext.timeframe
+    );
+
+    tradingState.candles[key] =
+      data.candles
+        .map(normalizeCandle)
+        .filter(isValidCandle)
+        .slice(-150);
+
+    renderTimeframeAnalysis(
+      candleContext.symbol,
+      candleContext.timeframe
+    );
+
+    analyseMainSelection(candleContext.symbol);
   }
 
   if (
@@ -650,42 +577,47 @@ function handleDerivMessage(data) {
     (data.msg_type === "candle" && data.candle)
   ) {
     const candleContext =
-      findCandleContext(data.echo_req);
+      context || findCandleContext(data.echo_req);
 
-    if (candleContext) {
-      const key = candleKey(
-        candleContext.symbol,
-        candleContext.timeframe
-      );
+    if (!candleContext) return;
 
-      const list = tradingState.candles[key] || [];
+    const key = candleKey(
+      candleContext.symbol,
+      candleContext.timeframe
+    );
 
-      const candle = normalizeCandle(
-        data.ohlc || data.candle
-      );
+    const list = tradingState.candles[key] || [];
 
-      const last = list[list.length - 1];
+    const candle = normalizeCandle(
+      data.ohlc || data.candle
+    );
 
-      if (last && last.epoch === candle.epoch) {
-        list[list.length - 1] = candle;
-      } else {
-        list.push(candle);
-      }
+    if (!isValidCandle(candle)) return;
 
-      tradingState.candles[key] = list.slice(-150);
+    const last = list[list.length - 1];
 
-      renderTimeframeAnalysis(
-        candleContext.symbol,
-        candleContext.timeframe
-      );
-
-      analyseMainSelection(candleContext.symbol);
+    if (last && last.epoch === candle.epoch) {
+      list[list.length - 1] = candle;
+    } else {
+      list.push(candle);
     }
+
+    tradingState.candles[key] = list.slice(-150);
+
+    renderTimeframeAnalysis(
+      candleContext.symbol,
+      candleContext.timeframe
+    );
+
+    analyseMainSelection(candleContext.symbol);
   }
 }
 
 function findCandleContext(echoRequest) {
-  if (!echoRequest || !echoRequest.ticks_history) {
+  if (
+    !echoRequest ||
+    !echoRequest.ticks_history
+  ) {
     return null;
   }
 
@@ -697,7 +629,10 @@ function findCandleContext(echoRequest) {
 
   return {
     symbol: echoRequest.ticks_history,
-    timeframe: timeframe || valueOf("timeframe") || "1m"
+    timeframe:
+      timeframe ||
+      valueOf("timeframe") ||
+      "1m"
   };
 }
 
@@ -711,10 +646,12 @@ function loadMarkets(markets) {
     .map(item => ({
       symbol: item.symbol,
       name: item.display_name || item.symbol,
+
       market:
         item.market_display_name ||
         item.market ||
         "Other",
+
       submarket:
         item.submarket_display_name ||
         item.submarket ||
@@ -814,6 +751,7 @@ function renderMarketList() {
 
       checkbox.type = "checkbox";
       checkbox.value = item.symbol;
+
       checkbox.checked =
         tradingState.selectedSymbols.has(item.symbol);
 
@@ -891,11 +829,7 @@ function clearPairs() {
 ========================================================= */
 
 function startScanner() {
-  if (
-    !tradingState.derivConnected ||
-    !tradingState.derivSocket ||
-    tradingState.derivSocket.readyState !== WebSocket.OPEN
-  ) {
+  if (!isSocketOpen() || !tradingState.derivConnected) {
     addResult(
       "Connect Deriv first. The scanner needs market data."
     );
@@ -946,26 +880,42 @@ function startScanner() {
   });
 
   setText("scannerStatus", "Scanner: Running");
+
   setText(
     "scannerResults",
     "Scanner started. Loading candle history..."
   );
+
   setText("systemStatus", "Scanning");
 
   updateActiveTimeframes();
+
   processScanQueue();
 }
 
 function processScanQueue() {
-  if (
-    !tradingState.running ||
-    !tradingState.scanQueue.length
-  ) {
-    if (tradingState.running) {
-      addResult(
-        "Initial candle-history requests sent. Waiting for market updates."
-      );
-    }
+  if (!tradingState.running) return;
+
+  if (!tradingState.scanQueue.length) {
+    addResult(
+      "Initial candle-history requests sent. Waiting for market updates."
+    );
+
+    tradingState.scanTimer = null;
+    return;
+  }
+
+  if (!isSocketOpen()) {
+    stopScanner(false);
+
+    setText(
+      "scannerStatus",
+      "Scanner: Connection lost"
+    );
+
+    addResult(
+      "Scanner stopped because the Deriv connection is no longer active."
+    );
 
     return;
   }
@@ -986,10 +936,16 @@ function processScanQueue() {
     subscribe: 1
   };
 
-  sendRequest(payload, {
+  const sent = sendRequest(payload, {
     symbol: task.symbol,
     timeframe: task.timeframe
   });
+
+  if (!sent) {
+    addResult(
+      `Could not request ${task.symbol} ${task.timeframe.toUpperCase()} data.`
+    );
+  }
 
   tradingState.scanTimer =
     window.setTimeout(processScanQueue, 300);
@@ -998,6 +954,7 @@ function processScanQueue() {
 function stopScanner(updateStatus = true) {
   tradingState.running = false;
   tradingState.scanGeneration += 1;
+
   tradingState.scanQueue = [];
 
   if (tradingState.scanTimer) {
@@ -1026,10 +983,6 @@ function stopScanner(updateStatus = true) {
    CANDLE DATA
 ========================================================= */
 
-function candleKey(symbol, timeframe) {
-  return `${symbol}|${timeframe}`;
-}
-
 function normalizeCandle(candle) {
   return {
     epoch: Number(candle.epoch),
@@ -1038,6 +991,16 @@ function normalizeCandle(candle) {
     low: Number(candle.low),
     close: Number(candle.close)
   };
+}
+
+function isValidCandle(candle) {
+  return (
+    Number.isFinite(candle.epoch) &&
+    Number.isFinite(candle.open) &&
+    Number.isFinite(candle.high) &&
+    Number.isFinite(candle.low) &&
+    Number.isFinite(candle.close)
+  );
 }
 
 /* =========================================================
@@ -1083,6 +1046,7 @@ function analyseCandles(candles, strategy) {
   }
 
   const closes = candles.map(candle => candle.close);
+
   const last = candles[candles.length - 1];
   const previous = candles[candles.length - 2];
 
@@ -1091,12 +1055,14 @@ function analyseCandles(candles, strategy) {
 
   const atr = calculateATR(candles);
 
+  const recentCandles = candles.slice(-11, -1);
+
   const previousHigh = Math.max(
-    ...candles.slice(-11, -1).map(candle => candle.high)
+    ...recentCandles.map(candle => candle.high)
   );
 
   const previousLow = Math.min(
-    ...candles.slice(-11, -1).map(candle => candle.low)
+    ...recentCandles.map(candle => candle.low)
   );
 
   const bullishTrend =
@@ -1169,9 +1135,11 @@ function analyseCandles(candles, strategy) {
           : bearishTrend
             ? "Bearish trend"
             : "Trend not aligned",
+
         "Waiting for candle and range confirmation"
       ];
     }
+
   } else {
     if (sweepLow) {
       liquidity = "Possible sell-side liquidity sweep";
@@ -1226,6 +1194,7 @@ function analyseCandles(candles, strategy) {
           : bearishTrend
             ? "Bearish trend"
             : "Trend not aligned",
+
         liquidity,
         "Waiting for structure confirmation"
       ];
@@ -1280,7 +1249,7 @@ function analyseCandles(candles, strategy) {
 }
 
 /* =========================================================
-   DISPLAY TIMEFRAME RESULTS
+   TIMEFRAME RESULTS
 ========================================================= */
 
 function renderTimeframeAnalysis(symbol, timeframe) {
@@ -1325,6 +1294,7 @@ function renderTimeframeAnalysis(symbol, timeframe) {
 
   if (old) {
     old.replaceWith(row);
+
   } else {
     if (
       container.textContent ===
@@ -1427,21 +1397,6 @@ function analyseMainSelection(symbol) {
       `${name} ${timeframe.toUpperCase()}: ${result.direction}. Entry ${formatPrice(result.entry)}; SL ${formatPrice(result.stopLoss)}; TP ${formatPrice(result.takeProfit)}. Analysis only; no order placed.`
     );
   }
-}
-
-function formatPrice(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(Number(value))
-  ) {
-    return "--";
-  }
-
-  return Number(value)
-    .toFixed(5)
-    .replace(/0+$/, "")
-    .replace(/\.$/, "");
 }
 
 /* =========================================================
@@ -1549,6 +1504,7 @@ function loadSettings() {
     settings = JSON.parse(
       localStorage.getItem(STORAGE_KEY) || "{}"
     );
+
   } catch (error) {
     settings = {};
   }
@@ -1565,8 +1521,11 @@ function loadSettings() {
     }
   });
 
-  if ($("tradingStyle")) {
-    tradingState.mode = valueOf("tradingStyle");
+  if (
+    $("tradingStyle") &&
+    !TIMEFRAMES[valueOf("tradingStyle")]
+  ) {
+    $("tradingStyle").value = "scalping";
   }
 
   updateMode();
@@ -1583,7 +1542,6 @@ function loadSettings() {
 ========================================================= */
 
 function initializeApp() {
-
   document.querySelectorAll(
     ".nav-btn[data-page]"
   ).forEach(button => {
@@ -1693,8 +1651,8 @@ function initializeApp() {
   );
 
   loadSettings();
-updateMode();
-updateBrokerPanels();
+
+  updateBrokerPanels();
   syncStrategy(tradingState.strategy);
   updatePairCounts();
 
@@ -1728,12 +1686,17 @@ updateBrokerPanels();
   setText("scannerResults", "Scanner has not started.");
 }
 
+/* =========================================================
+   START APPLICATION
+========================================================= */
+
 if (document.readyState === "loading") {
   document.addEventListener(
     "DOMContentLoaded",
     initializeApp,
     { once: true }
   );
+
 } else {
   initializeApp();
 }

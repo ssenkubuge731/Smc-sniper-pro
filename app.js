@@ -814,67 +814,153 @@ function getDisplacement(candles) {
 }
 
 function analyseSMC(candles) {
-  if (!Array.isArray(candles) || candles.length < 20)
-    return { ready: false, trend: "Insufficient candles", structure: "Waiting",
-      liquidity: "Waiting", supply: null, demand: null, breaker: "Waiting",
-      checks: [], signal: "Waiting for candles" };
+  if (!Array.isArray(candles) || candles.length < 20) {
+    return {
+      ready: false, trend: "Insufficient candles", structure: "Waiting",
+      liquidity: "Waiting", supply: null, demand: null,
+      breaker: "Waiting", checks: [], signal: "Waiting for candles"
+    };
+  }
+
   const last = candles[candles.length - 1];
-  const trend = getTrend(candles), structure = getStructure(candles);
-  const liquidity = getLiquidity(candles), fvg = getFVGState(candles);
-  const displacement = getDisplacement(candles), zones = findStructureZones(candles);
+  const trend = getTrend(candles);
+  const structure = getStructure(candles);
+  const liquidity = getLiquidity(candles);
+  const fvg = getFVGState(candles);
+  const displacement = getDisplacement(candles);
+  const zones = findStructureZones(candles);
   const bullishOB = findOrderBlock(candles, "bullish");
   const bearishOB = findOrderBlock(candles, "bearish");
-  let breaker = "Not identified", bullishBreaker = false, bearishBreaker = false;
+
+  // An order block is a candidate until price returns to it and reacts.
+  const bullishOBTouch = Boolean(
+    bullishOB && last.low <= bullishOB.high &&
+    last.high >= bullishOB.low && last.close > last.open &&
+    last.close >= bullishOB.low
+  );
+  const bearishOBTouch = Boolean(
+    bearishOB && last.high >= bearishOB.low &&
+    last.low <= bearishOB.high && last.close < last.open &&
+    last.close <= bearishOB.high
+  );
+
+  let breaker = "Not identified";
+  let bullishBreaker = false;
+  let bearishBreaker = false;
   if (bearishOB && last.close > bearishOB.high) {
-    breaker = "Bullish breaker candidate"; bullishBreaker = true;
+    breaker = "Bullish breaker candidate";
+    bullishBreaker = true;
   } else if (bullishOB && last.close < bullishOB.low) {
-    breaker = "Bearish breaker candidate"; bearishBreaker = true;
+    breaker = "Bearish breaker candidate";
+    bearishBreaker = true;
   }
-  const demandSupport = Boolean(zones.demand && last.low <= zones.demand.high && last.close >= zones.demand.low);
-  const supplyResistance = Boolean(zones.supply && last.high >= zones.supply.low && last.close <= zones.supply.high);
-  const bullish = last.close > last.open, bearish = last.close < last.open;
-  const bullCount = [trend === "Bullish", liquidity.sweepLow,
-    structure.bosUp || structure.mssUp, displacement && bullish,
-    fvg.bullishFVG || fvg.bullishIFVG, demandSupport, bullishBreaker || Boolean(bullishOB)].filter(Boolean).length;
-  const bearCount = [trend === "Bearish", liquidity.sweepHigh,
-    structure.bosDown || structure.mssDown, displacement && bearish,
-    fvg.bearishFVG || fvg.bearishIFVG, supplyResistance, bearishBreaker || Boolean(bearishOB)].filter(Boolean).length;
-  const buyReady = bullCount >= 2 && bullish &&
-    (demandSupport || fvg.bullishFVG || fvg.bullishIFVG || structure.bosUp || structure.mssUp);
-  const sellReady = bearCount >= 2 && bearish &&
-    (supplyResistance || fvg.bearishFVG || fvg.bearishIFVG || structure.bosDown || structure.mssDown);
-  const signal = buyReady ? "Potential BUY — " + bullCount + " confirmations" :
-    sellReady ? "Potential SELL — " + bearCount + " confirmations" :
-    "Waiting — need 2 compatible confirmations";
+
+  const demandSupport = Boolean(
+    zones.demand && last.low <= zones.demand.high &&
+    last.close >= zones.demand.low
+  );
+  const supplyResistance = Boolean(
+    zones.supply && last.high >= zones.supply.low &&
+    last.close <= zones.supply.high
+  );
+  const bullishCandle = last.close > last.open;
+  const bearishCandle = last.close < last.open;
+
+  // Count independent confirmation groups. BOS/MSS/CHoCH are one
+  // structure group; FVG/IFVG are one imbalance group; OB/breaker
+  // are one block group so the same event is never double-counted.
+  const bullConfirmations = [];
+  const bearConfirmations = [];
+
+  if (trend === "Bullish") bullConfirmations.push("Bullish trend");
+  if (trend === "Bearish") bearConfirmations.push("Bearish trend");
+
+  if (structure.bosUp || structure.mssUp) {
+    bullConfirmations.push(structure.mssUp ? "Bullish MSS / CHoCH" : "Bullish BOS");
+  }
+  if (structure.bosDown || structure.mssDown) {
+    bearConfirmations.push(structure.mssDown ? "Bearish MSS / CHoCH" : "Bearish BOS");
+  }
+
+  if (liquidity.sweepLow) bullConfirmations.push("Low-side liquidity sweep");
+  if (liquidity.sweepHigh) bearConfirmations.push("High-side liquidity sweep");
+
+  if (displacement && bullishCandle) bullConfirmations.push("Bullish displacement");
+  if (displacement && bearishCandle) bearConfirmations.push("Bearish displacement");
+
+  if (fvg.bullishFVG || fvg.bullishIFVG) bullConfirmations.push(
+    fvg.bullishIFVG ? "Bullish IFVG" : "Bullish FVG"
+  );
+  if (fvg.bearishFVG || fvg.bearishIFVG) bearConfirmations.push(
+    fvg.bearishIFVG ? "Bearish IFVG" : "Bearish FVG"
+  );
+
+  if (bullishOBTouch || bullishBreaker) {
+    bullConfirmations.push(bullishBreaker ? "Bullish breaker block" : "Bullish Order Block reaction");
+  }
+  if (bearishOBTouch || bearishBreaker) {
+    bearConfirmations.push(bearishBreaker ? "Bearish breaker block" : "Bearish Order Block reaction");
+  }
+
+  if (demandSupport) bullConfirmations.push("Demand zone reaction");
+  if (supplyResistance) bearConfirmations.push("Supply zone reaction");
+
+  const buyReady = bullConfirmations.length >= 2 && bullishCandle;
+  const sellReady = bearConfirmations.length >= 2 && bearishCandle;
+  const conflicting = buyReady && sellReady;
+  const signal = conflicting
+    ? "Conflicting confirmations — no signal"
+    : buyReady
+      ? (bullConfirmations.length >= 3 ? "Stronger BUY candidate — " : "Potential BUY — ") +
+        bullConfirmations.length + " confirmations"
+      : sellReady
+        ? (bearConfirmations.length >= 3 ? "Stronger SELL candidate — " : "Potential SELL — ") +
+          bearConfirmations.length + " confirmations"
+        : "Waiting — need 2 compatible confirmations";
+
   const entry = last.close;
-  const sl = buyReady ? Math.min(last.low, zones.demand ? zones.demand.low : last.low) :
-    sellReady ? Math.max(last.high, zones.supply ? zones.supply.high : last.high) : null;
+  const sl = buyReady && !conflicting
+    ? Math.min(last.low, zones.demand ? zones.demand.low : last.low)
+    : sellReady && !conflicting
+      ? Math.max(last.high, zones.supply ? zones.supply.high : last.high)
+      : null;
   const risk = sl === null ? null : Math.abs(entry - sl);
   const tp = risk === null ? null : (buyReady ? entry + risk * 2 : entry - risk * 2);
+
   const checks = [
     ["Trend direction", trend !== "Sideways" && trend !== "Unknown"],
     ["Liquidity sweep", liquidity.sweepLow || liquidity.sweepHigh],
-    ["BOS / MSS / CHoCH", structure.bosUp || structure.bosDown || structure.mssUp || structure.mssDown],
+    ["BOS / MSS / CHoCH (one structure group)", structure.bosUp || structure.bosDown || structure.mssUp || structure.mssDown],
     ["Strong displacement", displacement],
     ["Order Block identified", Boolean(bullishOB || bearishOB)],
+    ["Order Block reaction", bullishOBTouch || bearishOBTouch],
     ["Supply zone identified", Boolean(zones.supply)],
     ["Demand zone identified", Boolean(zones.demand)],
     ["Breaker Block candidate", bullishBreaker || bearishBreaker],
-    ["FVG / IFVG", fvg.bullishFVG || fvg.bearishFVG || fvg.bullishIFVG || fvg.bearishIFVG],
-    ["Two compatible confirmations", buyReady || sellReady]
+    ["FVG / IFVG (one imbalance group)", fvg.bullishFVG || fvg.bearishFVG || fvg.bullishIFVG || fvg.bearishIFVG],
+    ["Bullish confirmations", bullConfirmations.length + (bullConfirmations.length === 1 ? " — " + bullConfirmations.join(", ") : " — " + bullConfirmations.join(", "))],
+    ["Bearish confirmations", bearConfirmations.length + (bearConfirmations.length === 1 ? " — " + bearConfirmations.join(", ") : " — " + bearConfirmations.join(", "))],
+    ["Minimum 2 compatible confirmations", (buyReady || sellReady) && !conflicting]
   ];
-  return { ready: true, strategy: "smc", trend, structure: structure.label,
-    liquidity: liquidity.label, signal, entry, sl, tp, invalidation: sl, checks,
+
+  return {
+    ready: true, strategy: "smc", trend, structure: structure.label,
+    liquidity: liquidity.label, signal, entry,
+    sl: conflicting ? null : sl, tp: conflicting ? null : tp,
+    invalidation: conflicting ? null : sl, checks,
     displacement, supply: zones.supply, demand: zones.demand, breaker,
     breakerFound: bullishBreaker || bearishBreaker,
-    orderBlock: trend === "Bullish" ? bullishOB : bearishOB,
-    demandSupport, supplyResistance, bullishConfirmations: bullCount,
-    bearishConfirmations: bearCount,
-    structureDetails: structure,
-    fvgDetails: fvg,
-    orderBlock,
+    orderBlock: trend === "Bullish" ? (bullishOB || bearishOB) : (bearishOB || bullishOB),
+    orderBlockTouched: bullishOBTouch || bearishOBTouch,
+    demandSupport, supplyResistance,
+    bullishConfirmations: bullConfirmations.length,
+    bearishConfirmations: bearConfirmations.length,
+    bullishConfirmationNames: bullConfirmations,
+    bearishConfirmationNames: bearConfirmations,
+    structureDetails: structure, fvgDetails: fvg,
     fvg: fvg.bullishFVG || fvg.bearishFVG,
-    ifvg: fvg.bullishIFVG || fvg.bearishIFVG };
+    ifvg: fvg.bullishIFVG || fvg.bearishIFVG
+  };
 }
 
 function analyseAPA(entryCandles, higherCandles, lowerCandles) {

@@ -926,7 +926,12 @@ function analyseCandles(candles) {
 
 function renderTimeframeAnalysis(symbol, timeframe) {
   const candles = tradingState.candles[candleKey(symbol, timeframe)] || [];
-  const result = analyseCandles(candles);
+  const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
+  const higherCandles = tradingState.candles[candleKey(symbol, frames[frames.length - 1])] || [];
+  const lowerCandles = tradingState.candles[candleKey(symbol, frames[0])] || [];
+  const result = tradingState.strategy === "apa"
+    ? analyseAPA(candles, higherCandles, lowerCandles)
+    : analyseSMC(candles);
 
   const box = $("timeframeResults");
   if (!box) return;

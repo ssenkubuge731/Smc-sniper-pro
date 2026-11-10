@@ -1592,7 +1592,12 @@ function initializeApp() {
     }
   );
 
-  document.addEventListener("DOMContentLoaded", () => {
+  
+  $("connectDeriv")?.addEventListener(
+    "click",
+    connectDeriv
+  );
+
   const btn = document.getElementById("connectDeriv");
 
   if (btn) {

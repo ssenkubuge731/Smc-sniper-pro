@@ -870,6 +870,9 @@ function analyseSMC(candles) {
     orderBlock: trend === "Bullish" ? bullishOB : bearishOB,
     demandSupport, supplyResistance, bullishConfirmations: bullCount,
     bearishConfirmations: bearCount,
+    structureDetails: structure,
+    fvgDetails: fvg,
+    orderBlock,
     fvg: fvg.bullishFVG || fvg.bearishFVG,
     ifvg: fvg.bullishIFVG || fvg.bearishIFVG };
 }
@@ -917,6 +920,9 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     liquidity: liquidity.label, signal, entry, sl, tp, invalidation: sl, checks,
     supply: zones.supply, demand: zones.demand, breaker: "SMC breaker logic is separate from APA",
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
+    structureDetails: structure,
+    fvgDetails: getFVGState(entryCandles),
+    orderBlock: higherTrend === "Bullish" ? bullishOB : bearishOB,
     displacement: getDisplacement(entryCandles) };
 }
 
@@ -967,6 +973,16 @@ function analyseMainSelection(symbol) {
   setText("supplyZone", formatZone(result.supply));
   setText("demandZone", formatZone(result.demand));
   setText("breakerBlock", result.breaker);
+  const structureState = result.structureDetails || {};
+  const fvgState = result.fvgDetails || {};
+  const showDirection = (up, down) => up ? "Bullish detected" : down ? "Bearish detected" : "Not detected";
+  setText("bosStatus", showDirection(structureState.bosUp, structureState.bosDown));
+  setText("mssStatus", showDirection(structureState.mssUp, structureState.mssDown));
+  setText("chochStatus", showDirection(structureState.mssUp, structureState.mssDown));
+  setText("fvgStatus", showDirection(fvgState.bullishFVG, fvgState.bearishFVG));
+  setText("ifvgStatus", showDirection(fvgState.bullishIFVG, fvgState.bearishIFVG));
+  setText("displacementStatus", result.displacement ? "Detected" : "Not detected");
+  setText("orderBlockStatus", result.orderBlock ? formatZone(result.orderBlock) : "Not identified");
   setText("supplyDemandStatus",
     result.demandSupport ? "Price in / near demand" :
     result.supplyResistance ? "Price in / near supply" : "Zones identified — waiting for price interaction");

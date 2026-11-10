@@ -775,8 +775,8 @@ function getStructure(candles) {
   const bosUp = last.close > priorHigh, bosDown = last.close < priorLow;
   const mssUp = oldTrend === "Bearish" && bosUp;
   const mssDown = oldTrend === "Bullish" && bosDown;
-  return { label: bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" :
-    mssUp ? "Bullish MSS / CHoCH" : mssDown ? "Bearish MSS / CHoCH" : "No confirmed break",
+  return { label: mssUp ? "Bullish MSS / CHoCH" : mssDown ? "Bearish MSS / CHoCH" :
+    bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" : "No confirmed break",
     bosUp, bosDown, mssUp, mssDown };
 }
 

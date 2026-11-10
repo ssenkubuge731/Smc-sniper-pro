@@ -368,3 +368,11 @@ footer p {
   }
 }
 
+
+
+#newsTradingPanel.news-active {
+  border-color: var(--green);
+}
+#newsEventsList .result-item {
+  line-height: 1.55;
+}

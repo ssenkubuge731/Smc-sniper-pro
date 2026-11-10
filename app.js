@@ -927,6 +927,16 @@ function analyseSMC(candles) {
   const risk = sl === null ? null : Math.abs(entry - sl);
   const tp = risk === null ? null : (buyReady ? entry + risk * 2 : entry - risk * 2);
 
+  const activeSide = conflicting ? "conflicting" : buyReady ? "buy" : sellReady ? "sell" : "wait";
+  const activeConfirmations = activeSide === "buy" ? bullConfirmations : activeSide === "sell" ? bearConfirmations : [];
+  const opposingConfirmations = activeSide === "buy" ? bearConfirmations : activeSide === "sell" ? bullConfirmations : [];
+  const reasoning = conflicting
+    ? "WAIT: bullish and bearish setups are both present. The evidence conflicts, so no direction is selected."
+    : activeSide === "buy"
+      ? `BUY candidate: ${activeConfirmations.length} compatible confirmations support the bullish direction: ${activeConfirmations.join(", ")}. The latest candle is bullish. This is a candidate, not an executed trade.`
+      : activeSide === "sell"
+        ? `SELL candidate: ${activeConfirmations.length} compatible confirmations support the bearish direction: ${activeConfirmations.join(", ")}. The latest candle is bearish. This is a candidate, not an executed trade.`
+        : `WAIT: neither side has the required 2 compatible confirmations plus a matching candle. Bullish evidence: ${bullConfirmations.join(", ") || "none"}. Bearish evidence: ${bearConfirmations.join(", ") || "none"}.`;
   const checks = [
     ["Trend direction", trend !== "Sideways" && trend !== "Unknown"],
     ["Liquidity sweep", liquidity.sweepLow || liquidity.sweepHigh],
@@ -957,6 +967,7 @@ function analyseSMC(candles) {
     bearishConfirmations: bearConfirmations.length,
     bullishConfirmationNames: bullConfirmations,
     bearishConfirmationNames: bearConfirmations,
+    reasoning,
     structureDetails: structure, fvgDetails: fvg,
     fvg: fvg.bullishFVG || fvg.bearishFVG,
     ifvg: fvg.bullishIFVG || fvg.bearishIFVG
@@ -994,6 +1005,25 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
   const entry = last.close, sl = buyReady ? zones.demand.low : sellReady ? zones.supply.high : null;
   const risk = sl === null ? null : Math.abs(entry - sl);
   const tp = risk === null ? null : (buyReady ? entry + risk * 2 : entry - risk * 2);
+  const apaReasons = [];
+  apaReasons.push(`Higher timeframe: ${higherTrend}.`);
+  if (bullishOB) apaReasons.push("Bullish order-block candidate found.");
+  if (bearishOB) apaReasons.push("Bearish order-block candidate found.");
+  if (zones.demand) apaReasons.push(`Demand zone: ${formatZone(zones.demand)}.`);
+  if (zones.supply) apaReasons.push(`Supply zone: ${formatZone(zones.supply)}.`);
+  if (nearDemand) apaReasons.push("Price is reacting in/near demand.");
+  if (nearSupply) apaReasons.push("Price is reacting in/near supply.");
+  if (liquidity.sweepLow) apaReasons.push("A low-side liquidity sweep is detected.");
+  if (liquidity.sweepHigh) apaReasons.push("A high-side liquidity sweep is detected.");
+  if (bullishStructure) apaReasons.push("Bullish BOS/MSS confirmation is present.");
+  if (bearishStructure) apaReasons.push("Bearish BOS/MSS confirmation is present.");
+  if (ltfBullish) apaReasons.push("Lower-timeframe candle is bullish.");
+  if (ltfBearish) apaReasons.push("Lower-timeframe candle is bearish.");
+  const reasoning = buyReady
+    ? `BUY candidate: the higher-timeframe trend is bullish, price reacted at demand, bullish structure or a low sweep confirms, and the lower timeframe is bullish. ${apaReasons.join(" ")}`
+    : sellReady
+      ? `SELL candidate: the higher-timeframe trend is bearish, price reacted at supply, bearish structure or a high sweep confirms, and the lower timeframe is bearish. ${apaReasons.join(" ")}`
+      : `WAIT: APA requires higher-timeframe trend alignment, a relevant point of interest, price reaction there, BOS/MSS or a liquidity sweep, and lower-timeframe direction. Current evidence: ${apaReasons.join(" ") || "not enough candle data"}`;
   const checks = [
     ["Higher-timeframe trend", higherTrend !== "Sideways" && higherTrend !== "Unknown"],
     ["POI identified (OB / flip zone / liquidity area)", bullishPOI || bearishPOI],
@@ -1003,7 +1033,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     ["Lower-timeframe entry direction", ltfBullish || ltfBearish]
   ];
   return { ready: true, strategy: "apa", trend: higherTrend, structure: structure.label,
-    liquidity: liquidity.label, signal, entry, sl, tp, invalidation: sl, checks,
+    liquidity: liquidity.label, signal, entry, sl, tp, invalidation: sl, checks, reasoning,
     supply: zones.supply, demand: zones.demand, breaker: "SMC breaker logic is separate from APA",
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
     structureDetails: structure,
@@ -1056,6 +1086,7 @@ function analyseMainSelection(symbol) {
   setText("apaStructure", result.structure);
   setText("liquidityStatus", result.liquidity);
   setText("entrySignal", result.signal);
+  setText("tradeReasoning", result.reasoning || "Reasoning is not available for this analysis.");
   setText("supplyZone", formatZone(result.supply));
   setText("demandZone", formatZone(result.demand));
   setText("breakerBlock", result.breaker);

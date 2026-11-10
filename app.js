@@ -426,13 +426,18 @@ function handleDerivMessage(data) {
     return;
   }
 
-  if (
-    data.msg_type === "active_symbols" &&
-    Array.isArray(data.active_symbols)
-  ) {
-    loadMarkets(data.active_symbols);
+
+  const marketData =
+    data.active_symbols ||
+    data.underlying_symbols ||
+    data.data?.active_symbols ||
+    data.data?.underlying_symbols;
+
+  if (Array.isArray(marketData)) {
+    loadMarkets(marketData);
     return;
   }
+
 
   const context = data.req_id
     ? tradingState.requestContexts.get(data.req_id)

@@ -347,7 +347,120 @@ function connectDeriv() {
     }
   };
 
+  /* =====================================================
+   DERIV CONNECTION
+===================================================== */
+
+function connectDeriv() {
+  if (
+    tradingState.derivSocket &&
+    (
+      tradingState.derivSocket.readyState === WebSocket.OPEN ||
+      tradingState.derivSocket.readyState === WebSocket.CONNECTING
+    )
+  ) {
+    setConnectionStatus("Connection already active.");
+    return;
+  }
+
+  const appId = $("derivAppId")?.value.trim();
+
+  if (!appId) {
+    setConnectionStatus("Enter your Deriv App ID first.");
+    return;
+  }
+
+  if (!window.WebSocket) {
+    setConnectionStatus("WebSocket is not supported.");
+    return;
+  }
+
+  clearTimeout(tradingState.reconnectTimer);
+
+  setConnectionStatus("Connecting to Deriv...");
+
+  let socket;
+
+  try {
+    socket = new WebSocket(
+      DERIV_PUBLIC_WS +
+      "?app_id=" +
+      encodeURIComponent(appId)
+    );
+  } catch (error) {
+    setConnectionStatus(
+      "Connection error: " + error.message
+    );
+    return;
+  }
+
+  tradingState.derivSocket = socket;
+
+  socket.onopen = () => {
+    if (tradingState.derivSocket !== socket) return;
+
+    tradingState.derivConnected = true;
+
+    setConnectionStatus(
+      "Connected. Loading Deriv markets..."
+    );
+
+    setText("systemStatus", "Connected");
+    setText("cloudStatus", "Cloud engine: Not verified");
+
+    sendRequest({
+      active_symbols: "brief",
+      product_type: "basic"
+    });
+  };
+
+  socket.onmessage = event => {
+    if (tradingState.derivSocket !== socket) return;
+
+    let data;
+
+    try {
+      data = JSON.parse(event.data);
+    } catch (error) {
+      addResult("Could not read Deriv response.");
+      return;
+    }
+
+    handleDerivMessage(data);
+  };
+
+  socket.onerror = () => {
+    if (tradingState.derivSocket === socket) {
+      setConnectionStatus("Deriv connection error.");
+    }
+  };
+
+  /* Only ONE close handler */
+
   socket.onclose = event => {
+    if (tradingState.derivSocket !== socket) return;
+
+    tradingState.derivConnected = false;
+    tradingState.derivSocket = null;
+    tradingState.subscriptions = {};
+    tradingState.candles = {};
+
+    const reason = event.reason || "No reason provided";
+
+    setConnectionStatus(
+      "Disconnected. Code: " +
+      event.code +
+      " | " +
+      reason
+    );
+
+    setText("systemStatus", "Disconnected");
+
+    if (tradingState.running) {
+      stopScanner();
+    }
+  };
+}
   if (tradingState.derivSocket !== socket) return;
 
   tradingState.derivConnected = false;

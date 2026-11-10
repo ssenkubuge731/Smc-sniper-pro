@@ -60,7 +60,13 @@ const tradingState = {
   reconnectAttempts: 0,
   manualDisconnect: false,
   lastSignals: {},
-  settings: {}
+  settings: {},
+  newsEvents: [],
+  newsLoadedAt: 0,
+  newsError: "",
+  newsTimer: null,
+  newsLoading: false,
+  lastAnalysedSymbol: ""
 };
 
 const $ = id => document.getElementById(id);
@@ -208,27 +214,35 @@ function updateActiveTimeframes() {
 ========================================================= */
 
 function syncStrategy(value) {
-  if (!["apa", "smc"].includes(value)) value = "apa";
-
+  if (!["apa", "smc", "news"].includes(value)) value = "apa";
   tradingState.strategy = value;
 
-  [
-    "strategySelect",
-    "scannerStrategy",
-    "strategySettings"
-  ].forEach(id => {
+  ["strategySelect", "scannerStrategy", "strategySettings"].forEach(id => {
     if ($(id)) $(id).value = value;
   });
 
   $("apaSettings")?.classList.toggle("hidden", value !== "apa");
   $("smcSettings")?.classList.toggle("hidden", value !== "smc");
 
-  setText(
-    "strategyInfo",
+  setText("strategyInfo",
     value === "apa"
       ? "APA Advanced Price Action selected — original APA sequence."
-      : "SMC selected — independent Smart Money Concepts confirmation engine."
-  );
+      : value === "smc"
+        ? "SMC selected — independent Smart Money Concepts confirmation engine."
+        : "News Trading selected — independent Forex economic-news and price-reaction engine.");
+
+  if (value === "news") {
+    loadNewsCalendar(true);
+    if (tradingState.newsTimer) clearInterval(tradingState.newsTimer);
+    tradingState.newsTimer = setInterval(() => loadNewsCalendar(true), 15 * 60 * 1000);
+  } else if (tradingState.newsTimer) {
+    clearInterval(tradingState.newsTimer);
+    tradingState.newsTimer = null;
+  }
+
+  if (tradingState.lastAnalysedSymbol) {
+    analyseMainSelection(tradingState.lastAnalysedSymbol);
+  }
 }
 
 /* =========================================================
@@ -1042,6 +1056,301 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     displacement: getDisplacement(entryCandles) };
 }
 
+
+/* =========================================================
+   NEWS TRADING — SEPARATE FOREX NEWS STRATEGY
+========================================================= */
+
+const NEWS_CALENDAR_URL =
+  "https://showmytrades.com/api/public/calendar/v1?impact=high,medium&days=2";
+
+const NEWS_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY"
+]);
+
+function getForexPairCurrencies(symbol) {
+  const match = String(symbol || "").toUpperCase().match(/([A-Z]{6})/);
+  if (!match) return null;
+  const base = match[1].slice(0, 3);
+  const quote = match[1].slice(3, 6);
+  return NEWS_CURRENCIES.has(base) && NEWS_CURRENCIES.has(quote)
+    ? { base, quote, pair: base + "/" + quote }
+    : null;
+}
+
+function getNewsCurrenciesForRequest() {
+  const currencies = new Set();
+  tradingState.selectedSymbols.forEach(symbol => {
+    const pair = getForexPairCurrencies(symbol);
+    if (pair) {
+      currencies.add(pair.base);
+      currencies.add(pair.quote);
+    }
+  });
+  return currencies.size ? [...currencies].join(",") : "";
+}
+
+function renderNewsCalendar() {
+  const list = $("newsEventsList");
+  if (!list) return;
+  list.replaceChildren();
+
+  const currencies = new Set(getNewsCurrenciesForRequest().split(",").filter(Boolean));
+  const events = tradingState.newsEvents
+    .filter(event => !currencies.size || currencies.has(String(event.currency || "").toUpperCase()))
+    .sort((a, b) => Number(a.ts) - Number(b.ts))
+    .slice(0, 18);
+
+  if (!events.length) {
+    const empty = document.createElement("div");
+    empty.className = "result-item";
+    empty.textContent = tradingState.newsError
+      ? "Calendar unavailable: " + tradingState.newsError
+      : "No matching high/medium-impact events in the current calendar window.";
+    list.appendChild(empty);
+    return;
+  }
+
+  events.forEach(event => {
+    const row = document.createElement("div");
+    row.className = "result-item";
+    const date = Number(event.ts) > 0
+      ? new Date(Number(event.ts) * 1000).toLocaleString()
+      : "Time unavailable";
+    const actual = event.actual || "Pending";
+    const forecast = event.forecast || "Not supplied";
+    row.textContent =
+      `${String(event.impact || "unknown").toUpperCase()} | ${event.currency || "?"} | ${date} | ${event.title || "Economic event"} | Actual: ${actual} | Forecast: ${forecast} | ${event.status || "scheduled"}`;
+    list.appendChild(row);
+  });
+}
+
+async function loadNewsCalendar(force = false) {
+  if (tradingState.newsLoading) return;
+  if (!force && Date.now() - tradingState.newsLoadedAt < 15 * 60 * 1000) return;
+
+  tradingState.newsLoading = true;
+  setText("newsCalendarStatus", "Loading calendar...");
+  try {
+    const currencies = getNewsCurrenciesForRequest();
+    const url = NEWS_CALENDAR_URL + (currencies ? "&currency=" + encodeURIComponent(currencies) : "");
+    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!response.ok) throw new Error("Calendar returned HTTP " + response.status);
+    const payload = await response.json();
+    if (!payload || !Array.isArray(payload.events)) {
+      throw new Error("Calendar response did not contain an events list");
+    }
+    tradingState.newsEvents = payload.events;
+    tradingState.newsLoadedAt = Date.now();
+    tradingState.newsError = "";
+    setText("newsCalendarStatus",
+      `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${payload.count ?? payload.events.length} events`);
+    renderNewsCalendar();
+    if (tradingState.lastAnalysedSymbol) {
+      analyseMainSelection(tradingState.lastAnalysedSymbol);
+    }
+  } catch (error) {
+    tradingState.newsError = error && error.message ? error.message : "Unknown calendar error";
+    setText("newsCalendarStatus", "Calendar unavailable");
+    renderNewsCalendar();
+    setText("newsReasoning",
+      "WAIT: the economic calendar could not be loaded. News signals are disabled until reliable event data is available. " +
+      tradingState.newsError);
+    setText("newsSignal", "WAIT — no calendar data");
+  } finally {
+    tradingState.newsLoading = false;
+  }
+}
+
+function parseNewsNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const textValue = String(value).trim().replace(/,/g, "");
+  const match = textValue.match(/-?\\d+(?:\\.\\d+)?/);
+  if (!match) return null;
+  let number = Number(match[0]);
+  if (!Number.isFinite(number)) return null;
+  if (/\\bK\\b/i.test(textValue)) number *= 1e3;
+  if (/\\bM\\b/i.test(textValue)) number *= 1e6;
+  if (/\\bB\\b/i.test(textValue)) number *= 1e9;
+  return number;
+}
+
+function getNewsCurrencyBias(event) {
+  const title = String(event.title || "").toLowerCase();
+  const actual = parseNewsNumber(event.actual);
+  const forecast = parseNewsNumber(event.forecast);
+  if (actual === null || forecast === null || actual === forecast) return null;
+
+  let higherIsPositive = null;
+  if (/unemployment|jobless claims|initial claims|continuing claims|layoffs|trade deficit|budget deficit/.test(title)) {
+    higherIsPositive = false;
+  } else if (/gdp|payroll|employment change|nonfarm|retail sales|pmi|industrial production|wages|average hourly earnings|consumer confidence|housing starts|building permits|interest rate decision|policy rate|trade balance/.test(title)) {
+    higherIsPositive = true;
+  }
+
+  // Inflation releases can trigger different central-bank and risk reactions;
+  // do not assign a mechanical currency direction to them.
+  if (higherIsPositive === null) return null;
+  const higherActual = actual > forecast;
+  const currencyStronger = higherActual === higherIsPositive;
+  return {
+    currencyStronger,
+    surprise: higherActual ? "Actual was above forecast" : "Actual was below forecast",
+    actual,
+    forecast
+  };
+}
+
+function analyseNews(symbol, candles) {
+  const pair = getForexPairCurrencies(symbol);
+  if (!pair) {
+    return {
+      ready: true, strategy: "news", trend: "Forex pair required",
+      structure: "News strategy only analyses Forex pairs",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — select a Forex pair",
+      reasoning: "WAIT: this instrument is not a supported major-currency Forex pair. News Trading does not apply economic-calendar bias to synthetic indices, metals or other markets.",
+      checks: [["Forex pair selected", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  if (!Array.isArray(candles) || candles.length < 10) {
+    return {
+      ready: true, strategy: "news", trend: "Waiting for price data",
+      structure: "Waiting", liquidity: "Waiting",
+      signal: "WAIT — price candles not ready",
+      reasoning: "WAIT: the pair is recognised as Forex, but the scanner needs at least 10 candles to check the market reaction after a release.",
+      checks: [["Forex pair identified", true], ["Price reaction data", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  const now = Date.now();
+  const recentEvents = tradingState.newsEvents
+    .filter(event => {
+      const currency = String(event.currency || "").toUpperCase();
+      const age = now - Number(event.ts) * 1000;
+      return (currency === pair.base || currency === pair.quote) &&
+        Number.isFinite(Number(event.ts)) &&
+        age >= 0 && age <= 2 * 60 * 60 * 1000 &&
+        event.actual && event.forecast;
+    })
+    .sort((a, b) => Number(b.ts) - Number(a.ts));
+
+  const upcoming = tradingState.newsEvents
+    .filter(event => {
+      const currency = String(event.currency || "").toUpperCase();
+      return (currency === pair.base || currency === pair.quote) &&
+        Number(event.ts) * 1000 >= now;
+    })
+    .sort((a, b) => Number(a.ts) - Number(b.ts))[0];
+
+  const last = candles[candles.length - 1];
+  const recentCandles = candles.slice(-4);
+  const firstReaction = recentCandles[0];
+  const bullishCount = recentCandles.filter(c => c.close > c.open).length;
+  const bearishCount = recentCandles.filter(c => c.close < c.open).length;
+  const momentum = last.close > firstReaction.open && bullishCount >= 3
+    ? "bullish"
+    : last.close < firstReaction.open && bearishCount >= 3
+      ? "bearish"
+      : "mixed";
+
+  if (!recentEvents.length) {
+    const nextText = upcoming
+      ? `Next matching event: ${upcoming.currency} ${upcoming.title} (${String(upcoming.impact).toUpperCase()}) at ${new Date(Number(upcoming.ts) * 1000).toLocaleString()}.`
+      : "No matching recent release with actual and forecast values is available.";
+    return {
+      ready: true, strategy: "news", trend: "Waiting for a confirmed news release",
+      structure: "Price reaction not evaluated",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — no completed matching event",
+      reasoning: `WAIT on ${pair.pair}: ${nextText} The bot does not guess the direction before the release and confirmed price reaction.`,
+      checks: [["Forex pair identified", true], ["Recent matching event with actual and forecast", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  const event = recentEvents[0];
+  const bias = getNewsCurrencyBias(event);
+  const eventAgeMinutes = Math.round((now - Number(event.ts) * 1000) / 60000);
+  const sourceConfidence = event.confidence || "not supplied";
+  const eventSummary = `${event.currency} ${event.title} (${event.impact} impact), ${eventAgeMinutes} minutes ago. Actual: ${event.actual}; forecast: ${event.forecast}.`;
+
+  if (event.status === "tentative" || sourceConfidence === "sources_disagree") {
+    return {
+      ready: true, strategy: "news", trend: "Event timing is uncertain",
+      structure: "Not confirmed", liquidity: "Not used by news engine",
+      signal: "WAIT — calendar event is tentative",
+      reasoning: `WAIT on ${pair.pair}: ${eventSummary} The calendar marks this event as tentative or its sources disagree, so the bot will not form a news direction from it.`,
+      checks: [["Event timing confidence", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  if (!bias) {
+    return {
+      ready: true, strategy: "news", trend: "News surprise is not classifiable",
+      structure: "Price reaction alone is insufficient",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — no reliable directional surprise",
+      reasoning: `WAIT on ${pair.pair}: ${eventSummary} The event type or numeric forecast comparison does not support a reliable currency-strength interpretation. Price momentum is ${momentum}, but price movement alone is not enough to call a news trade.`,
+      checks: [["Actual versus forecast", false], ["Price reaction", momentum !== "mixed"]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  const pairDirection = event.currency === pair.base
+    ? (bias.currencyStronger ? "bullish" : "bearish")
+    : (bias.currencyStronger ? "bearish" : "bullish");
+  const confirmed = momentum === pairDirection;
+  const direction = pairDirection === "bullish" ? "BUY" : "SELL";
+  const signal = confirmed
+    ? `Potential News ${direction} — price confirms the news bias`
+    : "WAIT — price has not confirmed the news bias";
+  const reasoning = confirmed
+    ? `${direction} candidate on ${pair.pair}: ${eventSummary} ${bias.surprise}, which the event classifier interprets as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}. Because ${event.currency} is the ${event.currency === pair.base ? "base" : "quote"} currency, the expected pair bias is ${pairDirection}. The latest four candles show ${momentum} momentum, agreeing with that bias. This is a demo analysis candidate, not an executed order.`
+    : `WAIT on ${pair.pair}: ${eventSummary} ${bias.surprise}, interpreted as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}; this implies a ${pairDirection} pair bias. However, the latest four candles show ${momentum} momentum, so price has not confirmed the news direction. No trade candidate is issued.`;
+
+  const recentLows = candles.slice(-5).map(c => c.low);
+  const recentHighs = candles.slice(-5).map(c => c.high);
+  const entry = confirmed ? last.close : null;
+  const sl = confirmed
+    ? (pairDirection === "bullish" ? Math.min(...recentLows) : Math.max(...recentHighs))
+    : null;
+  const risk = sl === null ? null : Math.abs(entry - sl);
+  const tp = risk && Number.isFinite(risk)
+    ? (pairDirection === "bullish" ? entry + 2 * risk : entry - 2 * risk)
+    : null;
+
+  return {
+    ready: true, strategy: "news",
+    trend: pairDirection === "bullish" ? "News bias bullish" : "News bias bearish",
+    structure: `Post-release price momentum: ${momentum}`,
+    liquidity: "News event and price reaction",
+    signal, reasoning, entry, sl, tp, invalidation: sl,
+    checks: [
+      ["Forex pair and event currency match", true],
+      ["Actual versus forecast gives a directional surprise", true],
+      ["Event timing is sufficiently confirmed", true],
+      ["Post-release price momentum agrees", confirmed]
+    ],
+    supply: null, demand: null, breaker: "Not used by News Trading",
+    orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+  };
+}
+
 function analyseCandles(candles) {
   return tradingState.strategy === "smc" ? analyseSMC(candles) : analyseAPA(candles, candles, candles);
 }
@@ -1051,9 +1360,11 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
   const higherCandles = tradingState.candles[candleKey(symbol, frames[frames.length - 1])] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, frames[0])] || [];
-  const result = tradingState.strategy === "apa"
-    ? analyseAPA(candles, higherCandles, lowerCandles)
-    : analyseSMC(candles);
+  const result = tradingState.strategy === "news"
+    ? analyseNews(symbol, candles)
+    : tradingState.strategy === "apa"
+      ? analyseAPA(candles, higherCandles, lowerCandles)
+      : analyseSMC(candles);
 
   const box = $("timeframeResults");
   if (!box) return;
@@ -1081,6 +1392,14 @@ function analyseMainSelection(symbol) {
     : analyseSMC(candles);
 
   if (!result.ready) return;
+  tradingState.lastAnalysedSymbol = symbol;
+  const newsActive = result.strategy === "news";
+  $("newsTradingPanel")?.classList.toggle("news-active", newsActive);
+  if (newsActive) {
+    setText("newsPairStatus", getForexPairCurrencies(symbol)?.pair || "Not a supported Forex pair");
+    setText("newsSignal", result.signal);
+    setText("newsReasoning", result.reasoning || "Waiting for news analysis.");
+  }
 
   setText("marketTrend", result.trend);
   setText("apaStructure", result.structure);
@@ -1335,6 +1654,9 @@ function initApp() {
   // Brokers
   $("brokerType")?.addEventListener("change", updateBrokerPanels);
   $("scannerBroker")?.addEventListener("change", updateBrokerPanels);
+
+  // News calendar
+  $("refreshNews")?.addEventListener("click", () => loadNewsCalendar(true));
 
   // Settings
   $("saveSettings")?.addEventListener("click", saveSettings);

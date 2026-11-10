@@ -66,6 +66,7 @@
     <select id="strategySelect">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="news">News Trading — Economic Events</option>
     </select>
     <p id="strategyInfo" class="muted">Select the strategy to use for your selected markets.</p>
   </div>
@@ -108,6 +109,7 @@
     <select id="scannerStrategy">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="news">News Trading — Economic Events</option>
     </select>
     <label for="apaEntryStyle">APA entry style</label>
     <select id="apaEntryStyle">
@@ -115,6 +117,21 @@
       <option value="early">Early APA entry</option>
     </select>
     <p class="muted">APA and SMC — Smart Money Concepts are separate strategies. Only the selected strategy should generate signals. Scalping prioritizes a rapid scan cycle on the selected market.</p>
+  </div>
+
+  <div class="panel" id="newsTradingPanel">
+    <h3>Forex News Trading</h3>
+    <p class="muted">Independent news strategy. It waits for the release, compares actual with forecast, then checks the live price reaction. High/medium-impact events only.</p>
+    <div class="analysis-row"><span>Calendar status</span><strong id="newsCalendarStatus">Not loaded</strong></div>
+    <div class="analysis-row"><span>Forex pair</span><strong id="newsPairStatus">Select a Forex pair</strong></div>
+    <div class="analysis-row"><span>Latest news decision</span><strong id="newsSignal">Waiting for market data</strong></div>
+    <div id="newsReasoning" class="result-item">Select News Trading to load the economic calendar.</div>
+    <div class="pair-actions">
+      <button id="refreshNews" class="secondary" type="button">Refresh news calendar</button>
+    </div>
+    <h4>Upcoming and recent events</h4>
+    <div id="newsEventsList">Calendar has not been loaded.</div>
+    <p class="muted">Calendar data: ShowMyTrades Economic Calendar. Events are indicative and may be revised or delayed.</p>
   </div>
 
   <div class="panel">
@@ -262,6 +279,7 @@
     <select id="strategySettings">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="news">News Trading — Economic Events</option>
     </select>
 
     <div id="apaSettings">
@@ -328,7 +346,7 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="app.js?v=20261111-1"></script>
+<script src="app.js?v=20261111-2"></script>
   
 <script>
 document.addEventListener("click", function(event) {

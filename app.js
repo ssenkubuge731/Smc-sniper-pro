@@ -349,7 +349,12 @@ function connectDeriv() {
 
   socket.onopen = () => {
     if (tradingState.derivSocket !== socket) return;
+console.log("DERIV SOCKET OPENED");
 
+socket.send(JSON.stringify({
+  ping: 1,
+  req_id: 999
+}));
     tradingState.derivConnected = true;
 
     setConnectionStatus(

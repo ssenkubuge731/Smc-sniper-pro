@@ -394,7 +394,7 @@ function connectDeriv() {
     return;
   }
 
-  tradingState.derivSocket = socket;
+  
 
   socket.onopen = () => {
     if (tradingState.derivSocket !== socket) return;

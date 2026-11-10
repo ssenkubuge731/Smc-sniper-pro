@@ -1251,15 +1251,7 @@ function analyseNews(symbol, candles) {
     .sort((a, b) => Number(a.ts) - Number(b.ts))[0];
 
   const last = candles[candles.length - 1];
-  const recentCandles = candles.slice(-4);
-  const firstReaction = recentCandles[0];
-  const bullishCount = recentCandles.filter(c => c.close > c.open).length;
-  const bearishCount = recentCandles.filter(c => c.close < c.open).length;
-  const momentum = last.close > firstReaction.open && bullishCount >= 3
-    ? "bullish"
-    : last.close < firstReaction.open && bearishCount >= 3
-      ? "bearish"
-      : "mixed";
+  const momentum = "not-yet-evaluated";
 
   if (!recentEvents.length) {
     const nextText = upcoming
@@ -1283,6 +1275,34 @@ function analyseNews(symbol, candles) {
   const eventAgeMinutes = Math.round((now - Number(event.ts) * 1000) / 60000);
   const sourceConfidence = event.confidence || "not supplied";
   const eventSummary = `${event.currency} ${event.title} (${event.impact} impact), ${eventAgeMinutes} minutes ago. Actual: ${event.actual}; forecast: ${event.forecast}.`;
+  const postReleaseCandles = candles.filter(c =>
+    Number(c.epoch) >= Number(event.ts)
+  ).slice(-4);
+
+  if (postReleaseCandles.length < 3) {
+    return {
+      ready: true, strategy: "news", trend: "Waiting for post-release candles",
+      structure: "Not enough candles formed after this release",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — need post-news price confirmation",
+      reasoning: `WAIT on ${pair.pair}: ${eventSummary} The scanner has only ${postReleaseCandles.length} usable candle(s) formed after the release. It will not mistake pre-news movement for a reaction. Waiting for at least three post-release candles.`,
+      checks: [["Completed matching release", true], ["At least three post-release candles", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
+
+  const reactionCandles = postReleaseCandles;
+  const reactionLast = reactionCandles[reactionCandles.length - 1];
+  const reactionFirst = reactionCandles[0];
+  const reactionBullish = reactionCandles.filter(c => c.close > c.open).length;
+  const reactionBearish = reactionCandles.filter(c => c.close < c.open).length;
+  const reactionMomentum = reactionLast.close > reactionFirst.open && reactionBullish >= 3
+    ? "bullish"
+    : reactionLast.close < reactionFirst.open && reactionBearish >= 3
+      ? "bearish"
+      : "mixed";
 
   if (event.status === "tentative" || sourceConfidence === "sources_disagree") {
     return {
@@ -1304,7 +1324,7 @@ function analyseNews(symbol, candles) {
       liquidity: "Not used by news engine",
       signal: "WAIT — no reliable directional surprise",
       reasoning: `WAIT on ${pair.pair}: ${eventSummary} The event type or numeric forecast comparison does not support a reliable currency-strength interpretation. Price momentum is ${momentum}, but price movement alone is not enough to call a news trade.`,
-      checks: [["Actual versus forecast", false], ["Price reaction", momentum !== "mixed"]],
+      checks: [["Actual versus forecast", false], ["Post-release price reaction", reactionMomentum !== "mixed"]],
       entry: null, sl: null, tp: null, invalidation: null,
       supply: null, demand: null, breaker: "Not used by News Trading",
       orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
@@ -1314,14 +1334,14 @@ function analyseNews(symbol, candles) {
   const pairDirection = event.currency === pair.base
     ? (bias.currencyStronger ? "bullish" : "bearish")
     : (bias.currencyStronger ? "bearish" : "bullish");
-  const confirmed = momentum === pairDirection;
+  const confirmed = reactionMomentum === pairDirection;
   const direction = pairDirection === "bullish" ? "BUY" : "SELL";
   const signal = confirmed
     ? `Potential News ${direction} — price confirms the news bias`
     : "WAIT — price has not confirmed the news bias";
   const reasoning = confirmed
-    ? `${direction} candidate on ${pair.pair}: ${eventSummary} ${bias.surprise}, which the event classifier interprets as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}. Because ${event.currency} is the ${event.currency === pair.base ? "base" : "quote"} currency, the expected pair bias is ${pairDirection}. The latest four candles show ${momentum} momentum, agreeing with that bias. This is a demo analysis candidate, not an executed order.`
-    : `WAIT on ${pair.pair}: ${eventSummary} ${bias.surprise}, interpreted as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}; this implies a ${pairDirection} pair bias. However, the latest four candles show ${momentum} momentum, so price has not confirmed the news direction. No trade candidate is issued.`;
+    ? `${direction} candidate on ${pair.pair}: ${eventSummary} ${bias.surprise}, which the event classifier interprets as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}. Because ${event.currency} is the ${event.currency === pair.base ? "base" : "quote"} currency, the expected pair bias is ${pairDirection}. The post-release candles show ${reactionMomentum} momentum, agreeing with that bias. This is a demo analysis candidate, not an executed order.`
+    : `WAIT on ${pair.pair}: ${eventSummary} ${bias.surprise}, interpreted as ${bias.currencyStronger ? "stronger" : "weaker"} ${event.currency}; this implies a ${pairDirection} pair bias. However, the post-release candles show ${reactionMomentum} momentum, so price has not confirmed the news direction. No trade candidate is issued.`;
 
   const recentLows = candles.slice(-5).map(c => c.low);
   const recentHighs = candles.slice(-5).map(c => c.high);

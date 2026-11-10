@@ -372,7 +372,22 @@ socket.send(JSON.stringify({
     });
   };
 
-  socket.onmessage = event => {
+  socket.onmessage = event => { socket.onmessage = event => {
+  console.log("DERIV RESPONSE:", event.data);
+
+  if (tradingState.derivSocket !== socket) return;
+
+  let data;
+
+  try {
+    data = JSON.parse(event.data);
+  } catch (error) {
+    addResult("Could not read Deriv response.");
+    return;
+  }
+
+  handleDerivMessage(data);
+};
     if (tradingState.derivSocket !== socket) return;
 
     let data;

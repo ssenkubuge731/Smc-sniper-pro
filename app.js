@@ -561,26 +561,7 @@ function loadMarkets(markets) {
           String(symbol),
         market:
           item.market_display_name ||
-          item.market ||
-          item.market_name ||
-          item.symbol_type ||
-          item.underlying_symbol_type ||
-          "Other",
-        submarket:
-          item.submarket_display_name ||
-          item.submarket ||
-          item.submarket_name ||
-          ""
-      };
-    })
-    .filter(Boolean);
-
-  if (!tradingState.availableSymbols.length) {
-    setConnectionStatus(
-      "Connected, but Deriv returned no readable market symbols. Check the API response."
-    );
-    console.log("UNRECOGNIZED DERIV MARKET DATA:", markets);
-    return;
+          
   }
 
   renderMarketList();

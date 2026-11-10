@@ -698,6 +698,57 @@ function processScanQueue() {
    MARKET STRUCTURE / APA ANALYSIS
 ========================================================= */
 
+function findStructureZones(candles) {
+  const data = candles.slice(-80);
+  const pivots = { high: null, low: null };
+
+  for (let i = 2; i < data.length - 2; i++) {
+    const c = data[i];
+    const isHigh = c.high > data[i - 1].high &&
+      c.high > data[i - 2].high &&
+      c.high >= data[i + 1].high &&
+      c.high >= data[i + 2].high;
+    const isLow = c.low < data[i - 1].low &&
+      c.low < data[i - 2].low &&
+      c.low <= data[i + 1].low &&
+      c.low <= data[i + 2].low;
+
+    if (isHigh) pivots.high = { candle: c, index: i };
+    if (isLow) pivots.low = { candle: c, index: i };
+  }
+
+  const supply = pivots.high ? {
+    low: Math.min(pivots.high.candle.open, pivots.high.candle.close),
+    high: pivots.high.candle.high
+  } : null;
+  const demand = pivots.low ? {
+    low: pivots.low.candle.low,
+    high: Math.max(pivots.low.candle.open, pivots.low.candle.close)
+  } : null;
+
+  return { supply, demand };
+}
+
+function findOrderBlock(candles, direction) {
+  const end = candles.length - 1;
+  const start = Math.max(0, end - 12);
+
+  for (let i = end - 1; i >= start; i--) {
+    const c = candles[i];
+    if (direction === "bullish" && c.close < c.open) {
+      return { low: c.low, high: c.open, direction: "bullish" };
+    }
+    if (direction === "bearish" && c.close > c.open) {
+      return { low: c.open, high: c.high, direction: "bearish" };
+    }
+  }
+  return null;
+}
+
+function formatZone(zone) {
+  return zone ? `${formatPrice(zone.low)} – ${formatPrice(zone.high)}` : "Not identified";
+}
+
 function analyseCandles(candles) {
   if (!Array.isArray(candles) || candles.length < 20) {
     return {
@@ -705,101 +756,98 @@ function analyseCandles(candles) {
       trend: "Insufficient candles",
       structure: "Waiting",
       liquidity: "Waiting",
+      supply: null,
+      demand: null,
+      breaker: "Not identified",
       checks: [],
       signal: "No signal"
     };
   }
 
   const recent = candles.slice(-20);
-  const previous = candles.slice(-40, -20);
-
   const last = recent[recent.length - 1];
   const prior = recent[recent.length - 2];
-
   const recentHigh = Math.max(...recent.slice(0, -1).map(c => c.high));
   const recentLow = Math.min(...recent.slice(0, -1).map(c => c.low));
 
   const bullish = last.close > last.open;
   const bearish = last.close < last.open;
-
-  const bullishTrend =
-    recent[recent.length - 1].close > recent[0].close;
-  const bearishTrend =
-    recent[recent.length - 1].close < recent[0].close;
-
-  const trend = bullishTrend ? "Bullish" :
-    bearishTrend ? "Bearish" : "Sideways";
+  const bullishTrend = recent[recent.length - 1].close > recent[0].close;
+  const bearishTrend = recent[recent.length - 1].close < recent[0].close;
+  const trend = bullishTrend ? "Bullish" : bearishTrend ? "Bearish" : "Sideways";
 
   const bosUp = last.close > recentHigh;
   const bosDown = last.close < recentLow;
-
-  const structure = bosUp ? "Bullish BOS" :
-    bosDown ? "Bearish BOS" : "No BOS";
+  const priorHigh = Math.max(...recent.slice(0, -3).map(c => c.high));
+  const priorLow = Math.min(...recent.slice(0, -3).map(c => c.low));
+  const mssUp = bearishTrend && last.close > priorHigh;
+  const mssDown = bullishTrend && last.close < priorLow;
+  const structure = bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" :
+    mssUp ? "Bullish MSS" : mssDown ? "Bearish MSS" : "No confirmed break";
 
   const sweepLow = last.low < recentLow && last.close > recentLow;
   const sweepHigh = last.high > recentHigh && last.close < recentHigh;
-
-  const liquidity = sweepLow ? "Low sweep" :
-    sweepHigh ? "High sweep" : "No sweep";
+  const liquidity = sweepLow ? "Low sweep" : sweepHigh ? "High sweep" : "No sweep";
 
   const body = Math.abs(last.close - last.open);
   const range = Math.max(last.high - last.low, 0.00000001);
   const displacement = body / range >= 0.65;
 
-  const bullishFVG =
-    candles.length >= 3 &&
-    candles[candles.length - 1].low >
-    candles[candles.length - 3].high;
-
-  const bearishFVG =
-    candles.length >= 3 &&
-    candles[candles.length - 1].high <
-    candles[candles.length - 3].low;
-
+  const bullishFVG = candles.length >= 3 &&
+    candles[candles.length - 1].low > candles[candles.length - 3].high;
+  const bearishFVG = candles.length >= 3 &&
+    candles[candles.length - 1].high < candles[candles.length - 3].low;
   const fvg = bullishFVG || bearishFVG;
 
-  const bullishSetup =
-    bullishTrend && (sweepLow || bosUp) && bullish && displacement;
+  const zones = findStructureZones(candles);
+  const bullishOB = findOrderBlock(candles, "bullish");
+  const bearishOB = findOrderBlock(candles, "bearish");
+  const orderBlock = bullishTrend ? bullishOB : bearishTrend ? bearishOB : null;
 
-  const bearishSetup =
-    bearishTrend && (sweepHigh || bosDown) && bearish && displacement;
+  let breaker = "Not identified";
+  if (bullishOB && last.close > bullishOB.high) breaker = "Bullish breaker candidate";
+  if (bearishOB && last.close < bearishOB.low) breaker = "Bearish breaker candidate";
+  const breakerFound = breaker !== "Not identified";
 
-  const signal = bullishSetup ? "Potential BUY setup" :
-    bearishSetup ? "Potential SELL setup" : "No confirmed setup";
+  const demandSupport = Boolean(zones.demand && last.close >= zones.demand.low &&
+    last.close <= zones.demand.high * 1.01);
+  const supplyResistance = Boolean(zones.supply && last.close <= zones.supply.high &&
+    last.close >= zones.supply.low * 0.99);
+
+  const bullishStructure = bosUp || mssUp;
+  const bearishStructure = bosDown || mssDown;
+  const bullishSetup = bullishTrend && sweepLow && bullishStructure &&
+    bullish && displacement && bullishFVG && Boolean(bullishOB) && Boolean(zones.demand);
+  const bearishSetup = bearishTrend && sweepHigh && bearishStructure &&
+    bearish && displacement && bearishFVG && Boolean(bearishOB) && Boolean(zones.supply);
+
+  const signal = bullishSetup ? "Potential BUY setup — APA conditions aligned" :
+    bearishSetup ? "Potential SELL setup — APA conditions aligned" : "No confirmed APA setup";
 
   const entry = last.close;
-  const sl = bullishSetup ? last.low : bearishSetup ? last.high : null;
+  const sl = bullishSetup ? Math.min(last.low, zones.demand.low) :
+    bearishSetup ? Math.max(last.high, zones.supply.high) : null;
   const risk = sl !== null ? Math.abs(entry - sl) : null;
-  const tp = risk !== null
-    ? bullishSetup ? entry + risk * 2 : entry - risk * 2
-    : null;
+  const tp = risk !== null ? (bullishSetup ? entry + risk * 2 : entry - risk * 2) : null;
 
   const checks = [
     ["Trend confirmed", trend !== "Sideways"],
     ["Liquidity sweep", sweepLow || sweepHigh],
-    ["BOS / MSS", bosUp || bosDown],
+    ["BOS", bosUp || bosDown],
+    ["MSS", mssUp || mssDown],
     ["Strong displacement", displacement],
-    ["Order Block", bullish || bearish],
+    ["Order Block identified", Boolean(bullishOB || bearishOB)],
+    ["Supply zone identified", Boolean(zones.supply)],
+    ["Demand zone identified", Boolean(zones.demand)],
+    ["Breaker Block candidate", breakerFound],
     ["FVG confirmation", fvg]
   ];
 
   return {
-    ready: true,
-    trend,
-    structure,
-    liquidity,
-    signal,
-    entry,
-    sl,
-    tp,
-    invalidation: sl,
-    checks,
-    displacement,
-    fvg,
-    sweepLow,
-    sweepHigh,
-    bosUp,
-    bosDown
+    ready: true, trend, structure, liquidity, signal, entry, sl, tp,
+    invalidation: sl, checks, displacement, fvg, sweepLow, sweepHigh,
+    bosUp, bosDown, mssUp, mssDown, supply: zones.supply, demand: zones.demand,
+    breaker, breakerFound, orderBlock, demandSupport, supplyResistance
   };
 }
 
@@ -831,6 +879,12 @@ function analyseMainSelection(symbol) {
   setText("apaStructure", result.structure);
   setText("liquidityStatus", result.liquidity);
   setText("entrySignal", result.signal);
+  setText("supplyZone", formatZone(result.supply));
+  setText("demandZone", formatZone(result.demand));
+  setText("breakerBlock", result.breaker);
+  setText("supplyDemandStatus",
+    result.demandSupport ? "Price in / near demand" :
+    result.supplyResistance ? "Price in / near supply" : "Zones identified — waiting for price interaction");
 
   setText("signalEntry", formatPrice(result.entry));
   setText("signalSL", formatPrice(result.sl));

@@ -302,5 +302,32 @@
 </footer>
 
 <script src="app.js"></script>
+  
+<script>
+document.addEventListener("click", function(event) {
+  const button = event.target.closest(".nav-btn[data-page]");
+  if (!button) return;
+
+  const pageId = button.dataset.page;
+  const page = document.getElementById(pageId);
+
+  if (!page) {
+    console.error("Page not found:", pageId);
+    return;
+  }
+
+  document.querySelectorAll(".page").forEach(function(section) {
+    section.classList.remove("active");
+  });
+
+  document.querySelectorAll(".nav-btn").forEach(function(navButton) {
+    navButton.classList.remove("active");
+  });
+
+  page.classList.add("active");
+  button.classList.add("active");
+});
+</script>
+
 </body>
 </html>

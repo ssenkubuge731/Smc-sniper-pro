@@ -598,7 +598,12 @@ function loadMarkets(markets) {
 
   if (!tradingState.availableSymbols.length) {
     setConnectionStatus(
-      "Deriv responded, but returned zero active markets."
+      "Market diagnostic: " +
+"Received " + (Array.isArray(markets) ? markets.length : "non-array") +
+" records. First record fields: " +
+(Array.isArray(markets) && markets[0]
+  ? Object.keys(markets[0]).join(", ")
+  : "No records")
     );
     return;
   }

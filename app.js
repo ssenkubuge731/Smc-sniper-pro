@@ -52,6 +52,13 @@ const tradingState = {
   scanTimer: null,
   scanGeneration: 0,
   scanQueue: [],
+  scanQueueTimer: null,
+  scanInProgress: false,
+  scannerDesired: false,
+  pingTimer: null,
+  reconnectTimer: null,
+  reconnectAttempts: 0,
+  manualDisconnect: false,
   lastSignals: {},
   settings: {}
 };
@@ -274,12 +281,29 @@ function connectDeriv() {
   }
 
   tradingState.derivSocket = socket;
+  tradingState.manualDisconnect = false;
 
   socket.onopen = () => {
     if (tradingState.derivSocket !== socket) return;
 
     tradingState.derivConnected = true;
+    tradingState.reconnectAttempts = 0;
+    if (tradingState.reconnectTimer) {
+      clearTimeout(tradingState.reconnectTimer);
+      tradingState.reconnectTimer = null;
+    }
     setConnectionStatus("Connected. Loading markets...");
+
+    if (tradingState.pingTimer) clearInterval(tradingState.pingTimer);
+    tradingState.pingTimer = setInterval(() => {
+      if (tradingState.derivSocket === socket && socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(JSON.stringify({ ping: 1, req_id: tradingState.requestId++ }));
+        } catch (error) {
+          addResult("Connection keepalive failed: " + error.message);
+        }
+      }
+    }, 30000);
 
     sendRequest({
       active_symbols: "brief",
@@ -316,16 +340,37 @@ function connectDeriv() {
     tradingState.derivSocket = null;
     tradingState.requestContexts.clear();
 
-    stopScanner(false);
+    if (tradingState.pingTimer) {
+      clearInterval(tradingState.pingTimer);
+      tradingState.pingTimer = null;
+    }
 
-    setConnectionStatus(
-      "Disconnected. Code " + event.code
-    );
+    // Preserve the user's scanner choice and resume after reconnection.
+    tradingState.scannerDesired = tradingState.scannerDesired || tradingState.running;
+    tradingState.running = false;
+    clearScanQueue();
+
+    setConnectionStatus("Disconnected. Code " + event.code);
+
+    if (!tradingState.manualDisconnect) {
+      scheduleDerivReconnect();
+    }
   };
 }
 
 function disconnectDeriv() {
+  tradingState.manualDisconnect = true;
+  tradingState.scannerDesired = false;
   stopScanner(false);
+
+  if (tradingState.reconnectTimer) {
+    clearTimeout(tradingState.reconnectTimer);
+    tradingState.reconnectTimer = null;
+  }
+  if (tradingState.pingTimer) {
+    clearInterval(tradingState.pingTimer);
+    tradingState.pingTimer = null;
+  }
 
   const socket = tradingState.derivSocket;
 
@@ -338,6 +383,19 @@ function disconnectDeriv() {
   }
 
   setConnectionStatus("Disconnected from Deriv.");
+}
+
+function scheduleDerivReconnect() {
+  if (tradingState.manualDisconnect || tradingState.reconnectTimer) return;
+
+  tradingState.reconnectAttempts += 1;
+  const delay = Math.min(30000, 1000 * Math.pow(2, tradingState.reconnectAttempts - 1));
+  setConnectionStatus(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`);
+
+  tradingState.reconnectTimer = setTimeout(() => {
+    tradingState.reconnectTimer = null;
+    if (!tradingState.manualDisconnect && !isSocketOpen()) connectDeriv();
+  }, delay);
 }
 
 /* =========================================================
@@ -383,6 +441,9 @@ function handleDerivMessage(data) {
 
   if (Array.isArray(markets)) {
     loadMarkets(markets);
+    if (tradingState.scannerDesired && !tradingState.running) {
+      startScanner(true);
+    }
     return;
   }
 
@@ -592,14 +653,45 @@ function requestCandles(symbol, timeframe) {
   const granularity = GRANULARITY[timeframe];
   if (!granularity) return;
 
-  sendRequest({
-    ticks_history: symbol,
-    adjust_start_time: 1,
-    count: 100,
-    end: "latest",
-    style: "candles",
-    granularity
-  }, { symbol, timeframe });
+  tradingState.scanQueue.push({ symbol, timeframe, granularity });
+  processScanQueue();
+}
+
+function clearScanQueue() {
+  tradingState.scanQueue.length = 0;
+  if (tradingState.scanQueueTimer) {
+    clearInterval(tradingState.scanQueueTimer);
+    tradingState.scanQueueTimer = null;
+  }
+  tradingState.scanInProgress = false;
+}
+
+function processScanQueue() {
+  if (tradingState.scanQueueTimer || !tradingState.running) return;
+
+  tradingState.scanQueueTimer = setInterval(() => {
+    if (!tradingState.running || !isSocketOpen()) {
+      clearScanQueue();
+      return;
+    }
+
+    const job = tradingState.scanQueue.shift();
+    if (!job) {
+      clearInterval(tradingState.scanQueueTimer);
+      tradingState.scanQueueTimer = null;
+      tradingState.scanInProgress = false;
+      return;
+    }
+
+    sendRequest({
+      ticks_history: job.symbol,
+      adjust_start_time: 1,
+      count: 100,
+      end: "latest",
+      style: "candles",
+      granularity: job.granularity
+    }, { symbol: job.symbol, timeframe: job.timeframe });
+  }, 500);
 }
 
 /* =========================================================
@@ -774,7 +866,7 @@ function updateMarketPrice(symbol, quote) {
    SCANNER
 ========================================================= */
 
-function startScanner() {
+function startScanner(resume = false) {
   if (!tradingState.derivConnected || !isSocketOpen()) {
     addResult("Connect Deriv first.");
     setText("scannerStatus", "Scanner stopped: Deriv disconnected");
@@ -788,6 +880,7 @@ function startScanner() {
 
   stopScanner(false);
 
+  tradingState.scannerDesired = true;
   tradingState.running = true;
   tradingState.scanGeneration++;
 
@@ -799,7 +892,7 @@ function startScanner() {
   );
 
   scanSelectedMarkets();
-  tradingState.scanTimer = setInterval(scanSelectedMarkets, 30000);
+  tradingState.scanTimer = setInterval(scanSelectedMarkets, 60000);
 }
 
 function scanSelectedMarkets() {
@@ -808,6 +901,9 @@ function scanSelectedMarkets() {
   const symbols = [...tradingState.selectedSymbols];
   const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
 
+  if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
+
+  tradingState.scanInProgress = true;
   symbols.forEach(symbol => {
     frames.forEach(timeframe => {
       requestCandles(symbol, timeframe);
@@ -822,6 +918,8 @@ function scanSelectedMarkets() {
 
 function stopScanner(showMessage = true) {
   tradingState.running = false;
+  tradingState.scannerDesired = false;
+  clearScanQueue();
 
   if (tradingState.scanTimer) {
     clearInterval(tradingState.scanTimer);

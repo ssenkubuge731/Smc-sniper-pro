@@ -348,19 +348,72 @@ function connectDeriv() {
 
   tradingState.derivSocket = socket;
 
-  socket.onopen = () => {
-    if (tradingState.derivSocket !== socket) return;
-console.log("DERIV SOCKET OPENED");
+  
+socket.onopen = () => {
+  if (tradingState.derivSocket !== socket) return;
 
-socket.send(JSON.stringify({
-  ping: 1,
-  req_id: 999
-}));
-    tradingState.derivConnected = true;
+  console.log("DERIV SOCKET OPENED");
 
-    setConnectionStatus(
-      "Connected. Loading Deriv markets..."
-    );
+  tradingState.derivConnected = true;
+
+  setConnectionStatus("Connected. Testing Deriv API...");
+
+  setText(
+    "cloudStatus",
+    "Cloud engine status: Not verified"
+  );
+
+  socket.send(JSON.stringify({
+    ping: 1,
+    req_id: 999
+  }));
+
+  sendRequest({
+    active_symbols: "brief"
+  });
+};
+
+socket.onmessage = event => {
+  console.log("DERIV RESPONSE:", event.data);
+
+  if (tradingState.derivSocket !== socket) return;
+
+  let data;
+
+  try {
+    data = JSON.parse(event.data);
+  } catch (error) {
+    addResult("Could not read Deriv response.");
+    return;
+  }
+
+  handleDerivMessage(data);
+};
+
+socket.onerror = () => {
+  if (tradingState.derivSocket === socket) {
+    setConnectionStatus("Deriv connection error.");
+  }
+};
+
+socket.onclose = event => {
+  if (tradingState.derivSocket !== socket) return;
+
+  tradingState.derivConnected = false;
+  tradingState.derivSocket = null;
+
+  tradingState.requestContexts.clear();
+  tradingState.candles = {};
+
+  stopScanner(false);
+
+  setConnectionStatus(
+    "Disconnected. Code: " +
+    event.code +
+    (event.reason ? " | " + event.reason : "")
+  );
+};
+
 
     setText(
       "cloudStatus",

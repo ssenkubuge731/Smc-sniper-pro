@@ -65,7 +65,7 @@
     <label for="strategySelect">Select trading strategy</label>
     <select id="strategySelect">
       <option value="apa">APA — Advanced Price Action</option>
-      <option value="smc">Trend & Market Structure</option>
+      <option value="smc">SMC — Smart Money Concepts</option>
     </select>
     <p id="strategyInfo" class="muted">Select the strategy to use for your selected markets.</p>
   </div>
@@ -107,14 +107,14 @@
     <h3>Selected strategy</h3>
     <select id="scannerStrategy">
       <option value="apa">APA — Advanced Price Action</option>
-      <option value="smc">Trend & Market Structure</option>
+      <option value="smc">SMC — Smart Money Concepts</option>
     </select>
     <label for="apaEntryStyle">APA entry style</label>
     <select id="apaEntryStyle">
       <option value="confirmed">Confirmed APA entry</option>
       <option value="early">Early APA entry</option>
     </select>
-    <p class="muted">APA and Trend & Market Structure are separate strategies. Only the selected strategy should generate signals.</p>
+    <p class="muted">APA and SMC — Smart Money Concepts are separate strategies. Only the selected strategy should generate signals. Scalping prioritizes a rapid scan cycle on the selected market.</p>
   </div>
 
   <div class="panel">
@@ -245,7 +245,7 @@
     <label for="strategySettings">Active strategy</label>
     <select id="strategySettings">
       <option value="apa">APA — Advanced Price Action</option>
-      <option value="smc">Trend & Market Structure</option>
+      <option value="smc">SMC — Smart Money Concepts</option>
     </select>
 
     <div id="apaSettings">
@@ -256,7 +256,7 @@
     </div>
 
     <div id="smcSettings">
-      <h4>Trend & Market Structure settings</h4>
+      <h4>SMC — Smart Money Concepts settings</h4>
       <label class="check"><input type="checkbox" id="useTrend" checked> Trend and market structure</label>
       <label class="check"><input type="checkbox" id="useLiquidity" checked> Liquidity sweeps</label>
       <label class="check"><input type="checkbox" id="useBOS" checked> Break of Structure (BOS)</label>
@@ -312,7 +312,7 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="app.js?v=20261110-3"></script>
+<script src="app.js?v=20261110-4"></script>
   
 <script>
 document.addEventListener("click", function(event) {

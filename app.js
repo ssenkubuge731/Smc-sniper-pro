@@ -347,7 +347,29 @@ function connectDeriv() {
     }
   };
 
-  socket.onclose = () => {
+  socket.onclose = event => {
+  if (tradingState.derivSocket !== socket) return;
+
+  tradingState.derivConnected = false;
+  tradingState.derivSocket = null;
+  tradingState.subscriptions = {};
+  tradingState.candles = {};
+
+  const reason = event.reason || "No reason provided";
+
+  setConnectionStatus(
+    "Disconnected. Code: " +
+    event.code +
+    " | " +
+    reason
+  );
+
+  setText("systemStatus", "Disconnected");
+
+  if (tradingState.running) {
+    stopScanner();
+  }
+};
     if (tradingState.derivSocket !== socket) return;
 
     tradingState.derivConnected = false;

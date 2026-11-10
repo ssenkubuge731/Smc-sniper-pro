@@ -71,7 +71,7 @@ const setText = (id, value) => {
 const valueOf = id => $(id)?.value ?? "";
 
 function isSocketOpen() {
-  return (
+  return Boolean(
     tradingState.derivSocket &&
     tradingState.derivSocket.readyState === WebSocket.OPEN
   );
@@ -82,16 +82,12 @@ function candleKey(symbol, timeframe) {
 }
 
 function formatPrice(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(Number(value))
-  ) {
+  if (value === null || value === undefined ||
+      !Number.isFinite(Number(value))) {
     return "--";
   }
 
-  return Number(value)
-    .toFixed(5)
+  return Number(value).toFixed(5)
     .replace(/0+$/, "")
     .replace(/\.$/, "");
 }
@@ -112,9 +108,7 @@ function setConnectionStatus(message) {
 
   setText(
     "systemStatus",
-    tradingState.derivConnected
-      ? "Connected"
-      : "Not connected"
+    tradingState.derivConnected ? "Connected" : "Not connected"
   );
 }
 
@@ -145,9 +139,7 @@ function addResult(message, targetId = "scannerResults") {
 ========================================================= */
 
 function sendRequest(payload, context = null) {
-  if (!isSocketOpen()) {
-    return false;
-  }
+  if (!isSocketOpen()) return false;
 
   const reqId = tradingState.requestId++;
 
@@ -161,19 +153,11 @@ function sendRequest(payload, context = null) {
   }
 
   try {
-    tradingState.derivSocket.send(
-      JSON.stringify(request)
-    );
-
+    tradingState.derivSocket.send(JSON.stringify(request));
     return true;
-
   } catch (error) {
     tradingState.requestContexts.delete(reqId);
-
-    addResult(
-      "Could not send Deriv request: " + error.message
-    );
-
+    addResult("Could not send Deriv request: " + error.message);
     return false;
   }
 }
@@ -185,15 +169,10 @@ function sendRequest(payload, context = null) {
 function showSection(pageId) {
   const page = $(pageId);
 
-  if (!page || !page.classList.contains("page")) {
-    return;
-  }
+  if (!page || !page.classList.contains("page")) return;
 
   document.querySelectorAll(".page").forEach(section => {
-    section.classList.toggle(
-      "active",
-      section.id === pageId
-    );
+    section.classList.toggle("active", section.id === pageId);
   });
 
   document.querySelectorAll(".nav-btn").forEach(button => {
@@ -228,10 +207,8 @@ function updateMode() {
 
   frames.forEach(frame => {
     const option = document.createElement("option");
-
     option.value = frame;
     option.textContent = frame.toUpperCase();
-
     timeframeSelect.appendChild(option);
   });
 
@@ -254,17 +231,13 @@ function updateMode() {
 
 function updateActiveTimeframes() {
   const frames =
-    TIMEFRAMES[tradingState.mode] ||
-    TIMEFRAMES.scalping;
+    TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
 
-  const selected =
-    valueOf("timeframe") || frames[0];
+  const selected = valueOf("timeframe") || frames[0];
 
   setText(
     "activeTimeframes",
-    `Available: ${frames
-      .map(frame => frame.toUpperCase())
-      .join(", ")}. Main display: ${selected.toUpperCase()}.`
+    `Available: ${frames.map(f => f.toUpperCase()).join(", ")}. Main display: ${selected.toUpperCase()}.`
   );
 }
 
@@ -273,9 +246,7 @@ function updateActiveTimeframes() {
 ========================================================= */
 
 function syncStrategy(value) {
-  if (!["apa", "smc"].includes(value)) {
-    value = "apa";
-  }
+  if (!["apa", "smc"].includes(value)) value = "apa";
 
   tradingState.strategy = value;
 
@@ -288,22 +259,8 @@ function syncStrategy(value) {
     if (element) element.value = value;
   });
 
-  const apaSettings = $("apaSettings");
-  const smcSettings = $("smcSettings");
-
-  if (apaSettings) {
-    apaSettings.classList.toggle(
-      "hidden",
-      value !== "apa"
-    );
-  }
-
-  if (smcSettings) {
-    smcSettings.classList.toggle(
-      "hidden",
-      value !== "smc"
-    );
-  }
+  $("apaSettings")?.classList.toggle("hidden", value !== "apa");
+  $("smcSettings")?.classList.toggle("hidden", value !== "smc");
 
   setText(
     "strategyInfo",
@@ -325,30 +282,11 @@ function updateBrokerPanels() {
 
   tradingState.broker = broker;
 
-  const derivPanel = $("derivPanel");
-  const mt5Panel = $("mt5Panel");
+  $("derivPanel")?.classList.toggle("hidden", broker !== "deriv");
+  $("mt5Panel")?.classList.toggle("hidden", broker !== "mt5");
 
-  if (derivPanel) {
-    derivPanel.classList.toggle(
-      "hidden",
-      broker !== "deriv"
-    );
-  }
-
-  if (mt5Panel) {
-    mt5Panel.classList.toggle(
-      "hidden",
-      broker !== "mt5"
-    );
-  }
-
-  if ($("brokerType")) {
-    $("brokerType").value = broker;
-  }
-
-  if ($("scannerBroker")) {
-    $("scannerBroker").value = broker;
-  }
+  if ($("brokerType")) $("brokerType").value = broker;
+  if ($("scannerBroker")) $("scannerBroker").value = broker;
 }
 
 /* =========================================================
@@ -360,10 +298,8 @@ function connectDeriv() {
 
   if (
     existing &&
-    (
-      existing.readyState === WebSocket.OPEN ||
-      existing.readyState === WebSocket.CONNECTING
-    )
+    (existing.readyState === WebSocket.OPEN ||
+     existing.readyState === WebSocket.CONNECTING)
   ) {
     setConnectionStatus("Deriv connection is already active.");
     return;
@@ -374,20 +310,14 @@ function connectDeriv() {
     return;
   }
 
-  setConnectionStatus(
-    "Connecting to Deriv public market data..."
-  );
+  setConnectionStatus("Connecting to Deriv public market data...");
 
   let socket;
 
   try {
-    // Public market data does not require an App ID or login.
     socket = new WebSocket(DERIV_PUBLIC_WS);
-
   } catch (error) {
-    setConnectionStatus(
-      "Connection error: " + error.message
-    );
+    setConnectionStatus("Connection error: " + error.message);
     return;
   }
 
@@ -398,14 +328,9 @@ function connectDeriv() {
 
     tradingState.derivConnected = true;
 
-    setConnectionStatus(
-      "Connected. Requesting active markets..."
-    );
+    setConnectionStatus("Connected. Requesting active markets...");
 
-    setText(
-      "cloudStatus",
-      "Cloud engine status: Not verified"
-    );
+    setText("cloudStatus", "Cloud engine status: Not verified");
 
     const sent = sendRequest({
       active_symbols: "brief"
@@ -425,21 +350,19 @@ function connectDeriv() {
 
     try {
       data = JSON.parse(event.data);
-
     } catch (error) {
       addResult("Could not read Deriv response.");
       return;
     }
 
     console.log("DERIV RESPONSE:", data);
-
     handleDerivMessage(data);
   };
 
   socket.onerror = () => {
     if (tradingState.derivSocket === socket) {
       setConnectionStatus(
-        "Deriv connection error. Check your internet connection."
+        "Deriv connection error. Check internet or API availability."
       );
     }
   };
@@ -456,8 +379,7 @@ function connectDeriv() {
     stopScanner(false);
 
     setConnectionStatus(
-      "Disconnected. Code: " +
-      event.code +
+      "Disconnected. Code: " + event.code +
       (event.reason ? " | " + event.reason : "")
     );
   };
@@ -474,10 +396,7 @@ function disconnectDeriv() {
   tradingState.requestContexts.clear();
   tradingState.candles = {};
 
-  if (
-    socket &&
-    socket.readyState < WebSocket.CLOSING
-  ) {
+  if (socket && socket.readyState < WebSocket.CLOSING) {
     socket.close();
   }
 
@@ -489,23 +408,17 @@ function disconnectDeriv() {
 ========================================================= */
 
 function handleDerivMessage(data) {
-  if (!data || typeof data !== "object") {
-    return;
-  }
+  if (!data || typeof data !== "object") return;
 
   if (data.error) {
-    const message =
-      data.error.message ||
-      "Unknown Deriv API error";
-
+    const message = data.error.message || "Unknown Deriv API error";
     setConnectionStatus("Deriv API: " + message);
     addResult("Deriv API error: " + message);
     return;
   }
 
   if (Array.isArray(data.errors) && data.errors.length) {
-    const message =
-      data.errors[0].message ||
+    const message = data.errors[0].message ||
       "Deriv returned an API error.";
 
     setConnectionStatus("Deriv API: " + message);
@@ -525,10 +438,7 @@ function handleDerivMessage(data) {
     ? tradingState.requestContexts.get(data.req_id)
     : null;
 
-  if (
-    data.msg_type === "tick" &&
-    data.tick
-  ) {
+  if (data.msg_type === "tick" && data.tick) {
     const symbol = data.tick.symbol;
     const quote = Number(data.tick.quote);
 
@@ -549,20 +459,17 @@ function handleDerivMessage(data) {
       tradingState.requestContexts.delete(data.req_id);
     }
 
-    if (!candleContext) {
-      return;
-    }
+    if (!candleContext) return;
 
     const key = candleKey(
       candleContext.symbol,
       candleContext.timeframe
     );
 
-    tradingState.candles[key] =
-      data.candles
-        .map(normalizeCandle)
-        .filter(isValidCandle)
-        .slice(-150);
+    tradingState.candles[key] = data.candles
+      .map(normalizeCandle)
+      .filter(isValidCandle)
+      .slice(-150);
 
     renderTimeframeAnalysis(
       candleContext.symbol,
@@ -588,10 +495,7 @@ function handleDerivMessage(data) {
 
     const list = tradingState.candles[key] || [];
 
-    const candle = normalizeCandle(
-      data.ohlc || data.candle
-    );
-
+    const candle = normalizeCandle(data.ohlc || data.candle);
     if (!isValidCandle(candle)) return;
 
     const last = list[list.length - 1];
@@ -614,25 +518,15 @@ function handleDerivMessage(data) {
 }
 
 function findCandleContext(echoRequest) {
-  if (
-    !echoRequest ||
-    !echoRequest.ticks_history
-  ) {
-    return null;
-  }
+  if (!echoRequest || !echoRequest.ticks_history) return null;
 
   const timeframe = Object.keys(GRANULARITY).find(
-    frame =>
-      GRANULARITY[frame] ===
-      Number(echoRequest.granularity)
+    frame => GRANULARITY[frame] === Number(echoRequest.granularity)
   );
 
   return {
     symbol: echoRequest.ticks_history,
-    timeframe:
-      timeframe ||
-      valueOf("timeframe") ||
-      "1m"
+    timeframe: timeframe || valueOf("timeframe") || "1m"
   };
 }
 
@@ -646,16 +540,8 @@ function loadMarkets(markets) {
     .map(item => ({
       symbol: item.symbol,
       name: item.display_name || item.symbol,
-
-      market:
-        item.market_display_name ||
-        item.market ||
-        "Other",
-
-      submarket:
-        item.submarket_display_name ||
-        item.submarket ||
-        ""
+      market: item.market_display_name || item.market || "Other",
+      submarket: item.submarket_display_name || item.submarket || ""
     }));
 
   if (!tradingState.availableSymbols.length) {
@@ -677,33 +563,26 @@ function loadMarkets(markets) {
 }
 
 function marketCategory(item) {
-  const text =
-    `${item.market} ${item.submarket}`.toLowerCase();
+  const text = `${item.market} ${item.submarket}`.toLowerCase();
 
   if (
     text.includes("forex") ||
     text.includes("major pairs") ||
     text.includes("minor pairs")
-  ) {
-    return "Forex";
-  }
+  ) return "Forex";
 
   if (
     text.includes("metal") ||
     text.includes("gold") ||
     text.includes("silver")
-  ) {
-    return "Gold & Metals";
-  }
+  ) return "Gold & Metals";
 
   if (
     text.includes("derived") ||
     text.includes("synthetic") ||
     text.includes("indices") ||
     text.includes("index")
-  ) {
-    return "Deriv Indices";
-  }
+  ) return "Deriv Indices";
 
   return "Other";
 }
@@ -734,7 +613,6 @@ function renderMarketList() {
     if (!items.length) return;
 
     const heading = document.createElement("div");
-
     heading.className = "market-group-title";
     heading.style.gridColumn = "1 / -1";
     heading.style.color = "#20d69b";
@@ -748,10 +626,8 @@ function renderMarketList() {
       label.className = "market-option";
 
       const checkbox = document.createElement("input");
-
       checkbox.type = "checkbox";
       checkbox.value = item.symbol;
-
       checkbox.checked =
         tradingState.selectedSymbols.has(item.symbol);
 
@@ -769,22 +645,17 @@ function renderMarketList() {
       name.textContent = item.name;
 
       const price = document.createElement("small");
-
       price.className = "market-price";
-
-      price.id =
-        "price-" +
+      price.id = "price-" +
         item.symbol.replace(/[^a-zA-Z0-9_-]/g, "_");
-
       price.textContent =
         tradingState.lastPrices[item.symbol] ?? "";
 
       const textWrap = document.createElement("span");
       textWrap.style.minWidth = "0";
-
       textWrap.append(name, price);
-      label.append(checkbox, textWrap);
 
+      label.append(checkbox, textWrap);
       container.appendChild(label);
     });
   });
@@ -793,8 +664,7 @@ function renderMarketList() {
 }
 
 function updateMarketPrice(symbol, quote) {
-  const safeId =
-    "price-" +
+  const safeId = "price-" +
     symbol.replace(/[^a-zA-Z0-9_-]/g, "_");
 
   setText(safeId, quote);
@@ -804,7 +674,6 @@ function updatePairCounts() {
   const count = tradingState.selectedSymbols.size;
 
   setText("pairCount", count);
-
   setText(
     "selectedPairCount",
     `${count} pair${count === 1 ? "" : "s"} selected`
@@ -830,22 +699,13 @@ function clearPairs() {
 
 function startScanner() {
   if (!isSocketOpen() || !tradingState.derivConnected) {
-    addResult(
-      "Connect Deriv first. The scanner needs market data."
-    );
-
-    setText(
-      "scannerStatus",
-      "Scanner: Waiting for Deriv connection"
-    );
-
+    addResult("Connect Deriv first. The scanner needs market data.");
+    setText("scannerStatus", "Scanner: Waiting for Deriv connection");
     return;
   }
 
   if (!tradingState.selectedSymbols.size) {
-    addResult(
-      "Select at least one market before starting."
-    );
+    addResult("Select at least one market before starting.");
     return;
   }
 
@@ -866,8 +726,7 @@ function startScanner() {
   tradingState.scanQueue = [];
 
   const frames =
-    TIMEFRAMES[tradingState.mode] ||
-    TIMEFRAMES.scalping;
+    TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
 
   tradingState.selectedSymbols.forEach(symbol => {
     frames.forEach(timeframe => {
@@ -880,16 +739,13 @@ function startScanner() {
   });
 
   setText("scannerStatus", "Scanner: Running");
-
   setText(
     "scannerResults",
     "Scanner started. Loading candle history..."
   );
-
   setText("systemStatus", "Scanning");
 
   updateActiveTimeframes();
-
   processScanQueue();
 }
 
@@ -900,31 +756,20 @@ function processScanQueue() {
     addResult(
       "Initial candle-history requests sent. Waiting for market updates."
     );
-
     tradingState.scanTimer = null;
     return;
   }
 
   if (!isSocketOpen()) {
     stopScanner(false);
-
-    setText(
-      "scannerStatus",
-      "Scanner: Connection lost"
-    );
-
-    addResult(
-      "Scanner stopped because the Deriv connection is no longer active."
-    );
-
+    setText("scannerStatus", "Scanner: Connection lost");
+    addResult("Scanner stopped because the Deriv connection was lost.");
     return;
   }
 
   const task = tradingState.scanQueue.shift();
 
-  if (task.generation !== tradingState.scanGeneration) {
-    return;
-  }
+  if (task.generation !== tradingState.scanGeneration) return;
 
   const payload = {
     ticks_history: task.symbol,
@@ -954,7 +799,6 @@ function processScanQueue() {
 function stopScanner(updateStatus = true) {
   tradingState.running = false;
   tradingState.scanGeneration += 1;
-
   tradingState.scanQueue = [];
 
   if (tradingState.scanTimer) {
@@ -968,14 +812,10 @@ function stopScanner(updateStatus = true) {
   if (updateStatus) {
     setText(
       "systemStatus",
-      tradingState.derivConnected
-        ? "Connected"
-        : "Not connected"
+      tradingState.derivConnected ? "Connected" : "Not connected"
     );
 
-    addResult(
-      "Scanner stopped. No orders were placed."
-    );
+    addResult("Scanner stopped. No orders were placed.");
   }
 }
 
@@ -1010,10 +850,8 @@ function isValidCandle(candle) {
 function average(values) {
   if (!values.length) return 0;
 
-  return values.reduce(
-    (sum, value) => sum + value,
-    0
-  ) / values.length;
+  return values.reduce((sum, value) => sum + value, 0) /
+    values.length;
 }
 
 function calculateATR(candles, period = 14) {
@@ -1021,7 +859,7 @@ function calculateATR(candles, period = 14) {
 
   const ranges = [];
 
-  for (let i = 1; i < candles.length; i += 1) {
+  for (let i = 1; i < candles.length; i++) {
     const current = candles[i];
     const previous = candles[i - 1];
 
@@ -1046,13 +884,11 @@ function analyseCandles(candles, strategy) {
   }
 
   const closes = candles.map(candle => candle.close);
-
   const last = candles[candles.length - 1];
   const previous = candles[candles.length - 2];
 
   const fastAverage = average(closes.slice(-20));
   const slowAverage = average(closes.slice(-50));
-
   const atr = calculateATR(candles);
 
   const recentCandles = candles.slice(-11, -1);
@@ -1098,34 +934,22 @@ function analyseCandles(candles, strategy) {
   let liquidity = "No clear sweep";
 
   if (strategy === "apa") {
-    if (
-      bullishTrend &&
-      bullishCandle &&
-      bullishBreak
-    ) {
+    if (bullishTrend && bullishCandle && bullishBreak) {
       direction = "BUY CANDIDATE";
-
       confirmations = [
         "Bullish trend",
         "Bullish candle confirmation",
         "Recent range high broken"
       ];
-
       structure = "Bullish price-action breakout";
 
-    } else if (
-      bearishTrend &&
-      bearishCandle &&
-      bearishBreak
-    ) {
+    } else if (bearishTrend && bearishCandle && bearishBreak) {
       direction = "SELL CANDIDATE";
-
       confirmations = [
         "Bearish trend",
         "Bearish candle confirmation",
         "Recent range low broken"
       ];
-
       structure = "Bearish price-action breakout";
 
     } else {
@@ -1135,36 +959,23 @@ function analyseCandles(candles, strategy) {
           : bearishTrend
             ? "Bearish trend"
             : "Trend not aligned",
-
         "Waiting for candle and range confirmation"
       ];
     }
 
   } else {
-    if (sweepLow) {
-      liquidity = "Possible sell-side liquidity sweep";
-    }
+    if (sweepLow) liquidity = "Possible sell-side liquidity sweep";
+    if (sweepHigh) liquidity = "Possible buy-side liquidity sweep";
 
-    if (sweepHigh) {
-      liquidity = "Possible buy-side liquidity sweep";
-    }
-
-    if (
-      bullishTrend &&
-      (bullishBreak || sweepLow) &&
-      bullishCandle
-    ) {
+    if (bullishTrend && (bullishBreak || sweepLow) && bullishCandle) {
       direction = "BUY CANDIDATE";
-
       structure = bullishBreak
         ? "Possible bullish BOS"
         : "Possible bullish liquidity reclaim";
 
       confirmations = [
         "Bullish trend",
-        sweepLow
-          ? "Possible liquidity sweep"
-          : "Recent high break",
+        sweepLow ? "Possible liquidity sweep" : "Recent high break",
         "Bullish candle displacement candidate"
       ];
 
@@ -1174,16 +985,13 @@ function analyseCandles(candles, strategy) {
       bearishCandle
     ) {
       direction = "SELL CANDIDATE";
-
       structure = bearishBreak
         ? "Possible bearish BOS"
         : "Possible bearish liquidity reclaim";
 
       confirmations = [
         "Bearish trend",
-        sweepHigh
-          ? "Possible liquidity sweep"
-          : "Recent low break",
+        sweepHigh ? "Possible liquidity sweep" : "Recent low break",
         "Bearish candle displacement candidate"
       ];
 
@@ -1194,7 +1002,6 @@ function analyseCandles(candles, strategy) {
           : bearishTrend
             ? "Bearish trend"
             : "Trend not aligned",
-
         liquidity,
         "Waiting for structure confirmation"
       ];
@@ -1211,37 +1018,30 @@ function analyseCandles(candles, strategy) {
   return {
     ready: true,
     direction,
-
     trend: bullishTrend
       ? "Bullish"
       : bearishTrend
         ? "Bearish"
         : "Neutral / mixed",
-
     structure,
     liquidity,
     confirmations,
-
     entry: buy || sell ? entry : null,
-
     stopLoss: buy
       ? entry - stopDistance
       : sell
         ? entry + stopDistance
         : null,
-
     takeProfit: buy
       ? entry + targetDistance
       : sell
         ? entry - targetDistance
         : null,
-
     invalidation: buy
       ? last.low
       : sell
         ? last.high
         : null,
-
     atr,
     lastPrice: last.close,
     time: last.epoch
@@ -1254,9 +1054,7 @@ function analyseCandles(candles, strategy) {
 
 function renderTimeframeAnalysis(symbol, timeframe) {
   const candles =
-    tradingState.candles[
-      candleKey(symbol, timeframe)
-    ];
+    tradingState.candles[candleKey(symbol, timeframe)];
 
   if (!candles) return;
 
@@ -1280,11 +1078,10 @@ function renderTimeframeAnalysis(symbol, timeframe) {
     ? `${name} · ${timeframe.toUpperCase()}: ${result.trend} | ${result.direction}`
     : `${name} · ${timeframe.toUpperCase()}: ${result.reason}`;
 
-  const key =
-    `${symbol}-${timeframe}`.replace(
-      /[^a-zA-Z0-9_-]/g,
-      "_"
-    );
+  const key = `${symbol}-${timeframe}`.replace(
+    /[^a-zA-Z0-9_-]/g,
+    "_"
+  );
 
   row.dataset.analysisKey = key;
 
@@ -1294,12 +1091,8 @@ function renderTimeframeAnalysis(symbol, timeframe) {
 
   if (old) {
     old.replaceWith(row);
-
   } else {
-    if (
-      container.textContent ===
-      "No timeframe analysis available."
-    ) {
+    if (container.textContent === "No timeframe analysis available.") {
       container.textContent = "";
     }
 
@@ -1317,16 +1110,12 @@ function renderTimeframeAnalysis(symbol, timeframe) {
 
 function analyseMainSelection(symbol) {
   const frames =
-    TIMEFRAMES[tradingState.mode] ||
-    TIMEFRAMES.scalping;
+    TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
 
-  const timeframe =
-    valueOf("timeframe") || frames[0];
+  const timeframe = valueOf("timeframe") || frames[0];
 
   const candles =
-    tradingState.candles[
-      candleKey(symbol, timeframe)
-    ];
+    tradingState.candles[candleKey(symbol, timeframe)];
 
   if (!candles) return;
 
@@ -1342,11 +1131,7 @@ function analyseMainSelection(symbol) {
       item => item.symbol === symbol
     )?.name || symbol;
 
-  setText(
-    "marketTrend",
-    `${result.trend} (${name})`
-  );
-
+  setText("marketTrend", `${result.trend} (${name})`);
   setText("apaStructure", result.structure);
   setText("liquidityStatus", result.liquidity);
   setText("entrySignal", result.direction);
@@ -1354,11 +1139,7 @@ function analyseMainSelection(symbol) {
   setText("signalEntry", formatPrice(result.entry));
   setText("signalSL", formatPrice(result.stopLoss));
   setText("signalTP", formatPrice(result.takeProfit));
-
-  setText(
-    "signalInvalidation",
-    formatPrice(result.invalidation)
-  );
+  setText("signalInvalidation", formatPrice(result.invalidation));
 
   const checklist = $("strategyChecklist");
 
@@ -1367,17 +1148,13 @@ function analyseMainSelection(symbol) {
 
     result.confirmations.forEach(item => {
       const line = document.createElement("div");
-
       line.className = "result-item";
       line.textContent = "• " + item;
-
       checklist.appendChild(line);
     });
 
     const note = document.createElement("p");
-
     note.className = "warning";
-
     note.textContent =
       "Preliminary candle-based analysis only. Confirm levels and market context on your chart. This is not a verified APA/SMC trade signal.";
 
@@ -1409,11 +1186,9 @@ const SETTING_IDS = [
   "scannerStrategy",
   "strategySettings",
   "apaEntryStyle",
-
   "useAPA",
   "useATR",
   "useAPAConfirmation",
-
   "useTrend",
   "useLiquidity",
   "useBOS",
@@ -1425,7 +1200,6 @@ const SETTING_IDS = [
   "useIFVG",
   "useBreaker",
   "useSupplyDemand",
-
   "riskPercent",
   "lotSize",
   "stopLoss",
@@ -1433,7 +1207,6 @@ const SETTING_IDS = [
   "maxTrades",
   "dailyLossLimit",
   "maxConsecutiveLosses",
-
   "continuousScanning",
   "multipleEntries",
   "manageTrades"
@@ -1444,13 +1217,11 @@ function saveSettings() {
 
   SETTING_IDS.forEach(id => {
     const element = $(id);
-
     if (!element) return;
 
-    settings[id] =
-      element.type === "checkbox"
-        ? element.checked
-        : element.value;
+    settings[id] = element.type === "checkbox"
+      ? element.checked
+      : element.value;
   });
 
   const risk = Number(valueOf("riskPercent"));
@@ -1474,21 +1245,16 @@ function saveSettings() {
       "settingsStatus",
       "Check your risk values. Risk must be 0.1–1%. Lot/stake and SL/TP must be positive."
     );
-
     return;
   }
 
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(settings)
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 
     setText(
       "settingsStatus",
       "Settings saved on this device. Saving settings does not activate trading."
     );
-
   } catch (error) {
     setText(
       "settingsStatus",
@@ -1504,14 +1270,12 @@ function loadSettings() {
     settings = JSON.parse(
       localStorage.getItem(STORAGE_KEY) || "{}"
     );
-
   } catch (error) {
     settings = {};
   }
 
   Object.entries(settings).forEach(([id, value]) => {
     const element = $(id);
-
     if (!element) return;
 
     if (element.type === "checkbox") {
@@ -1542,29 +1306,25 @@ function loadSettings() {
 ========================================================= */
 
 function initializeApp() {
-  document.querySelectorAll(
-    ".nav-btn[data-page]"
-  ).forEach(button => {
+  // Prevent duplicate initialization if called more than once.
+  if (window.smcSniperInitialized) return;
+  window.smcSniperInitialized = true;
+
+  document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
     button.addEventListener("click", () => {
       showSection(button.dataset.page);
     });
   });
 
-  $("tradingStyle")?.addEventListener(
-    "change",
-    updateMode
-  );
+  $("tradingStyle")?.addEventListener("change", updateMode);
 
-  $("timeframe")?.addEventListener(
-    "change",
-    () => {
-      updateActiveTimeframes();
+  $("timeframe")?.addEventListener("change", () => {
+    updateActiveTimeframes();
 
-      tradingState.selectedSymbols.forEach(
-        analyseMainSelection
-      );
-    }
-  );
+    tradingState.selectedSymbols.forEach(symbol => {
+      analyseMainSelection(symbol);
+    });
+  });
 
   [
     "strategySelect",
@@ -1581,31 +1341,18 @@ function initializeApp() {
     updateBrokerPanels
   );
 
-  $("scannerBroker")?.addEventListener(
-    "change",
-    event => {
-      if ($("brokerType")) {
-        $("brokerType").value = event.target.value;
-      }
-
-      updateBrokerPanels();
+  $("scannerBroker")?.addEventListener("change", event => {
+    if ($("brokerType")) {
+      $("brokerType").value = event.target.value;
     }
-  );
 
-  
+    updateBrokerPanels();
+  });
+
+  // DERIV CONNECT BUTTON: one listener only.
   $("connectDeriv")?.addEventListener(
     "click",
     connectDeriv
-  );
-
-  const btn = document.getElementById("connectDeriv");
-
-  if (btn) {
-    btn.addEventListener("click", () => {
-      connectDeriv();
-    });
-  }
-});
   );
 
   $("disconnectDeriv")?.addEventListener(
@@ -1628,13 +1375,10 @@ function initializeApp() {
     startScanner
   );
 
-  $("scannerStartButton")?.addEventListener(
-    "click",
-    () => {
-      showSection("scanner");
-      startScanner();
-    }
-  );
+  $("scannerStartButton")?.addEventListener("click", () => {
+    showSection("scanner");
+    startScanner();
+  });
 
   $("stopScanner")?.addEventListener(
     "click",
@@ -1651,18 +1395,14 @@ function initializeApp() {
     saveSettings
   );
 
-  $("connectMT5")?.addEventListener(
-    "click",
-    () => {
-      setText(
-        "mt5ConnectionStatus",
-        "MT5 bridge is not configured. A separate secure server and MT5 terminal are required."
-      );
-    }
-  );
+  $("connectMT5")?.addEventListener("click", () => {
+    setText(
+      "mt5ConnectionStatus",
+      "MT5 bridge is not configured. A separate secure server and MT5 terminal are required."
+    );
+  });
 
   loadSettings();
-
   updateBrokerPanels();
   syncStrategy(tradingState.strategy);
   updatePairCounts();
@@ -1671,34 +1411,22 @@ function initializeApp() {
     "Not connected. Connect Deriv to load public markets."
   );
 
-  setText(
-    "cloudStatus",
-    "Cloud engine status: Not verified"
-  );
-
+  setText("cloudStatus", "Cloud engine status: Not verified");
   setText("scannerStatus", "Scanner: Stopped");
-
-  setText(
-    "timeframeResults",
-    "No timeframe analysis available."
-  );
-
+  setText("timeframeResults", "No timeframe analysis available.");
   setText(
     "positionsList",
     "No positions available. Order execution is disabled."
   );
-
-  setText(
-    "tradeHistory",
-    "No completed trades available."
-  );
-
+  setText("tradeHistory", "No completed trades available.");
   setText("openTrades", "0");
   setText("scannerResults", "Scanner has not started.");
+
+  console.log("SMC Sniper Pro APA initialized successfully.");
 }
 
 /* =========================================================
-   START APPLICATION
+   START APPLICATION - RUN ONCE
 ========================================================= */
 
 if (document.readyState === "loading") {
@@ -1707,11 +1435,9 @@ if (document.readyState === "loading") {
     initializeApp,
     { once: true }
   );
-
 } else {
   initializeApp();
 }
-
 
   
 

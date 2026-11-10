@@ -9,7 +9,8 @@
    LIVE TRADING LOCKED
 ========================================================= */
 
-const DERIV_PUBLIC_WS = "wss://ws.derivws.com/websockets/v3";
+const DERIV_PUBLIC_WS =
+  "wss://api.derivws.com/trading/v1/options/ws/public";
 const STORAGE_KEY = "smcSniperProSettingsV2";
 const TIMEFRAMES = {
   scalping: ["1m", "5m", "15m"],

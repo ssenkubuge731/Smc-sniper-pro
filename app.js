@@ -540,14 +540,61 @@ function findCandleContext(echoRequest) {
 ========================================================= */
 
 function loadMarkets(markets) {
-  tradingState.availableSymbols = markets
-    .filter(item => item && item.symbol)
-    .map(item => ({
-      symbol: item.symbol,
-      name: item.display_name || item.symbol,
-      market: item.market_display_name || item.market || "Other",
-      submarket: item.submarket_display_name || item.submarket || ""
-    }));
+  tradingState.availableSymbols = (Array.isArray(markets) ? markets : [])
+    .map(item => {
+      if (!item || typeof item !== "object") return null;
+
+      const symbol =
+        item.symbol ||
+        item.underlying_symbol ||
+        item.underlying ||
+        item.name;
+
+      if (!symbol) return null;
+
+      return {
+        symbol: String(symbol),
+        name:
+          item.display_name ||
+          item.underlying_symbol_name ||
+          item.name ||
+          String(symbol),
+        market:
+          item.market_display_name ||
+          item.market ||
+          item.market_name ||
+          item.symbol_type ||
+          item.underlying_symbol_type ||
+          "Other",
+        submarket:
+          item.submarket_display_name ||
+          item.submarket ||
+          item.submarket_name ||
+          ""
+      };
+    })
+    .filter(Boolean);
+
+  if (!tradingState.availableSymbols.length) {
+    setConnectionStatus(
+      "Connected, but Deriv returned no readable market symbols. Check the API response."
+    );
+    console.log("UNRECOGNIZED DERIV MARKET DATA:", markets);
+    return;
+  }
+
+  renderMarketList();
+
+  setConnectionStatus(
+    `Connected. ${tradingState.availableSymbols.length} markets loaded.`
+  );
+
+  addResult(
+    `${tradingState.availableSymbols.length} Deriv markets loaded successfully.`
+  );
+}
+
+
 
   if (!tradingState.availableSymbols.length) {
     setConnectionStatus(

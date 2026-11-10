@@ -1592,9 +1592,15 @@ function initializeApp() {
     }
   );
 
-  $("connectDeriv")?.addEventListener(
-    "click",
-    connectDeriv
+  document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("connectDeriv");
+
+  if (btn) {
+    btn.addEventListener("click", () => {
+      connectDeriv();
+    });
+  }
+});
   );
 
   $("disconnectDeriv")?.addEventListener(

@@ -1545,7 +1545,8 @@ function initializeApp() {
   );
 
   loadSettings();
-  updateBrokerPanels();
+updateMode();
+updateBrokerPanels();
   syncStrategy(tradingState.strategy);
   updatePairCounts();
 

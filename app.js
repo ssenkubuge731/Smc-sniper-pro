@@ -317,6 +317,81 @@ function connectDeriv() {
     return;
   }
 
+  if (!window.WebSocket) {
+    setConnectionStatus("WebSocket is not supported.");
+    return;
+  }
+
+  setConnectionStatus("Connecting to Deriv public market data...");
+
+  let socket;
+
+  try {
+    // Public market data requires no App ID in the URL.
+    socket = new WebSocket(DERIV_PUBLIC_WS);
+  } catch (error) {
+    setConnectionStatus("Connection error: " + error.message);
+    return;
+  }
+
+  tradingState.derivSocket = socket;
+
+  socket.onopen = () => {
+    if (tradingState.derivSocket !== socket) return;
+
+    tradingState.derivConnected = true;
+
+    setConnectionStatus("Connected. Loading markets...");
+
+    setText("cloudStatus", "Cloud engine status: Not verified");
+
+    sendRequest({
+      active_symbols: "brief"
+    });
+  };
+
+  socket.onmessage = event => {
+    if (tradingState.derivSocket !== socket) return;
+
+    console.log("DERIV RESPONSE:", event.data);
+
+    let data;
+
+    try {
+      data = JSON.parse(event.data);
+    } catch (error) {
+      addResult("Could not read Deriv response.");
+      return;
+    }
+
+    handleDerivMessage(data);
+  };
+
+  socket.onerror = () => {
+    if (tradingState.derivSocket === socket) {
+      setConnectionStatus("Deriv connection error.");
+    }
+  };
+
+  socket.onclose = event => {
+    if (tradingState.derivSocket !== socket) return;
+
+    tradingState.derivConnected = false;
+    tradingState.derivSocket = null;
+    tradingState.requestContexts.clear();
+    tradingState.candles = {};
+
+    stopScanner(false);
+
+    setConnectionStatus(
+      "Disconnected. Code: " +
+      event.code +
+      (event.reason ? " | " + event.reason : "")
+    );
+  };
+}
+
+
   const appId = valueOf("derivAppId").trim();
 
   if (!appId) {

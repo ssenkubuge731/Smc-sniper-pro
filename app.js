@@ -421,9 +421,8 @@ socket.onclose = event => {
     );
 
     sendRequest({
-      active_symbols: "brief",
-      product_type: "basic"
-    });
+  active_symbols: "brief"
+});
   };
 
   socket.onmessage = event => { socket.onmessage = event => {

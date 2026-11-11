@@ -13,6 +13,7 @@ const DERIV_PUBLIC_WS =
   "wss://api.derivws.com/trading/v1/options/ws/public";
 
 const STORAGE_KEY = "smcSniperProSettingsV2";
+const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m", "15m"],
@@ -60,6 +61,7 @@ const tradingState = {
   reconnectAttempts: 0,
   manualDisconnect: false,
   lastSignals: {},
+  signalHistory: [],
   settings: {},
   newsEvents: [],
   newsLoadedAt: 0,
@@ -1521,6 +1523,132 @@ function analyseMainSelection(symbol) {
   }
 
   tradingState.lastSignals[symbol] = result;
+  evaluateSignalHistory(symbol, timeframe, candles);
+  recordCandidateSignal(symbol, timeframe, result, candles);
+}
+
+/* =========================================================
+   SIGNAL HISTORY — DEMO ANALYSIS ONLY
+   Records candidate signals and checks later candles for SL/TP.
+   This does not place or manage broker orders.
+========================================================= */
+function loadSignalHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SIGNAL_HISTORY_KEY) || "[]");
+    tradingState.signalHistory = Array.isArray(saved) ? saved.slice(0, 200) : [];
+  } catch {
+    tradingState.signalHistory = [];
+  }
+  renderSignalHistory();
+}
+
+function saveSignalHistory() {
+  try {
+    tradingState.signalHistory = tradingState.signalHistory.slice(0, 200);
+    localStorage.setItem(SIGNAL_HISTORY_KEY, JSON.stringify(tradingState.signalHistory));
+  } catch (error) {
+    addResult("Signal history could not be saved on this device: " + error.message, "tradeHistory");
+  }
+  renderSignalHistory();
+}
+
+function renderSignalHistory() {
+  const box = $("tradeHistory");
+  if (!box) return;
+  box.replaceChildren();
+
+  if (!tradingState.signalHistory.length) {
+    box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
+    return;
+  }
+
+  tradingState.signalHistory.slice(0, 50).forEach(record => {
+    const row = document.createElement("div");
+    row.className = "result-item";
+    const date = new Date(record.createdAt).toLocaleString();
+    const outcome = record.status === "OPEN" ? "OPEN — awaiting later candles" : record.status;
+    row.textContent =
+      `${date} | ${record.symbol} | ${record.strategy.toUpperCase()} ${record.timeframe.toUpperCase()} | ${record.direction}\n` +
+      `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\n` +
+      `Result: ${outcome}`;
+    box.appendChild(row);
+  });
+}
+
+function evaluateSignalHistory(symbol, timeframe, candles) {
+  if (!Array.isArray(candles) || !candles.length) return;
+  let changed = false;
+
+  tradingState.signalHistory.forEach(record => {
+    if (record.status !== "OPEN" || record.symbol !== symbol || record.timeframe !== timeframe) return;
+
+    const laterCandles = candles.filter(candle =>
+      Number.isFinite(candle.epoch) && candle.epoch > record.lastCheckedCandleEpoch
+    ).sort((x, y) => x.epoch - y.epoch);
+
+    laterCandles.forEach(candle => {
+      if (record.status !== "OPEN") return;
+      const hitSL = record.direction === "BUY"
+        ? candle.low <= record.sl
+        : candle.high >= record.sl;
+      const hitTP = record.direction === "BUY"
+        ? candle.high >= record.tp
+        : candle.low <= record.tp;
+
+      if (hitSL && hitTP) {
+        record.status = "REVIEW — SL and TP touched in the same candle";
+        record.closedAt = Date.now();
+      } else if (hitSL) {
+        record.status = "SL HIT";
+        record.closedAt = Date.now();
+      } else if (hitTP) {
+        record.status = "TP HIT";
+        record.closedAt = Date.now();
+      }
+      record.lastCheckedCandleEpoch = candle.epoch;
+      changed = true;
+    });
+  });
+
+  if (changed) saveSignalHistory();
+}
+
+function recordCandidateSignal(symbol, timeframe, result, candles) {
+  if (!result || !result.signal) return;
+  const signalText = String(result.signal);
+  const direction = /\\bBUY\\b/i.test(signalText) ? "BUY" :
+    /\\bSELL\\b/i.test(signalText) ? "SELL" : "";
+  if (!direction) return;
+
+  const entry = Number(result.entry);
+  const sl = Number(result.sl);
+  const tp = Number(result.tp);
+  if (![entry, sl, tp].every(Number.isFinite)) return;
+
+  const lastCandle = candles[candles.length - 1];
+  const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
+  const strategy = result.strategy || tradingState.strategy;
+  const alreadyOpen = tradingState.signalHistory.some(record =>
+    record.status === "OPEN" && record.symbol === symbol &&
+    record.strategy === strategy && record.timeframe === timeframe &&
+    record.direction === direction
+  );
+  if (alreadyOpen) return;
+
+  const record = {
+    id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
+    symbol, strategy, timeframe, direction, entry, sl, tp,
+    createdAt: Date.now(),
+    signalCandleEpoch: candleEpoch,
+    lastCheckedCandleEpoch: candleEpoch,
+    status: "OPEN"
+  };
+  tradingState.signalHistory.unshift(record);
+  saveSignalHistory();
+  addResult(
+    `Signal saved to history: ${symbol} ${strategy.toUpperCase()} ${direction} | Entry ${formatPrice(entry)} | SL ${formatPrice(sl)} | TP ${formatPrice(tp)}`,
+    "tradeHistory"
+  );
 }
 
 function updateMarketPrice(symbol, quote) {
@@ -1749,7 +1877,7 @@ function initApp() {
   setText("scannerStatus", "Scanner stopped");
   setText("cloudStatus", "Cloud engine status: Not verified");
   setText("positionsList", "No positions available — order execution disabled.");
-  setText("tradeHistory", "No completed trades — order execution disabled.");
+  loadSignalHistory();
 
   console.log("SMC Sniper Pro APA initialized.");
 }

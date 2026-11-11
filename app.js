@@ -1616,14 +1616,17 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   const signalText = String(result.signal);
-  const direction = /\\bBUY\\b/i.test(signalText) ? "BUY" :
-    /\\bSELL\\b/i.test(signalText) ? "SELL" : "";
+  const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
+    /\bSELL\b/i.test(signalText) ? "SELL" : "";
   if (!direction) return;
 
   const entry = Number(result.entry);
   const sl = Number(result.sl);
   const tp = Number(result.tp);
-  if (![entry, sl, tp].every(Number.isFinite)) return;
+  if (![entry, sl, tp].every(Number.isFinite)) {
+    console.warn("Signal not saved: valid entry, stop loss and take profit are required.", { symbol, timeframe, signal: signalText, entry, sl, tp });
+    return;
+  }
 
   const lastCandle = candles[candles.length - 1];
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);

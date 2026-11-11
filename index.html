@@ -251,8 +251,9 @@
     <h3>MT5 broker connection</h3>
     <label for="mt5Broker">Select broker</label>
     <select id="mt5Broker">
-      <option value="">Choose broker</option>
-      <option value="exness">Exness</option>
+      <option value="deriv" selected>Deriv MT5 (first)</option>
+      <option value="exness">Exness MT5</option>
+      <option value="fbs">FBS MT5</option>
       <option value="icmarkets">IC Markets</option>
       <option value="pepperstone">Pepperstone</option>
       <option value="xm">XM</option>
@@ -260,9 +261,9 @@
     </select>
     <label for="mt5Server">Broker server</label>
     <input id="mt5Server" type="text" placeholder="Enter MT5 server name">
-    <p class="muted">MT5 requires a separate secure execution bridge and an MT5 terminal.</p>
-    <button id="connectMT5" class="primary">Connect MT5 Bridge</button>
-    <p id="mt5ConnectionStatus">Not connected</p>
+    <p class="muted">Deriv MT5 is selected first. Exness and FBS are also listed for later. A real MT5 connection needs a Windows VPS running the MT5 terminal plus a secure bridge. This screen does not claim a connection before those components exist.</p>
+    <button id="connectMT5" class="primary" type="button">Check MT5 setup</button>
+    <p id="mt5ConnectionStatus">Preparation only — not connected. Use Deriv API for scanning until the VPS bridge is installed.</p>
   </div>
 
   <div class="panel">

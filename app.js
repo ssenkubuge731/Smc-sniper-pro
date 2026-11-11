@@ -262,6 +262,36 @@ function updateBrokerPanels() {
 
   if ($("brokerType")) $("brokerType").value = broker;
   if ($("scannerBroker")) $("scannerBroker").value = broker;
+
+  if (broker === "mt5") {
+    setText("mt5ConnectionStatus",
+      "Preparation only — MT5 bridge and Windows VPS are not connected yet.");
+  }
+}
+
+function prepareMT5Connection() {
+  const broker = valueOf("mt5Broker");
+  const server = valueOf("mt5Server").trim();
+
+  if (!broker) {
+    setText("mt5ConnectionStatus", "Choose Deriv MT5, Exness MT5 or FBS MT5 first.");
+    return;
+  }
+
+  const brokerName = {
+    deriv: "Deriv MT5",
+    exness: "Exness MT5",
+    fbs: "FBS MT5",
+    icmarkets: "IC Markets",
+    pepperstone: "Pepperstone",
+    xm: "XM",
+    other: "Other MT5 broker"
+  }[broker] || "Selected MT5 broker";
+
+  const serverText = server ? " Server entered: " + server + "." : "";
+  setText("mt5ConnectionStatus",
+    brokerName + " selected." + serverText +
+    " Not connected yet: the secure MT5 bridge and Windows VPS must be installed first. Deriv API market scanning remains separate.");
 }
 
 /* =========================================================
@@ -1678,6 +1708,12 @@ function updateMarketPrice(symbol, quote) {
 ========================================================= */
 
 function startScanner(resume = false) {
+  if (tradingState.broker === "mt5") {
+    addResult("MT5 scanning is not active yet. Use Deriv API for market scanning until the Windows VPS and secure MT5 bridge are installed.");
+    setText("scannerStatus", "MT5 bridge not installed — use Deriv API for now");
+    return;
+  }
+
   if (!tradingState.derivConnected || !isSocketOpen()) {
     addResult("Connect Deriv first.");
     setText("scannerStatus", "Scanner stopped: Deriv disconnected");
@@ -1874,6 +1910,10 @@ function initApp() {
   // Brokers
   $("brokerType")?.addEventListener("change", updateBrokerPanels);
   $("scannerBroker")?.addEventListener("change", updateBrokerPanels);
+  $("connectMT5")?.addEventListener("click", prepareMT5Connection);
+  $("mt5Broker")?.addEventListener("change", () => {
+    setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
+  });
 
   // News calendar
   $("refreshNews")?.addEventListener("click", () => loadNewsCalendar(true));

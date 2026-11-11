@@ -1423,6 +1423,11 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const box = $("timeframeResults");
   if (!box) return;
 
+  if (result.ready) {
+    evaluateSignalHistory(symbol, timeframe, candles);
+    recordCandidateSignal(symbol, timeframe, result, candles);
+  }
+
   const resultKey = `${symbol}|${timeframe}`;
   let item = Array.from(box.children).find(
     child => child.dataset && child.dataset.resultKey === resultKey
@@ -1620,10 +1625,14 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     /\bSELL\b/i.test(signalText) ? "SELL" : "";
   if (!direction) return;
 
+  if (result.entry == null || result.sl == null || result.tp == null) {
+    console.warn("Signal not saved: signal is missing an entry, stop loss or take profit.", { symbol, timeframe, signal: signalText });
+    return;
+  }
   const entry = Number(result.entry);
   const sl = Number(result.sl);
   const tp = Number(result.tp);
-  if (![entry, sl, tp].every(Number.isFinite)) {
+  if (![entry, sl, tp].every(Number.isFinite) || entry <= 0 || sl <= 0 || tp <= 0) {
     console.warn("Signal not saved: valid entry, stop loss and take profit are required.", { symbol, timeframe, signal: signalText, entry, sl, tp });
     return;
   }

@@ -1433,7 +1433,24 @@ function renderTimeframeAnalysis(symbol, timeframe) {
     box.prepend(item);
   }
 
-  item.textContent = `${symbol} ${timeframe.toUpperCase()}: ${result.trend} | ${result.structure} | ${result.signal}`;
+  const zoneText = zone => zone
+    ? `${formatPrice(zone.low)}–${formatPrice(zone.high)}`
+    : "not identified";
+  const scannerDetails = result.strategy === "smc"
+    ? [
+        `Supply ${zoneText(result.supply)}`,
+        `Demand ${zoneText(result.demand)}`,
+        `OB ${result.orderBlock ? zoneText(result.orderBlock) : "not identified"}`,
+        `OB reaction ${result.orderBlockTouched ? "yes" : "no"}`,
+        `Breaker ${result.breaker || "not identified"}`,
+        `FVG/IFVG ${result.fvgDetails && (result.fvgDetails.bullishFVG || result.fvgDetails.bearishFVG || result.fvgDetails.bullishIFVG || result.fvgDetails.bearishIFVG) ? "detected" : "not detected"}`,
+        `Confirmations BUY ${result.bullishConfirmations || 0} / SELL ${result.bearishConfirmations || 0}`
+      ].join(" | ")
+    : result.strategy === "apa"
+      ? [`Supply ${zoneText(result.supply)}`, `Demand ${zoneText(result.demand)}`, `POI ${result.orderBlock ? zoneText(result.orderBlock) : "not identified"}`].join(" | ")
+      : result.reasoning || "News analysis";
+  item.textContent = `${symbol} ${timeframe.toUpperCase()}: ${result.trend} | ${result.structure} | ${result.signal}\n${scannerDetails}`;
+
 
   while (box.children.length > 30) {
     box.removeChild(box.lastChild);

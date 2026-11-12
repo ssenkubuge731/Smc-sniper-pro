@@ -180,8 +180,8 @@
   <div class="panel">
     <h3>Trade setup levels</h3>
     <div class="analysis-row"><span>Entry price</span><strong id="signalEntry">--</strong></div>
-    <div class="analysis-row"><span>Stop loss</span><strong id="signalSL">--</strong></div>
-    <div class="analysis-row"><span>Take profit</span><strong id="signalTP">--</strong></div>
+    <div class="analysis-row" id="signalSLRow"><span>Stop loss</span><strong id="signalSL">--</strong></div>
+    <div class="analysis-row" id="signalTPRow"><span>Take profit</span><strong id="signalTP">--</strong></div>
     <div class="analysis-row"><span>Invalidation</span><strong id="signalInvalidation">--</strong></div>
     <p class="warning">Scanner signals are analytical information, not guaranteed trade entries.</p>
   </div>
@@ -216,6 +216,12 @@
     <h3>Open demo entries</h3>
     <p class="muted">The bot selects BUY or SELL from confirmed analysis. In Scalping, APA, SMC, and News each use a separate fast basket exit at the first positive price move; fixed SL and TP are not used for now. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
     <div id="positionsList">No open demo entries.</div>
+  </div>
+
+  <div class="panel">
+    <h3>Scalping Activity</h3>
+    <p class="muted">Recent simulated scalp entries, current quote, basket exit status and exit price. This panel does not show real broker orders.</p>
+    <div id="scalpActivity">No scalp activity yet. Start the scanner in Scalping mode.</div>
   </div>
 
   <div class="panel">
@@ -350,7 +356,7 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="app.js?v=20261112-scalp-no-tpsl-1"></script>
+<script src="app.js?v=20261112-scalp-activity-1"></script>
   
 <script>
 document.addEventListener("click", function(event) {

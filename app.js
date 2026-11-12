@@ -1532,6 +1532,8 @@ function analyseMainSelection(symbol) {
       ? analyseAPA(candles, higherCandles, lowerCandles)
       : analyseSMC(candles);
 
+  // History outcome tracking must run even when there is no fresh signal.
+  evaluateSignalHistory(symbol, timeframe, candles);
   if (!result.ready) return;
   tradingState.lastAnalysedSymbol = symbol;
   const newsActive = result.strategy === "news";
@@ -1582,7 +1584,6 @@ function analyseMainSelection(symbol) {
   }
 
   tradingState.lastSignals[symbol] = result;
-  evaluateSignalHistory(symbol, timeframe, candles);
   recordCandidateSignal(symbol, timeframe, result, candles);
 }
 
@@ -1625,7 +1626,7 @@ function renderSignalHistory() {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
-    const outcome = record.status === "OPEN" ? "OPEN — awaiting later candles" : record.status;
+    const outcome = record.status === "OPEN" ? "WAIT — TP/SL not reached yet" : record.status;
     row.textContent =
       `${date} | ${record.symbol} | ${record.strategy.toUpperCase()} ${record.timeframe.toUpperCase()} | ${record.direction}\n` +
       `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\n` +
@@ -1641,32 +1642,46 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
   tradingState.signalHistory.forEach(record => {
     if (record.status !== "OPEN" || record.symbol !== symbol || record.timeframe !== timeframe) return;
 
+    // Recheck every later candle on each OHLC update. Deriv updates the
+    // current candle repeatedly, so checking an epoch only once can miss
+    // a TP/SL touched later while that same candle is still forming.
+    const signalEpoch = Number(record.signalCandleEpoch ?? record.lastCheckedCandleEpoch ?? 0);
     const laterCandles = candles.filter(candle =>
-      Number.isFinite(candle.epoch) && candle.epoch > record.lastCheckedCandleEpoch
-    ).sort((x, y) => x.epoch - y.epoch);
+      Number.isFinite(Number(candle.epoch)) && Number(candle.epoch) > signalEpoch
+    ).sort((x, y) => Number(x.epoch) - Number(y.epoch));
 
-    laterCandles.forEach(candle => {
-      if (record.status !== "OPEN") return;
+    for (const candle of laterCandles) {
+      const low = Number(candle.low);
+      const high = Number(candle.high);
+      if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
+
       const hitSL = record.direction === "BUY"
-        ? candle.low <= record.sl
-        : candle.high >= record.sl;
+        ? low <= Number(record.sl)
+        : high >= Number(record.sl);
       const hitTP = record.direction === "BUY"
-        ? candle.high >= record.tp
-        : candle.low <= record.tp;
+        ? high >= Number(record.tp)
+        : low <= Number(record.tp);
 
       if (hitSL && hitTP) {
         record.status = "REVIEW — SL and TP touched in the same candle";
         record.closedAt = Date.now();
+        record.outcomeCandleEpoch = Number(candle.epoch);
+        changed = true;
+        break;
       } else if (hitSL) {
         record.status = "SL HIT";
         record.closedAt = Date.now();
+        record.outcomeCandleEpoch = Number(candle.epoch);
+        changed = true;
+        break;
       } else if (hitTP) {
         record.status = "TP HIT";
         record.closedAt = Date.now();
+        record.outcomeCandleEpoch = Number(candle.epoch);
+        changed = true;
+        break;
       }
-      record.lastCheckedCandleEpoch = candle.epoch;
-      changed = true;
-    });
+    }
   });
 
   if (changed) saveSignalHistory();

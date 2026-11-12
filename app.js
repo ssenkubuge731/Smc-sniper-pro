@@ -251,9 +251,9 @@ function syncStrategy(value) {
    BROKER PANELS
 ========================================================= */
 
-function updateBrokerPanels() {
-  const broker = valueOf("brokerType") ||
-    valueOf("scannerBroker") || "deriv";
+function updateBrokerPanels(sourceId = "brokerType") {
+  const source = sourceId === "scannerBroker" ? "scannerBroker" : "brokerType";
+  const broker = valueOf(source) || "deriv";
 
   tradingState.broker = broker;
 
@@ -265,7 +265,11 @@ function updateBrokerPanels() {
 
   if (broker === "mt5") {
     setText("mt5ConnectionStatus",
-      "Preparation only — MT5 bridge and Windows VPS are not connected yet.");
+      "MT5 selected. Setup details can be saved now; actual connection waits for the VPS bridge.");
+  } else {
+    setText("brokerStatus", tradingState.derivConnected
+      ? "Broker: Deriv market data connected"
+      : "Broker: Deriv selected — not connected");
   }
 }
 
@@ -274,7 +278,7 @@ function prepareMT5Connection() {
   const server = valueOf("mt5Server").trim();
 
   if (!broker) {
-    setText("mt5ConnectionStatus", "Choose Deriv MT5, Exness MT5 or FBS MT5 first.");
+    setText("mt5ConnectionStatus", "Select your MT5 broker first.");
     return;
   }
 
@@ -288,10 +292,23 @@ function prepareMT5Connection() {
     other: "Other MT5 broker"
   }[broker] || "Selected MT5 broker";
 
-  const serverText = server ? " Server entered: " + server + "." : "";
+  // Only non-secret setup details are saved. Never collect or store
+  // account passwords, investor passwords, or trading tokens here.
+  const setup = { mt5Broker: broker, mt5Server: server };
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...saved, ...setup }));
+  } catch {
+    setText("mt5ConnectionStatus", "Could not save MT5 setup on this device.");
+    return;
+  }
+
+  const serverText = server
+    ? " Server: " + server + "."
+    : " Add the exact server name from your Deriv MT5 account when you have it.";
   setText("mt5ConnectionStatus",
-    brokerName + " selected." + serverText +
-    " Not connected yet: the secure MT5 bridge and Windows VPS must be installed first. Deriv API market scanning remains separate.");
+    brokerName + " setup saved on this device." + serverText +
+    " Status: NOT CONNECTED. The Windows VPS and secure MT5 bridge are still required.");
 }
 
 /* =========================================================
@@ -1978,8 +1995,8 @@ function initApp() {
   });
 
   // Brokers
-  $("brokerType")?.addEventListener("change", updateBrokerPanels);
-  $("scannerBroker")?.addEventListener("change", updateBrokerPanels);
+  $("brokerType")?.addEventListener("change", () => updateBrokerPanels("brokerType"));
+  $("scannerBroker")?.addEventListener("change", () => updateBrokerPanels("scannerBroker"));
   $("connectMT5")?.addEventListener("click", prepareMT5Connection);
   $("mt5Broker")?.addEventListener("change", () => {
     setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
@@ -1992,7 +2009,13 @@ function initApp() {
   $("saveSettings")?.addEventListener("click", saveSettings);
 
   loadSettings();
-  updateBrokerPanels();
+  if ($("mt5Broker") && tradingState.settings.mt5Broker) {
+    $("mt5Broker").value = tradingState.settings.mt5Broker;
+  }
+  if ($("mt5Server") && tradingState.settings.mt5Server) {
+    $("mt5Server").value = tradingState.settings.mt5Server;
+  }
+  updateBrokerPanels("brokerType");
   updatePairCount();
 
   setConnectionStatus("Not connected");

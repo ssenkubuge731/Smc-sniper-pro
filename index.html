@@ -209,12 +209,13 @@
     <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
     <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
     <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
-    <p class="muted">These are configuration preferences only. They do not activate order execution in this version.</p>
+    <p class="muted">Multiple entries allows simultaneous demo setups up to your selected 1–20 limit. This version records simulated entries only; broker order execution is not enabled.</p>
   </div>
 
   <div class="panel">
-    <h3>Open positions</h3>
-    <div id="positionsList">No positions available.</div>
+    <h3>Open demo entries</h3>
+    <p class="muted">The bot selects BUY or SELL from confirmed analysis. Each entry has its own Entry, SL, TP and outcome. Demo simulation only; no broker order is sent.</p>
+    <div id="positionsList">No open demo entries.</div>
   </div>
 
   <div class="panel">
@@ -321,8 +322,9 @@
     <label for="takeProfit">Take profit (points)</label>
     <input id="takeProfit" type="number" min="1" value="600">
 
-    <label for="maxTrades">Maximum open trades</label>
-    <input id="maxTrades" type="number" min="1" max="20" value="2">
+    <label for="maxTrades">Maximum simultaneous demo entries (1–20)</label>
+    <input id="maxTrades" type="number" min="1" max="20" step="1" value="2">
+    <p class="muted">The bot chooses BUY or SELL from the selected strategy. It can track multiple valid demo entries at once, up to this limit.</p>
 
     <label for="dailyLossLimit">Daily loss limit (%)</label>
     <input id="dailyLossLimit" type="number" min="0.1" max="10" step="0.1" value="2">

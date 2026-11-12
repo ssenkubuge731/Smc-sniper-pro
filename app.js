@@ -2077,6 +2077,13 @@ function loadSettings() {
       }
     });
 
+    // Pre-fill the confirmed first broker setup. These are non-secret
+    // connection details only; no MT5 credentials are stored.
+    if ($("mt5Broker") && !saved.mt5Broker) $("mt5Broker").value = "deriv";
+    if ($("mt5Server") && !saved.mt5Server) {
+      $("mt5Server").value = "Access Server - London, Hedge";
+    }
+
     if (saved.mode && $("tradingStyle")) {
       $("tradingStyle").value = saved.mode;
     }

@@ -1583,10 +1583,15 @@ function analyseMainSelection(symbol) {
     result.demandSupport ? "Price in / near demand" :
     result.supplyResistance ? "Price in / near supply" : "Zones identified — waiting for price interaction");
 
+  const scalpDisplay = tradingState.mode === "scalping";
+  const slRow = $("signalSLRow");
+  const tpRow = $("signalTPRow");
+  if (slRow) slRow.hidden = scalpDisplay;
+  if (tpRow) tpRow.hidden = scalpDisplay;
   setText("signalEntry", formatPrice(result.entry));
-  setText("signalSL", formatPrice(result.sl));
-  setText("signalTP", formatPrice(result.tp));
-  setText("signalInvalidation", formatPrice(result.invalidation));
+  setText("signalSL", scalpDisplay ? "Not used in Scalping" : formatPrice(result.sl));
+  setText("signalTP", scalpDisplay ? "Not used in Scalping" : formatPrice(result.tp));
+  setText("signalInvalidation", scalpDisplay ? "Not used in Scalping" : formatPrice(result.invalidation));
 
   const checklist = $("strategyChecklist");
   if (checklist) {
@@ -1657,8 +1662,38 @@ function renderDemoPositions() {
   });
 }
 
+function renderScalpActivity() {
+  const box = $("scalpActivity");
+  if (!box) return;
+  box.replaceChildren();
+  const records = tradingState.signalHistory
+    .filter(record => record.mode === "scalping")
+    .slice(0, 30);
+  if (!records.length) {
+    box.textContent = "No scalp activity yet. Start the scanner in Scalping mode.";
+    return;
+  }
+  records.forEach((record, index) => {
+    const row = document.createElement("div");
+    row.className = "result-item";
+    const current = Number(tradingState.lastPrices[record.symbol]);
+    const move = Number.isFinite(current)
+      ? (record.direction === "BUY" ? current - Number(record.entry) : Number(record.entry) - current)
+      : null;
+    const status = record.status === "OPEN"
+      ? (move == null ? "OPEN — waiting for live quote" : `OPEN — price move ${move >= 0 ? "+" : ""}${formatPrice(Math.abs(move))}`)
+      : `${record.status}${record.exitPrice != null ? " | Exit " + formatPrice(record.exitPrice) : ""}`;
+    row.textContent =
+      `${index + 1}. ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} | ${String(record.timeframe || "").toUpperCase()}\\n` +
+      `Entry ${formatPrice(record.entry)} | ${new Date(record.createdAt).toLocaleTimeString()}\\n` +
+      status;
+    box.appendChild(row);
+  });
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
+  renderScalpActivity();
   const box = $("tradeHistory");
   if (!box) return;
   box.replaceChildren();

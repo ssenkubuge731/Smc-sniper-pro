@@ -209,12 +209,12 @@
     <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
     <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
     <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
-    <p class="muted">Multiple entries allows simultaneous demo setups up to your selected 1–20 limit. This version records simulated entries only; broker order execution is not enabled.</p>
+    <p class="muted">Scalping follows the requested fast basket style: allow 1–20 same-direction entries, close the simulated basket as soon as combined price movement turns positive, ignore the fixed TP, and keep protective SL active. Swing and Intraday keep their individual TP/SL rules. This is market-data simulation only; MT5 order execution waits for the VPS bridge.</p>
   </div>
 
   <div class="panel">
     <h3>Open demo entries</h3>
-    <p class="muted">The bot selects BUY or SELL from confirmed analysis. Each entry has its own Entry, SL, TP and outcome. Demo simulation only; no broker order is sent.</p>
+    <p class="muted">The bot selects BUY or SELL from confirmed analysis. Scalping entries are grouped by symbol and direction and close together at the first positive combined price move, with protective SL active. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
     <div id="positionsList">No open demo entries.</div>
   </div>
 
@@ -350,7 +350,7 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="app.js?v=20261111-7"></script>
+<script src="app.js?v=20261112-scalp-basket-1"></script>
   
 <script>
 document.addEventListener("click", function(event) {

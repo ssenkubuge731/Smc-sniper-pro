@@ -209,12 +209,12 @@
     <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
     <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
     <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
-    <p class="muted">Scalping follows the requested fast basket style: allow 1–20 same-direction entries, close the simulated basket as soon as combined price movement turns positive, ignore the fixed TP, and keep protective SL active. Swing and Intraday keep their individual TP/SL rules. This is market-data simulation only; MT5 order execution waits for the VPS bridge.</p>
+    <p class="muted">Scalping follows the requested fast basket style for every selected strategy (APA, SMC, or News): allow 1–20 same-direction entries, close that strategy's simulated basket as soon as combined price movement turns positive, ignore the fixed TP, and keep protective SL active. Intraday and Swing keep their existing individual TP/SL rules. This is market-data simulation only; MT5 order execution waits for the VPS bridge.</p>
   </div>
 
   <div class="panel">
     <h3>Open demo entries</h3>
-    <p class="muted">The bot selects BUY or SELL from confirmed analysis. Scalping entries are grouped by symbol and direction and close together at the first positive combined price move, with protective SL active. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
+    <p class="muted">The bot selects BUY or SELL from confirmed analysis. In Scalping, APA, SMC, and News each use the fast basket exit separately: close at the first positive combined price move, with protective SL active. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
     <div id="positionsList">No open demo entries.</div>
   </div>
 

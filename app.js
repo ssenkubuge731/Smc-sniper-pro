@@ -1637,7 +1637,7 @@ function renderDemoPositions() {
   const limit = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   const summary = document.createElement("p");
   summary.className = "muted";
-  summary.textContent = `Demo positions: ${open.length} open / ${limit} maximum. Simulated only — no broker orders are placed.`;
+  summary.textContent = `Demo entries: ${open.length} open / ${limit} maximum. Simulated only — no broker orders are placed.`;
   box.appendChild(summary);
   if (!open.length) {
     const empty = document.createElement("p");
@@ -1651,7 +1651,9 @@ function renderDemoPositions() {
     row.textContent =
       `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\\n` +
       `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\\n` +
-      "Status: OPEN — waiting for TP or SL";
+      record.mode === "scalping"
+        ? "Status: OPEN — basket exits at first positive net move; protective SL remains active; fixed TP ignored."
+        : "Status: OPEN — waiting for individual TP or SL";
     box.appendChild(row);
   });
 }
@@ -1671,7 +1673,9 @@ function renderSignalHistory() {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
-    const outcome = record.status === "OPEN" ? "WAIT — TP/SL not reached yet" : record.status;
+    const outcome = record.status === "OPEN"
+      ? (record.mode === "scalping" ? "WAIT — scalp basket exit / protective SL" : "WAIT — TP/SL not reached yet")
+      : record.status;
     row.textContent =
       `${date} | ${record.symbol} | ${record.strategy.toUpperCase()} ${record.timeframe.toUpperCase()} | ${record.direction}\n` +
       `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\n` +
@@ -1686,6 +1690,9 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 
   tradingState.signalHistory.forEach(record => {
     if (record.status !== "OPEN" || record.symbol !== symbol || record.timeframe !== timeframe) return;
+    // Scalp baskets are exited from live market-data ticks at first positive
+    // combined movement or protective SL. Do not let fixed TP close them.
+    if (record.mode === "scalping") return;
 
     // Recheck every later candle on each OHLC update. Deriv updates the
     // current candle repeatedly, so checking an epoch only once can miss
@@ -1758,15 +1765,26 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
   if (!checked("multipleEntries") && openEntries.length > 0) return;
+
+  const isScalp = tradingState.mode === "scalping";
+  const sameSymbolScalpBasket = openEntries.filter(record =>
+    record.mode === "scalping" && record.symbol === symbol &&
+    record.strategy === strategy
+  );
+  if (isScalp && sameSymbolScalpBasket.some(record => record.direction !== direction)) return;
+
   const alreadyOpen = openEntries.some(record =>
     record.symbol === symbol && record.strategy === strategy &&
-    record.timeframe === timeframe && record.direction === direction
+    record.timeframe === timeframe && record.direction === direction &&
+    (!isScalp || Number(record.signalCandleEpoch) === candleEpoch)
   );
   if (alreadyOpen) return;
 
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
+    mode: tradingState.mode,
+    exitPolicy: isScalp ? "basket-first-positive" : "individual-tp-sl",
     createdAt: Date.now(),
     signalCandleEpoch: candleEpoch,
     lastCheckedCandleEpoch: candleEpoch,
@@ -1786,8 +1804,50 @@ function updateMarketPrice(symbol, quote) {
   );
   if (!item) return;
 
-  // Price is stored for scanner use; no orders are placed.
+  // Market-data-only simulation. This never sends broker orders.
   tradingState.lastPrices[symbol] = quote;
+  manageScalpingBasketSimulation(symbol, quote);
+}
+
+function manageScalpingBasketSimulation(symbol, quote) {
+  const open = tradingState.signalHistory.filter(record =>
+    record.status === "OPEN" &&
+    record.mode === "scalping" &&
+    record.symbol === symbol
+  );
+  if (!open.length) return;
+
+  // A scalp basket is kept in one direction per symbol. SL protection
+  // closes the simulated basket; fixed TP is deliberately ignored.
+  const direction = open[0].direction;
+  const basket = open.filter(record => record.direction === direction);
+  const stopHit = basket.some(record =>
+    direction === "BUY" ? quote <= Number(record.sl) : quote >= Number(record.sl)
+  );
+
+  const netPriceMove = basket.reduce((total, record) =>
+    total + (direction === "BUY"
+      ? quote - Number(record.entry)
+      : Number(record.entry) - quote), 0
+  );
+
+  if (stopHit || netPriceMove > 0) {
+    const closedAt = Date.now();
+    basket.forEach(record => {
+      record.status = stopHit
+        ? "SCALP BASKET SL HIT"
+        : "SCALP BASKET CLOSED — NET POSITIVE";
+      record.closedAt = closedAt;
+      record.exitPrice = quote;
+    });
+    saveSignalHistory();
+    addResult(
+      stopHit
+        ? `Scalp basket simulation stopped at protective SL: ${symbol} ${direction}.`
+        : `Scalp basket simulation closed at first positive net price move: ${symbol} ${direction}.`,
+      "tradeHistory"
+    );
+  }
 }
 
 /* =========================================================

@@ -18,7 +18,7 @@ const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
   intraday: ["15m", "30m", "1h", "4h"],
-  swing: ["15m", "1h", "4h", "1d"]
+  swing: ["1h", "4h", "1d"]
 };
 
 const GRANULARITY = {

@@ -890,23 +890,47 @@ function analyseSMC(candles) {
     last.close <= bearishOB.high
   );
 
+  // Read the optional SMC filters from the dashboard. If the controls
+  // are unavailable (for example, in a non-browser test), keep the
+  // established default behavior enabled.
+  const breakerControl = typeof document !== "undefined"
+    ? document.getElementById("useBreaker") : null;
+  const supplyDemandControl = typeof document !== "undefined"
+    ? document.getElementById("useSupplyDemand") : null;
+  const useBreaker = breakerControl ? breakerControl.checked : true;
+  const useSupplyDemand = supplyDemandControl ? supplyDemandControl.checked : true;
+
+  // A breaker is confirmed only after price has closed beyond the failed
+  // order block, then retests that block and rejects it on a later candle.
   let breaker = "Not identified";
   let bullishBreaker = false;
   let bearishBreaker = false;
-  if (bearishOB && last.close > bearishOB.high) {
-    breaker = "Bullish breaker candidate";
+  const previous = candles[candles.length - 2];
+  if (useBreaker && bearishOB && previous.close > bearishOB.high &&
+      last.low <= bearishOB.high && last.close > bearishOB.high &&
+      last.close > last.open) {
+    breaker = "Bullish breaker retest confirmed";
     bullishBreaker = true;
-  } else if (bullishOB && last.close < bullishOB.low) {
-    breaker = "Bearish breaker candidate";
+  } else if (useBreaker && bullishOB && previous.close < bullishOB.low &&
+      last.high >= bullishOB.low && last.close < bullishOB.low &&
+      last.close < last.open) {
+    breaker = "Bearish breaker retest confirmed";
     bearishBreaker = true;
+  } else if (useBreaker && (
+      (bearishOB && last.close > bearishOB.high) ||
+      (bullishOB && last.close < bullishOB.low)
+  )) {
+    breaker = "Break detected — waiting for retest and rejection";
+  } else if (!useBreaker) {
+    breaker = "Disabled in SMC settings";
   }
 
   const demandSupport = Boolean(
-    zones.demand && last.low <= zones.demand.high &&
+    useSupplyDemand && zones.demand && last.low <= zones.demand.high &&
     last.close >= zones.demand.low
   );
   const supplyResistance = Boolean(
-    zones.supply && last.high >= zones.supply.low &&
+    useSupplyDemand && zones.supply && last.high >= zones.supply.low &&
     last.close <= zones.supply.high
   );
   const bullishCandle = last.close > last.open;
@@ -1018,9 +1042,9 @@ function analyseSMC(candles) {
     ["Strong displacement", displacement],
     ["Order Block identified", Boolean(bullishOB || bearishOB)],
     ["Order Block reaction", bullishOBTouch || bearishOBTouch],
-    ["Supply zone identified", Boolean(zones.supply)],
-    ["Demand zone identified", Boolean(zones.demand)],
-    ["Breaker Block candidate", bullishBreaker || bearishBreaker],
+    ["Supply zone identified", useSupplyDemand && Boolean(zones.supply)],
+    ["Demand zone identified", useSupplyDemand && Boolean(zones.demand)],
+    ["Breaker Block retest confirmed", bullishBreaker || bearishBreaker],
     ["FVG / IFVG (one imbalance group)", fvg.bullishFVG || fvg.bearishFVG || fvg.bullishIFVG || fvg.bearishIFVG],
     ["Bullish confirmations", bullConfirmations.length + (bullConfirmations.length === 1 ? " — " + bullConfirmations.join(", ") : " — " + bullConfirmations.join(", "))],
     ["Bearish confirmations", bearConfirmations.length + (bearConfirmations.length === 1 ? " — " + bearConfirmations.join(", ") : " — " + bearConfirmations.join(", "))],

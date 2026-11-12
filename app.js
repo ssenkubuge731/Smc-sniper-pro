@@ -62,6 +62,7 @@ const tradingState = {
   manualDisconnect: false,
   lastSignals: {},
   signalHistory: [],
+  scalpObservations: [],
   settings: {},
   newsEvents: [],
   newsLoadedAt: 0,
@@ -1669,9 +1670,18 @@ function renderScalpActivity() {
   const records = tradingState.signalHistory
     .filter(record => record.mode === "scalping")
     .slice(0, 30);
-  if (!records.length) {
-    box.textContent = "No scalp activity yet. Start the scanner in Scalping mode.";
+  const observations = tradingState.scalpObservations || [];
+  if (!records.length && !observations.length) {
+    box.textContent = tradingState.running
+      ? "Scanner is running. Waiting for the first completed market analysis..."
+      : "No scalp activity yet. Start the scanner in Scalping mode.";
     return;
+  }
+  if (records.length) {
+    const heading = document.createElement("p");
+    heading.className = "muted";
+    heading.textContent = "CONFIRMED BUY/SELL scalp signals — simulated only, not broker orders.";
+    box.appendChild(heading);
   }
   records.forEach((record, index) => {
     const row = document.createElement("div");
@@ -1689,6 +1699,21 @@ function renderScalpActivity() {
       status;
     box.appendChild(row);
   });
+
+  if (observations.length) {
+    const heading = document.createElement("p");
+    heading.className = "muted";
+    heading.textContent = "LIVE SCANNER CHECKS — WAIT means no entry was opened.";
+    box.appendChild(heading);
+    observations.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "result-item";
+      row.textContent =
+        `CHECK ${item.symbol} | ${item.timeframe.toUpperCase()} | ${item.signal}\\n` +
+        `Trend: ${item.trend || "not available"} | Checked: ${new Date(item.checkedAt).toLocaleTimeString()}`;
+      box.appendChild(row);
+    });
+  }
 }
 
 function renderSignalHistory() {
@@ -1777,6 +1802,25 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";
+
+  // Keep a live scan trace even when analysis says WAIT. A WAIT is
+  // an observation, never an opened or simulated trade.
+  if (tradingState.mode === "scalping") {
+    const observation = {
+      key: `${symbol}|${timeframe}`,
+      symbol,
+      timeframe,
+      signal: signalText,
+      trend: result.trend || "",
+      reason: result.reasoning || "",
+      checkedAt: Date.now()
+    };
+    const existing = tradingState.scalpObservations.findIndex(item => item.key === observation.key);
+    if (existing >= 0) tradingState.scalpObservations.splice(existing, 1);
+    tradingState.scalpObservations.unshift(observation);
+    tradingState.scalpObservations = tradingState.scalpObservations.slice(0, 30);
+    renderScalpActivity();
+  }
   if (!direction) return;
 
   const isScalp = tradingState.mode === "scalping";

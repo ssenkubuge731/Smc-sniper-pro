@@ -1819,8 +1819,11 @@ function manageScalpingBasketSimulation(symbol, quote) {
 
   // A scalp basket is kept in one direction per symbol. SL protection
   // closes the simulated basket; fixed TP is deliberately ignored.
-  const direction = open[0].direction;
-  const basket = open.filter(record => record.direction === direction);
+  // Keep each selected strategy's scalp basket separate (APA, SMC, or News).
+  const strategy = open[0].strategy;
+  const strategyEntries = open.filter(record => record.strategy === strategy);
+  const direction = strategyEntries[0].direction;
+  const basket = strategyEntries.filter(record => record.direction === direction);
   const stopHit = basket.some(record =>
     direction === "BUY" ? quote <= Number(record.sl) : quote >= Number(record.sl)
   );

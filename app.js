@@ -1612,7 +1612,35 @@ function saveSignalHistory() {
   renderSignalHistory();
 }
 
+function renderDemoPositions() {
+  const box = $("positionsList");
+  if (!box) return;
+  box.replaceChildren();
+  const open = tradingState.signalHistory.filter(record => record.status === "OPEN");
+  const limit = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
+  const summary = document.createElement("p");
+  summary.className = "muted";
+  summary.textContent = `Demo positions: ${open.length} open / ${limit} maximum. Simulated only — no broker orders are placed.`;
+  box.appendChild(summary);
+  if (!open.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "No open demo entries. The scanner will add valid BUY/SELL setups.";
+    box.appendChild(empty);
+    return;
+  }
+  open.slice(0, 20).forEach((record, index) => {
+    const row = document.createElement("div");
+    row.className = "result-item";
+    row.textContent =
+      `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\\n` +
+      `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\\n` +
+      "Status: OPEN — waiting for TP or SL";
+    box.appendChild(row);
+  });
+}
+
 function renderSignalHistory() {
+  renderDemoPositions();
   const box = $("tradeHistory");
   if (!box) return;
   box.replaceChildren();
@@ -1709,10 +1737,13 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const lastCandle = candles[candles.length - 1];
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
   const strategy = result.strategy || tradingState.strategy;
-  const alreadyOpen = tradingState.signalHistory.some(record =>
-    record.status === "OPEN" && record.symbol === symbol &&
-    record.strategy === strategy && record.timeframe === timeframe &&
-    record.direction === direction
+  const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
+  const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
+  if (openEntries.length >= maxEntries) return;
+  if (!checked("multipleEntries") && openEntries.length > 0) return;
+  const alreadyOpen = openEntries.some(record =>
+    record.symbol === symbol && record.strategy === strategy &&
+    record.timeframe === timeframe && record.direction === direction
   );
   if (alreadyOpen) return;
 

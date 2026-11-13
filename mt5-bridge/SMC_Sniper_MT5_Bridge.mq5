@@ -2,12 +2,10 @@
 #property version   "1.00"
 #property description "SMC Sniper Pro MT5 read-only connectivity agent"
 
-input string InpBridgeURL = "https://YOUR-BRIDGE-DOMAIN/mt5/heartbeat";
-input string InpBridgeToken = ""; // Set locally in MT5; never commit a real token.
+input string InpBridgeURL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/heartbeat";
+input string InpBridgeToken = ""; // Enter locally in MT5; never commit a real token.
 input int    InpHeartbeatSeconds = 30;
 input int    InpRequestTimeoutMs = 8000;
-
-datetime g_lastHeartbeat = 0;
 
 string JsonEscape(const string value)
 {
@@ -21,10 +19,9 @@ string JsonEscape(const string value)
 
 bool SendHeartbeat()
 {
-   if(StringFind(InpBridgeURL, "YOUR-BRIDGE-DOMAIN") >= 0 ||
-      StringLen(InpBridgeToken) < 24)
+   if(StringLen(InpBridgeToken) < 24)
    {
-      Print("SMC bridge is not configured. Set the HTTPS URL and a strong local token.");
+      Print("SMC bridge token is missing. Enter it locally in the EA inputs.");
       return false;
    }
 
@@ -42,8 +39,7 @@ bool SendHeartbeat()
 
    char data[];
    int count = StringToCharArray(payload, data, 0, WHOLE_ARRAY, CP_UTF8);
-   if(count > 0)
-      ArrayResize(data, count - 1);
+   if(count > 0) ArrayResize(data, count - 1);
 
    char result[];
    string resultHeaders;
@@ -57,7 +53,7 @@ bool SendHeartbeat()
    if(status == -1)
    {
       Print("SMC bridge heartbeat failed. WebRequest error: ", GetLastError(),
-            ". Add the bridge HTTPS domain to MT5 Tools > Options > Expert Advisors > Allow WebRequest.");
+            ". Allow the bridge HTTPS origin in MT5 Tools > Options > Expert Advisors.");
       return false;
    }
 
@@ -97,5 +93,5 @@ void OnDeinit(const int reason)
    Print("SMC Sniper Pro MT5 agent stopped.");
 }
 
-// SAFETY: This first-phase agent has no OrderSend, CTrade, position-open,
-// position-close, or pending-order functions. It cannot place trades.
+// SAFETY: No OrderSend, CTrade, position-open, position-close,
+// or pending-order functions exist in this first-phase agent.

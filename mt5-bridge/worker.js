@@ -11,6 +11,7 @@
 
 const MAX_BODY_BYTES = 4096;
 const HEARTBEAT_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SITE_ORIGIN = "https://ssenkubuge731.github.io";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -18,7 +19,9 @@ function json(data, status = 200) {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff"
+      "X-Content-Type-Options": "nosniff",
+      "Access-Control-Allow-Origin": SITE_ORIGIN,
+      "Vary": "Origin"
     }
   });
 }
@@ -56,6 +59,29 @@ async function terminalKey(company, server) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: {
+        "Access-Control-Allow-Origin": SITE_ORIGIN,
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin"
+      }});
+    }
+    if (url.pathname === "/mt5/public-status" && request.method === "GET") {
+      if (!env.MT5_HEARTBEATS) return json({ error: "Bridge storage is not configured" }, 503);
+      const latest = await env.MT5_HEARTBEATS.get("latest", "json");
+      if (!latest) return json({ status: "NO_HEARTBEAT_RECEIVED" }, 200);
+      const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(latest.receivedAt)) / 1000));
+      return json({
+        status: ageSeconds <= 90 && latest.terminalConnected ? "ONLINE" : "OFFLINE",
+        brokerCompany: latest.brokerCompany,
+        server: latest.server,
+        terminalConnected: latest.terminalConnected,
+        receivedAt: latest.receivedAt,
+        ageSeconds
+      }, 200);
+    }
     if (url.pathname !== "/mt5/heartbeat" && url.pathname !== "/mt5/status") {
       return json({ error: "Not found" }, 404);
     }

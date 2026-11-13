@@ -1067,7 +1067,7 @@ function analyseSMC(candles) {
     liquidity: liquidity.label, signal, entry,
     sl: conflicting ? null : sl, tp: conflicting ? null : tp,
     invalidation: conflicting ? null : sl, checks,
-    displacement, supply: zones.supply, demand: zones.demand, breaker,
+    displacement, supply: useSupplyDemand ? zones.supply : null, demand: useSupplyDemand ? zones.demand : null, breaker,
     breakerFound: bullishBreaker || bearishBreaker,
     orderBlock: useOB ? (trend === "Bullish" ? (bullishOB || bearishOB) : (bearishOB || bullishOB)) : null,
     orderBlockTouched: bullishOBTouch || bearishOBTouch,

@@ -11,31 +11,29 @@ This folder contains the first, read-only MT5 terminal agent for the universal M
 - No trade-opening, trade-closing, or order-command endpoint exists.
 
 ## Deployment status
-The Worker source is in `worker.js`, but it has **not** been deployed or connected yet. Deploy it as a **new, separate Cloudflare Worker**. Do not replace the existing Deriv OAuth Worker.
+The separate Cloudflare Worker has been deployed as `smc-sniper-mt5-bridge`. Its `/mt5/status` route was tested in a browser and returned `401 Unauthorized` without credentials, which is the expected protected response. This confirms the route is responding; it does not yet prove an MT5 terminal heartbeat has been received.
 
-## Cloudflare setup
-1. In Cloudflare Dashboard, open **Workers & Pages** and create a new Worker, for example `smc-sniper-mt5-bridge`.
-2. Open the new Worker editor and replace its starter code with the complete contents of `worker.js`, then deploy.
-3. In the Worker settings, add a secret named `MT5_BRIDGE_TOKEN`. Generate a long random token (at least 32 characters). Do not put the token in GitHub, the website, or chat.
-4. Create a KV namespace, for example `SMC_MT5_HEARTBEATS`.
-5. Bind that namespace to this Worker with the variable name `MT5_HEARTBEATS`.
-6. Deploy again after adding the secret and KV binding.
-7. The endpoint will be:
-   `https://YOUR-NEW-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev/mt5/heartbeat`
-   The protected status endpoint is `/mt5/status` and requires the same bearer token. It returns only the latest heartbeat.
+The existing Deriv OAuth Worker remains separate and must not be replaced.
+
+## Cloudflare configuration
+- Worker endpoint: `https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev`
+- Heartbeat URL: `https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/heartbeat`
+- Protected status route: `/mt5/status`
+- Secret binding: `MT5_BRIDGE_TOKEN`
+- KV namespace binding variable: `MT5_HEARTBEATS` (namespace created as `SMC_MT5_HEARTBEATS`)
 
 The Worker accepts only authenticated POST heartbeats and authenticated GET status requests. It rejects oversized or malformed payloads. It stores no trading credentials and has no trading commands.
 
-## MT5 setup (after Worker deployment)
+## MT5 setup (requires a Windows VPS or Windows computer)
 1. Copy `SMC_Sniper_MT5_Bridge.mq5` into the MT5 terminal's `MQL5/Experts` folder.
 2. Compile it in MetaEditor. This source has not yet been compiled against a live terminal.
-3. In MT5, open **Tools → Options → Expert Advisors** and allow WebRequest for the exact Worker origin, e.g. `https://YOUR-NEW-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev` (without the path).
+3. In MT5, open **Tools → Options → Expert Advisors** and allow WebRequest for this exact origin: `https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev` (without the path).
 4. Attach the agent to a chart.
-5. Set the full heartbeat URL and the same strong token in the EA inputs. Keep the token local to the VPS/MT5 terminal.
-6. Confirm that the Worker accepts the heartbeat and the authenticated status endpoint shows the expected broker/server.
+5. Set the full heartbeat URL and the same private token in the EA inputs. Keep the token local to the VPS/MT5 terminal; never send it in chat or commit it to GitHub.
+6. Confirm that the Worker accepts the heartbeat. The authenticated status route should then show the expected broker/server.
 
 ## Universal broker approach
-The bridge communicates with the MT5 terminal, not with a broker-specific trading API. A broker is supported only after its MT5 terminal can log in and pass the read-only connection test. Server names are broker/account specific.
+The bridge communicates with the MT5 terminal, not with a broker-specific trading API. A broker is supported only after its MT5 terminal can log in and pass the read-only connection test. Server names are broker/account specific. Deriv MT5 Demo is the first planned test.
 
 ## Safety gates
 - Demo testing only; live trading remains locked.

@@ -908,39 +908,55 @@ function analyseSMC(candles) {
     last.close <= bearishOB.high
   );
 
-  // Read the optional SMC filters from the dashboard. If the controls
-  // are unavailable (for example, in a non-browser test), keep the
-  // established default behavior enabled.
-  const breakerControl = typeof document !== "undefined"
-    ? document.getElementById("useBreaker") : null;
-  const supplyDemandControl = typeof document !== "undefined"
-    ? document.getElementById("useSupplyDemand") : null;
-  const useBreaker = breakerControl ? breakerControl.checked : true;
-  const useSupplyDemand = supplyDemandControl ? supplyDemandControl.checked : true;
+  // Read every SMC dashboard filter. Missing controls retain the safe
+  // default (enabled) for compatibility with older/non-browser builds.
+  const smcEnabled = id => {
+    const control = typeof document !== "undefined" ? document.getElementById(id) : null;
+    return control ? Boolean(control.checked) : true;
+  };
+  const useTrend = smcEnabled("useTrend");
+  const useLiquidity = smcEnabled("useLiquidity");
+  const useBOS = smcEnabled("useBOS");
+  const useMSS = smcEnabled("useMSS");
+  const useCHoCH = smcEnabled("useCHoCH");
+  const useDisplacement = smcEnabled("useDisplacement");
+  const useOB = smcEnabled("useOB");
+  const useFVG = smcEnabled("useFVG");
+  const useIFVG = smcEnabled("useIFVG");
+  const useBreaker = smcEnabled("useBreaker");
+  const useSupplyDemand = smcEnabled("useSupplyDemand");
 
-  // A breaker is confirmed only after price has closed beyond the failed
-  // order block, then retests that block and rejects it on a later candle.
-  let breaker = "Not identified";
+  // Feature switches filter confirmations as well as their displayed checks.
+  const bullishOBTouch = Boolean(useOB && bullishOB &&
+    last.low <= bullishOB.high && last.high >= bullishOB.low &&
+    last.close > last.open && last.close >= bullishOB.low);
+  const bearishOBTouch = Boolean(useOB && bearishOB &&
+    last.high >= bearishOB.low && last.low <= bearishOB.high &&
+    last.close < last.open && last.close <= bearishOB.high);
+  const bullishOBActive = useOB ? bullishOB : null;
+  const bearishOBActive = useOB ? bearishOB : null;
+
+  // A breaker is confirmed only after the failed block is crossed and
+  // retested/rejected. Disabling OB or Breaker disables this confirmation.
+  let breaker = useBreaker && useOB ? "Not identified" : "Disabled in SMC settings";
   let bullishBreaker = false;
   let bearishBreaker = false;
   const previous = candles[candles.length - 2];
-  if (useBreaker && bearishOB && previous.close > bearishOB.high &&
+  if (useBreaker && useOB && bearishOB && previous.close > bearishOB.high &&
       last.low <= bearishOB.high && last.close > bearishOB.high &&
       last.close > last.open) {
     breaker = "Bullish breaker retest confirmed";
     bullishBreaker = true;
-  } else if (useBreaker && bullishOB && previous.close < bullishOB.low &&
+  } else if (useBreaker && useOB && bullishOB && previous.close < bullishOB.low &&
       last.high >= bullishOB.low && last.close < bullishOB.low &&
       last.close < last.open) {
     breaker = "Bearish breaker retest confirmed";
     bearishBreaker = true;
-  } else if (useBreaker && (
+  } else if (useBreaker && useOB && (
       (bearishOB && last.close > bearishOB.high) ||
       (bullishOB && last.close < bullishOB.low)
   )) {
     breaker = "Break detected — waiting for retest and rejection";
-  } else if (!useBreaker) {
-    breaker = "Disabled in SMC settings";
   }
 
   const demandSupport = Boolean(
@@ -1006,11 +1022,11 @@ function analyseSMC(candles) {
   let sellReady = rawSellReady;
   let blockedDirectionReason = "";
 
-  if (buyReady && trend === "Bearish" && !bullishReversalConfirmed) {
+  if (useTrend && buyReady && trend === "Bearish" && !bullishReversalConfirmed) {
     buyReady = false;
     blockedDirectionReason = "Bullish candidate blocked: the higher market trend is bearish and there is no bullish structure break plus low-side liquidity sweep to confirm a reversal.";
   }
-  if (sellReady && trend === "Bullish" && !bearishReversalConfirmed) {
+  if (useTrend && sellReady && trend === "Bullish" && !bearishReversalConfirmed) {
     sellReady = false;
     blockedDirectionReason = "Bearish candidate blocked: the higher market trend is bullish and there is no bearish structure break plus high-side liquidity sweep to confirm a reversal.";
   }
@@ -1076,7 +1092,7 @@ function analyseSMC(candles) {
     invalidation: conflicting ? null : sl, checks,
     displacement, supply: zones.supply, demand: zones.demand, breaker,
     breakerFound: bullishBreaker || bearishBreaker,
-    orderBlock: trend === "Bullish" ? (bullishOB || bearishOB) : (bearishOB || bullishOB),
+    orderBlock: useOB ? (trend === "Bullish" ? (bullishOB || bearishOB) : (bearishOB || bullishOB)) : null,
     orderBlockTouched: bullishOBTouch || bearishOBTouch,
     demandSupport, supplyResistance,
     bullishConfirmations: bullConfirmations.length,

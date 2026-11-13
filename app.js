@@ -274,6 +274,32 @@ function updateBrokerPanels(sourceId = "brokerType") {
   }
 }
 
+const MT5_PUBLIC_STATUS_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
+
+async function refreshMT5BridgeStatus() {
+  setText("mt5BridgeStatus", "Checking cloud bridge…");
+  setText("mt5LastHeartbeat", "Checking for the latest MT5 heartbeat.");
+  try {
+    const response = await fetch(MT5_PUBLIC_STATUS_URL, { method: "GET", cache: "no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    if (data.status === "ONLINE") {
+      setText("mt5BridgeStatus", "Cloud bridge: ONLINE — a recent MT5 heartbeat was received.");
+      const received = data.receivedAt ? new Date(data.receivedAt).toLocaleString() : "time unavailable";
+      setText("mt5LastHeartbeat", "Last heartbeat: " + received + ". This confirms the terminal heartbeat, not trading permission.");
+    } else if (data.status === "OFFLINE") {
+      setText("mt5BridgeStatus", "Cloud bridge: OFFLINE — no recent connected-terminal heartbeat.");
+      setText("mt5LastHeartbeat", data.receivedAt ? "Last heartbeat: " + new Date(data.receivedAt).toLocaleString() : "No recent heartbeat.");
+    } else {
+      setText("mt5BridgeStatus", "Cloud bridge reachable; waiting for the first MT5 heartbeat.");
+      setText("mt5LastHeartbeat", "No heartbeat received yet. The Windows VPS/PC and MT5 bridge EA must be running.");
+    }
+  } catch (error) {
+    setText("mt5BridgeStatus", "Cloud bridge status could not be reached. Check the Worker deployment.");
+    setText("mt5LastHeartbeat", "Status check failed: " + (error && error.message ? error.message : "network error"));
+  }
+}
+
 function prepareMT5Connection() {
   const broker = valueOf("mt5Broker");
   const server = valueOf("mt5Server").trim();
@@ -2130,6 +2156,7 @@ function initApp() {
   $("brokerType")?.addEventListener("change", () => updateBrokerPanels("brokerType"));
   $("scannerBroker")?.addEventListener("change", () => updateBrokerPanels("scannerBroker"));
   $("connectMT5")?.addEventListener("click", prepareMT5Connection);
+  $("refreshMT5Bridge")?.addEventListener("click", refreshMT5BridgeStatus);
   $("mt5Broker")?.addEventListener("change", () => {
     setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
   });
@@ -2150,6 +2177,7 @@ function initApp() {
   updateBrokerPanels("brokerType");
   updatePairCount();
 
+  refreshMT5BridgeStatus();
   setConnectionStatus("Not connected");
   setText("scannerStatus", "Scanner stopped");
   setText("cloudStatus", "Cloud engine status: Not verified");

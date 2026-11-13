@@ -75,9 +75,6 @@ export default {
       const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(latest.receivedAt)) / 1000));
       return json({
         status: ageSeconds <= 90 && latest.terminalConnected ? "ONLINE" : "OFFLINE",
-        brokerCompany: latest.brokerCompany,
-        server: latest.server,
-        terminalConnected: latest.terminalConnected,
         receivedAt: latest.receivedAt,
         ageSeconds
       }, 200);

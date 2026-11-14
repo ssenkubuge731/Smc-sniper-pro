@@ -1496,10 +1496,6 @@ function analyseNews(symbol, candles) {
   };
 }
 
-function analyseCandles(candles) {
-  return tradingState.strategy === "smc" ? analyseSMC(candles) : analyseAPA(candles, candles, candles);
-}
-
 function renderTimeframeAnalysis(symbol, timeframe) {
   const candles = tradingState.candles[candleKey(symbol, timeframe)] || [];
   const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;

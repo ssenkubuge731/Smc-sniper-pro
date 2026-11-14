@@ -376,4 +376,9 @@ footer p {
 #newsEventsList .result-item {
   line-height: 1.55;
 }
-\n/* Signal history readability */\n#tradeHistory .result-item { white-space: pre-line; line-height: 1.55; }\n
+
+/* Signal history readability */
+#tradeHistory .result-item {
+  white-space: pre-line;
+  line-height: 1.55;
+}

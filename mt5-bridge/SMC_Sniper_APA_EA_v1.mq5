@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
-//| SMC Sniper APA EA v1.00                                          |
+//| SMC Sniper APA EA v1.05                                          |
 //| APA multi-timeframe signal scanner - DEMO validation build       |
 //| This version is signal-only. It does NOT send trade orders.       |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.04"
+#property version   "1.05"
 #property description "APA trend -> reaction POI -> lower-timeframe confirmation scanner"
 
 enum APA_STYLE
@@ -535,7 +535,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   Print("SMC Sniper APA v1.04 initialized in SIGNAL-ONLY mode. No orders will be placed.");
+   Print("SMC Sniper APA v1.05 initialized in SIGNAL-ONLY mode. No orders will be placed.");
    Print("Style: ", StyleName(), " | Trend TF: ", EnumToString(TrendTimeframe()),
          " | Entry TF: ", EnumToString(EntryTimeframe()));
    return INIT_SUCCEEDED;
@@ -548,6 +548,6 @@ void OnTick()
 
 void OnDeinit(const int reason)
 {
-   Print("SMC Sniper APA v1.04 stopped. Reason: ", reason);
+   Print("SMC Sniper APA v1.05 stopped. Reason: ", reason);
 }
 //+------------------------------------------------------------------+

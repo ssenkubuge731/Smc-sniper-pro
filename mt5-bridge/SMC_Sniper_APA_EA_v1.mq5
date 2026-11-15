@@ -4,7 +4,7 @@
 //| This version is signal-only. It does NOT send trade orders.       |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.00"
+#property version   "1.01"
 #property description "APA trend -> reaction POI -> lower-timeframe confirmation scanner"
 
 enum APA_STYLE
@@ -173,7 +173,13 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
    double price = (bias > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                              : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double buffer = MathMax(atr * 0.35, InpZoneATRBufferPoints * _Point);
-   return (price >= zone.low - buffer && price <= zone.high + buffer);
+   // Ignore an old zone that price is not approaching.
+   if(price < zone.low - buffer || price > zone.high + buffer)
+   {
+      zone.valid = false;
+      return false;
+   }
+   return true;
 }
 
 bool FindAutomaticReaction(int bias, APAZone &selected)
@@ -222,15 +228,51 @@ bool HasRecentLiquiditySweep(const MqlRates &r[], int bias)
    return false;
 }
 
-bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias)
+bool IsPivotHigh(const MqlRates &r[], int index, int wing)
+{
+   if(index - wing < 1 || index + wing >= ArraySize(r)) return false;
+   for(int k = 1; k <= wing; ++k)
+      if(r[index].high <= r[index-k].high || r[index].high <= r[index+k].high)
+         return false;
+   return true;
+}
+
+bool IsPivotLow(const MqlRates &r[], int index, int wing)
+{
+   if(index - wing < 1 || index + wing >= ArraySize(r)) return false;
+   for(int k = 1; k <= wing; ++k)
+      if(r[index].low >= r[index-k].low || r[index].low >= r[index+k].low)
+         return false;
+   return true;
+}
+
+bool FindLatestPivot(const MqlRates &r[], bool wantHigh, int &pivotIndex, double &pivotPrice)
+{
+   for(int i = 3; i < ArraySize(r) - 3; ++i)
+   {
+      bool found = wantHigh ? IsPivotHigh(r, i, 2) : IsPivotLow(r, i, 2);
+      if(found)
+      {
+         pivotIndex = i;
+         pivotPrice = wantHigh ? r[i].high : r[i].low;
+         return true;
+      }
+   }
+   return false;
+}
+
+bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
+                                      string &structureType, double &brokenLevel)
 {
    if(ArraySize(r) < 25) return false;
 
-   double swingHigh = RecentSwingHigh(r, 2, 12);
-   double swingLow  = RecentSwingLow(r, 2, 12);
+   int pivotIndex = -1;
+   double pivotPrice = 0.0;
+   bool bullish = (bias > 0);
+   if(!FindLatestPivot(r, bullish, pivotIndex, pivotPrice)) return false;
+
    double body = MathAbs(r[1].close - r[1].open);
    double averageBody = 0.0;
-
    for(int i = 2; i <= 11; ++i)
       averageBody += MathAbs(r[i].close - r[i].open);
    averageBody /= 10.0;
@@ -238,12 +280,25 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias)
    if(averageBody <= 0.0 || body < averageBody * InpDisplacementFactor)
       return false;
 
-   if(bias > 0)
-      return (r[1].close > swingHigh && r[1].close > r[1].open);
-   if(bias < 0)
-      return (r[1].close < swingLow && r[1].close < r[1].open);
+   // A close beyond a confirmed swing is required; a wick alone is insufficient.
+   if(bullish)
+   {
+      if(r[1].close <= pivotPrice || r[1].close <= r[1].open) return false;
+      structureType = "BOS";
+      brokenLevel = pivotPrice;
+      double priorHigh = RecentSwingHigh(r, pivotIndex + 1,
+                                         MathMin(pivotIndex + 20, ArraySize(r)-1));
+      if(priorHigh > pivotPrice) structureType = "CHoCH";
+      return true;
+   }
 
-   return false;
+   if(r[1].close >= pivotPrice || r[1].close >= r[1].open) return false;
+   structureType = "BOS";
+   brokenLevel = pivotPrice;
+   double priorLow = RecentSwingLow(r, pivotIndex + 1,
+                                    MathMin(pivotIndex + 20, ArraySize(r)-1));
+   if(priorLow < pivotPrice) structureType = "CHoCH";
+   return true;
 }
 
 ENUM_TIMEFRAMES EntryTimeframe()
@@ -296,9 +351,11 @@ void ScanAPA()
       return;
    }
 
-   if(!HasStructureBreakAndDisplacement(entryRates, bias))
+   string structureType = "";
+   double brokenLevel = 0.0;
+   if(!HasStructureBreakAndDisplacement(entryRates, bias, structureType, brokenLevel))
    {
-      Print("APA scan: liquidity sweep found, waiting for structure break and displacement.");
+      Print("APA scan: sweep found, waiting for confirmed BOS/CHoCH with displacement.");
       return;
    }
 
@@ -311,7 +368,9 @@ void ScanAPA()
                     " | Trend TF: " + EnumToString(TrendTimeframe()) +
                     " | Reaction: " + EnumToString(zone.timeframe) +
                     " " + zone.kind +
-                    " | Entry TF: " + EnumToString(entryTF);
+                    " | Entry TF: " + EnumToString(entryTF) +
+                    " | Structure: " + structureType +
+                    " | Break level: " + DoubleToString(brokenLevel, _Digits);
 
    Print(message);
    if(InpPopupAlerts) Alert(message);
@@ -328,7 +387,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   Print("SMC Sniper APA v1.00 initialized in SIGNAL-ONLY mode. No orders will be placed.");
+   Print("SMC Sniper APA v1.01 initialized in SIGNAL-ONLY mode. No orders will be placed.");
    Print("Style: ", StyleName(), " | Trend TF: ", EnumToString(TrendTimeframe()),
          " | Entry TF: ", EnumToString(EntryTimeframe()));
    return INIT_SUCCEEDED;
@@ -341,6 +400,6 @@ void OnTick()
 
 void OnDeinit(const int reason)
 {
-   Print("SMC Sniper APA v1.00 stopped. Reason: ", reason);
+   Print("SMC Sniper APA v1.01 stopped. Reason: ", reason);
 }
 //+------------------------------------------------------------------+

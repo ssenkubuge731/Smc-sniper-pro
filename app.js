@@ -1150,30 +1150,33 @@ function getAPASequence(candles, poi, direction) {
 }
 
 function analyseAPA(entryCandles, higherCandles, lowerCandles) {
-  if (!Array.isArray(entryCandles) || entryCandles.length < 20 ||
-      !Array.isArray(higherCandles) || higherCandles.length < 12)
-    return { ready: false, trend: "Waiting for higher-timeframe data",
+  // Deriv's final candle can still be forming. APA confirmations use closed candles only.
+  const confirmedEntry = Array.isArray(entryCandles) ? entryCandles.slice(0, -1) : [];
+  const confirmedHigher = Array.isArray(higherCandles) ? higherCandles.slice(0, -1) : [];
+  const confirmedLower = Array.isArray(lowerCandles) ? lowerCandles.slice(0, -1) : [];
+  if (confirmedEntry.length < 20 || confirmedHigher.length < 12)
+    return { ready: false, trend: "Waiting for closed higher-timeframe candles",
       structure: "Waiting", liquidity: "Waiting", supply: null, demand: null,
       breaker: "APA POI scan waiting", checks: [], signal: "Waiting for APA timeframes" };
-  const last = entryCandles[entryCandles.length - 1];
-  const higherTrend = getTrend(higherCandles);
-  const structure = getStructure(entryCandles);
-  const zones = findStructureZones(higherCandles);
-  const bullishOB = findOrderBlock(higherCandles, "bullish");
-  const bearishOB = findOrderBlock(higherCandles, "bearish");
+  const last = confirmedEntry[confirmedEntry.length - 1];
+  const higherTrend = getTrend(confirmedHigher);
+  const structure = getStructure(confirmedEntry);
+  const zones = findStructureZones(confirmedHigher);
+  const bullishOB = findOrderBlock(confirmedHigher, "bullish");
+  const bearishOB = findOrderBlock(confirmedHigher, "bearish");
   const bullishPOI = bullishOB || zones.demand;
   const bearishPOI = bearishOB || zones.supply;
   const nearDemand = Boolean(bullishPOI && last.low <= bullishPOI.high && last.high >= bullishPOI.low);
   const nearSupply = Boolean(bearishPOI && last.high >= bearishPOI.low && last.low <= bearishPOI.high);
-  const bullishSequence = getAPASequence(entryCandles, bullishPOI, "bullish");
-  const bearishSequence = getAPASequence(entryCandles, bearishPOI, "bearish");
-  const ltf = Array.isArray(lowerCandles) && lowerCandles.length >= 8 ? lowerCandles : entryCandles;
+  const bullishSequence = getAPASequence(confirmedEntry, bullishPOI, "bullish");
+  const bearishSequence = getAPASequence(confirmedEntry, bearishPOI, "bearish");
+  const ltf = confirmedLower.length >= 8 ? confirmedLower : confirmedEntry;
   const ltfLast = ltf[ltf.length - 1];
   const ltfBullish = ltfLast.close > ltfLast.open, ltfBearish = ltfLast.close < ltfLast.open;
-  const buyReady = higherTrend === "Bullish" && nearDemand &&
-    bullishSequence.confirmed && ltfBullish;
-  const sellReady = higherTrend === "Bearish" && nearSupply &&
-    bearishSequence.confirmed && ltfBearish;
+  // The sweep itself must overlap the POI. Do not require price to remain
+  // inside the zone after the later BOS/displacement has confirmed.
+  const buyReady = higherTrend === "Bullish" && bullishSequence.confirmed && ltfBullish;
+  const sellReady = higherTrend === "Bearish" && bearishSequence.confirmed && ltfBearish;
   const signal = buyReady ? "Potential APA BUY — sweep, later BOS and displacement confirmed" :
     sellReady ? "Potential APA SELL — sweep, later BOS and displacement confirmed" :
     "APA WAIT — require trend → POI → sweep → later BOS/MSS → displacement → entry";
@@ -1204,7 +1207,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
   const checks = [
     ["Higher-timeframe trend", higherTrend !== "Sideways" && higherTrend !== "Unknown"],
     ["POI identified (OB / supply-demand area)", Boolean(bullishPOI || bearishPOI)],
-    ["Price overlaps relevant POI", nearDemand || nearSupply],
+    ["Liquidity sweep overlaps relevant POI", bullishSequence.swept || bearishSequence.swept],
     ["Liquidity sweep at POI", bullishSequence.swept || bearishSequence.swept],
     ["Later BOS/MSS after sweep", bullishSequence.confirmed || bearishSequence.confirmed],
     ["Strong displacement", bullishSequence.displacement || bearishSequence.displacement],
@@ -1216,7 +1219,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     liquidity: liquidityLabel, signal, entry, sl, tp, invalidation: sl, checks, reasoning,
     supply: zones.supply, demand: zones.demand, breaker: "SMC breaker logic is separate from APA",
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
-    structureDetails: structure, fvgDetails: getFVGState(entryCandles),
+    structureDetails: structure, fvgDetails: getFVGState(confirmedEntry),
     orderBlock: higherTrend === "Bullish" ? bullishOB : bearishOB,
     displacement: bullishSequence.displacement || bearishSequence.displacement };
 }

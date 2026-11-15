@@ -4,7 +4,7 @@
 //| This version is signal-only. It does NOT send trade orders.       |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.01"
+#property version   "1.02"
 #property description "APA trend -> reaction POI -> lower-timeframe confirmation scanner"
 
 enum APA_STYLE
@@ -20,6 +20,7 @@ input ENUM_TIMEFRAMES InpIntradayEntryTF = PERIOD_M5;
 input ENUM_TIMEFRAMES InpSwingEntryTF = PERIOD_M5;
 input int    InpScanBars = 80;
 input double InpDisplacementFactor = 1.20;
+input double InpMinimumRewardRisk = 1.50;
 input int    InpZoneATRBufferPoints = 150;
 input bool   InpPopupAlerts = true;
 input bool   InpPushNotifications = false;
@@ -214,19 +215,37 @@ bool FindAutomaticReaction(int bias, APAZone &selected)
    return false;
 }
 
-bool HasRecentLiquiditySweep(const MqlRates &r[], int bias)
+bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
+                              double &sweepExtreme)
 {
-   if(ArraySize(r) < 15) return false;
+   if(ArraySize(r) < 15 || !zone.valid) return false;
 
+   // Require the sweep candle to trade inside/through the selected reaction POI.
    for(int i = 2; i <= 8; ++i)
    {
       double priorLow = RecentSwingLow(r, i + 1, i + 6);
       double priorHigh = RecentSwingHigh(r, i + 1, i + 6);
 
-      if(bias > 0 && r[i].low < priorLow && r[i].close > priorLow)
-         return true;
-      if(bias < 0 && r[i].high > priorHigh && r[i].close < priorHigh)
-         return true;
+      if(bias > 0)
+      {
+         bool swept = (r[i].low < priorLow && r[i].close > priorLow);
+         bool atPOI = (r[i].low <= zone.high && r[i].high >= zone.low);
+         if(swept && atPOI)
+         {
+            sweepExtreme = r[i].low;
+            return true;
+         }
+      }
+      else if(bias < 0)
+      {
+         bool swept = (r[i].high > priorHigh && r[i].close < priorHigh);
+         bool atPOI = (r[i].high >= zone.low && r[i].low <= zone.high);
+         if(swept && atPOI)
+         {
+            sweepExtreme = r[i].high;
+            return true;
+         }
+      }
    }
    return false;
 }
@@ -264,6 +283,33 @@ bool FindLatestPivot(const MqlRates &r[], bool wantHigh, int &pivotIndex, double
    return false;
 }
 
+int GetLocalStructureBias(const MqlRates &r[])
+{
+   int high1=-1, high2=-1, low1=-1, low2=-1;
+   double h1=0.0, h2=0.0, l1=0.0, l2=0.0;
+
+   for(int i=3; i<ArraySize(r)-3; ++i)
+   {
+      if(high1<0 && IsPivotHigh(r,i,2)) { high1=i; h1=r[i].high; }
+      else if(high1>=0 && high2<0 && IsPivotHigh(r,i,2)) { high2=i; h2=r[i].high; }
+
+      if(low1<0 && IsPivotLow(r,i,2)) { low1=i; l1=r[i].low; }
+      else if(low1>=0 && low2<0 && IsPivotLow(r,i,2)) { low2=i; l2=r[i].low; }
+
+      if(high2>=0 && low2>=0) break;
+   }
+
+   if(high2<0 || low2<0) return 0;
+   bool higherHigh = (h1 > h2);
+   bool higherLow  = (l1 > l2);
+   bool lowerHigh  = (h1 < h2);
+   bool lowerLow   = (l1 < l2);
+
+   if(higherHigh && higherLow) return 1;
+   if(lowerHigh && lowerLow) return -1;
+   return 0;
+}
+
 bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
                                       string &structureType, double &brokenLevel)
 {
@@ -287,13 +333,15 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
    if(bullish)
    {
       if(r[1].close <= pivotPrice || r[1].close <= r[1].open) return false;
-      structureType = "BOS";
+      int priorBias = GetLocalStructureBias(r);
+      structureType = (priorBias < 0) ? "Bullish MSS/CHoCH" : "Bullish BOS";
       brokenLevel = pivotPrice;
       return true;
    }
 
    if(r[1].close >= pivotPrice || r[1].close >= r[1].open) return false;
-   structureType = "BOS";
+   int priorBias = GetLocalStructureBias(r);
+   structureType = (priorBias > 0) ? "Bearish MSS/CHoCH" : "Bearish BOS";
    brokenLevel = pivotPrice;
    return true;
 }
@@ -342,9 +390,10 @@ void ScanAPA()
       return;
    }
 
-   if(!HasRecentLiquiditySweep(entryRates, bias))
+   double sweepExtreme = 0.0;
+   if(!HasRecentLiquiditySweep(entryRates, bias, zone, sweepExtreme))
    {
-      Print("APA scan: POI found (", zone.kind, "), waiting for liquidity sweep.");
+      Print("APA scan: POI found (", zone.kind, "), waiting for a liquidity sweep at that POI.");
       return;
    }
 
@@ -360,6 +409,25 @@ void ScanAPA()
    g_lastSignalBar = entryRates[1].time;
 
    string direction = (bias > 0) ? "BUY" : "SELL";
+   double entryPrice = (bias > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                                  : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double atrEntry = 0.0;
+   for(int a=1; a<=14; ++a) atrEntry += entryRates[a].high-entryRates[a].low;
+   atrEntry /= 14.0;
+   double slBuffer = MathMax(atrEntry * 0.15, 3.0 * _Point);
+   double stopLoss = (bias > 0) ? MathMin(sweepExtreme, zone.low)-slBuffer
+                                : MathMax(sweepExtreme, zone.high)+slBuffer;
+   double target = (bias > 0) ? RecentSwingHigh(entryRates, 2, 30)
+                              : RecentSwingLow(entryRates, 2, 30);
+   double riskDistance = MathAbs(entryPrice-stopLoss);
+   double rewardDistance = (bias > 0) ? target-entryPrice : entryPrice-target;
+   if(riskDistance <= 0.0 || rewardDistance <= 0.0 ||
+      rewardDistance/riskDistance < InpMinimumRewardRisk)
+   {
+      Print("APA scan: setup rejected; opposing liquidity target does not offer the minimum reward/risk.");
+      return;
+   }
+
    string message = "APA " + direction + " signal | " + _Symbol +
                     " | " + StyleName() +
                     " | Trend TF: " + EnumToString(TrendTimeframe()) +
@@ -367,7 +435,10 @@ void ScanAPA()
                     " " + zone.kind +
                     " | Entry TF: " + EnumToString(entryTF) +
                     " | Structure: " + structureType +
-                    " | Break level: " + DoubleToString(brokenLevel, _Digits);
+                    " | Break level: " + DoubleToString(brokenLevel, _Digits) +
+                    " | Invalidation SL: " + DoubleToString(stopLoss, _Digits) +
+                    " | Liquidity TP: " + DoubleToString(target, _Digits) +
+                    " | R:R: " + DoubleToString(rewardDistance/riskDistance, 2);
 
    Print(message);
    if(InpPopupAlerts) Alert(message);
@@ -378,13 +449,13 @@ int OnInit()
 {
    if(InpRiskPercent <= 0.0 || InpRiskPercent > 5.0 ||
       InpMaxOpenTrades < 1 || InpDailyLossLimitPercent <= 0.0 ||
-      InpPauseAfterConsecutiveLosses < 1)
+      InpPauseAfterConsecutiveLosses < 1 || InpMinimumRewardRisk < 0.5)
    {
       Print("APA: invalid risk-control input. Check settings.");
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   Print("SMC Sniper APA v1.01 initialized in SIGNAL-ONLY mode. No orders will be placed.");
+   Print("SMC Sniper APA v1.02 initialized in SIGNAL-ONLY mode. No orders will be placed.");
    Print("Style: ", StyleName(), " | Trend TF: ", EnumToString(TrendTimeframe()),
          " | Entry TF: ", EnumToString(EntryTimeframe()));
    return INIT_SUCCEEDED;
@@ -397,6 +468,6 @@ void OnTick()
 
 void OnDeinit(const int reason)
 {
-   Print("SMC Sniper APA v1.01 stopped. Reason: ", reason);
+   Print("SMC Sniper APA v1.02 stopped. Reason: ", reason);
 }
 //+------------------------------------------------------------------+

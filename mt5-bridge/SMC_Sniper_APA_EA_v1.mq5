@@ -99,87 +99,90 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
    MqlRates r[];
    if(!LoadRates(tf, InpScanBars, r)) return false;
 
-   zone.valid = false;
-   zone.timeframe = tf;
    double atr = 0.0;
-   for(int i = 1; i <= 14 && i < ArraySize(r); ++i)
-      atr += (r[i].high - r[i].low);
+   for(int a = 1; a <= 14 && a < ArraySize(r); ++a)
+      atr += (r[a].high - r[a].low);
    atr /= 14.0;
    if(atr <= 0.0) return false;
-
-   // Search recent order blocks and fair-value gaps.
-   for(int i = 3; i < MathMin(35, ArraySize(r) - 2); ++i)
-   {
-      if(bias > 0)
-      {
-         // Bullish FVG: candle low is above the high two candles older.
-         if(r[i-1].low > r[i+1].high)
-         {
-            zone.low = r[i+1].high;
-            zone.high = r[i-1].low;
-            zone.kind = "Bullish FVG";
-            zone.valid = true;
-            break;
-         }
-
-         // Bullish order block: bearish candle before bullish displacement.
-         double body = MathAbs(r[i-1].close - r[i-1].open);
-         double range = r[i-1].high - r[i-1].low;
-         if(r[i].close < r[i].open && r[i-1].close > r[i-1].open &&
-            body >= range * 0.55 && r[i-1].close > r[i].high)
-         {
-            zone.low = r[i].low;
-            zone.high = r[i].open;
-            zone.kind = "Bullish Order Block";
-            zone.valid = true;
-            break;
-         }
-      }
-      else if(bias < 0)
-      {
-         // Bearish FVG.
-         if(r[i-1].high < r[i+1].low)
-         {
-            zone.low = r[i-1].high;
-            zone.high = r[i+1].low;
-            zone.kind = "Bearish FVG";
-            zone.valid = true;
-            break;
-         }
-
-         // Bearish order block: bullish candle before bearish displacement.
-         double body = MathAbs(r[i-1].close - r[i-1].open);
-         double range = r[i-1].high - r[i-1].low;
-         if(r[i].close > r[i].open && r[i-1].close < r[i-1].open &&
-            body >= range * 0.55 && r[i-1].close < r[i].low)
-         {
-            zone.low = r[i].open;
-            zone.high = r[i].high;
-            zone.kind = "Bearish Order Block";
-            zone.valid = true;
-            break;
-         }
-      }
-   }
-
-   if(!zone.valid) return false;
-   if(zone.low > zone.high)
-   {
-      double temp = zone.low;
-      zone.low = zone.high;
-      zone.high = temp;
-   }
 
    double price = (bias > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                              : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double buffer = MathMax(atr * 0.35, InpZoneATRBufferPoints * _Point);
-   // Ignore an old zone that price is not approaching.
-   if(price < zone.low - buffer || price > zone.high + buffer)
+
+   // Search from the newest completed structures toward older ones.
+   // Only select a zone if current price is actually near it.
+   for(int i = 3; i < MathMin(35, ArraySize(r) - 2); ++i)
    {
-      zone.valid = false;
-      return false;
+      double candidateLow = 0.0;
+      double candidateHigh = 0.0;
+      string candidateKind = "";
+
+      if(bias > 0)
+      {
+         if(r[i-1].low > r[i+1].high)
+         {
+            candidateLow = r[i+1].high;
+            candidateHigh = r[i-1].low;
+            candidateKind = "Bullish FVG";
+         }
+         else
+         {
+            double body = MathAbs(r[i-1].close - r[i-1].open);
+            double range = r[i-1].high - r[i-1].low;
+            if(r[i].close < r[i].open && r[i-1].close > r[i-1].open &&
+               range > 0.0 && body >= range * 0.55 &&
+               r[i-1].close > r[i].high)
+            {
+               candidateLow = r[i].low;
+               candidateHigh = r[i].open;
+               candidateKind = "Bullish Order Block";
+            }
+         }
+      }
+      else if(bias < 0)
+      {
+         if(r[i-1].high < r[i+1].low)
+         {
+            candidateLow = r[i-1].high;
+            candidateHigh = r[i+1].low;
+            candidateKind = "Bearish FVG";
+         }
+         else
+         {
+            double body = MathAbs(r[i-1].close - r[i-1].open);
+            double range = r[i-1].high - r[i-1].low;
+            if(r[i].close > r[i].open && r[i-1].close < r[i-1].open &&
+               range > 0.0 && body >= range * 0.55 &&
+               r[i-1].close < r[i].low)
+            {
+               candidateLow = r[i].open;
+               candidateHigh = r[i].high;
+               candidateKind = "Bearish Order Block";
+            }
+         }
+      }
+
+      if(candidateKind == "") continue;
+      if(candidateLow > candidateHigh)
+      {
+         double swap = candidateLow;
+         candidateLow = candidateHigh;
+         candidateHigh = swap;
+      }
+
+      if(price < candidateLow - buffer || price > candidateHigh + buffer)
+         continue;
+
+      zone.low = candidateLow;
+      zone.high = candidateHigh;
+      zone.timeframe = tf;
+      zone.kind = candidateKind;
+      zone.valid = true;
+      return true;
    }
-   return true;
+
+   zone.valid = false;
+   return false;
 }
 
 bool FindAutomaticReaction(int bias, APAZone &selected)
@@ -286,18 +289,12 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
       if(r[1].close <= pivotPrice || r[1].close <= r[1].open) return false;
       structureType = "BOS";
       brokenLevel = pivotPrice;
-      double priorHigh = RecentSwingHigh(r, pivotIndex + 1,
-                                         MathMin(pivotIndex + 20, ArraySize(r)-1));
-      if(priorHigh > pivotPrice) structureType = "CHoCH";
       return true;
    }
 
    if(r[1].close >= pivotPrice || r[1].close >= r[1].open) return false;
    structureType = "BOS";
    brokenLevel = pivotPrice;
-   double priorLow = RecentSwingLow(r, pivotIndex + 1,
-                                    MathMin(pivotIndex + 20, ArraySize(r)-1));
-   if(priorLow < pivotPrice) structureType = "CHoCH";
    return true;
 }
 

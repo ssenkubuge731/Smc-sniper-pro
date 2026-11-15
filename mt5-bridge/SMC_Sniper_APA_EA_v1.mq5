@@ -4,7 +4,7 @@
 //| This version is signal-only. It does NOT send trade orders.       |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.02"
+#property version   "1.03"
 #property description "APA trend -> reaction POI -> lower-timeframe confirmation scanner"
 
 enum APA_STYLE
@@ -63,17 +63,48 @@ double CalculateEMA(const MqlRates &rates[], int period)
    return ema;
 }
 
+bool IsPivotHigh(const MqlRates &r[], int index, int wing);
+bool IsPivotLow(const MqlRates &r[], int index, int wing);
+
 int GetTrendBias(ENUM_TIMEFRAMES tf)
 {
    MqlRates r[];
-   if(!LoadRates(tf, 100, r)) return 0;
+   if(!LoadRates(tf, 120, r)) return 0;
 
-   double fast = CalculateEMA(r, 20);
-   double slow = CalculateEMA(r, 50);
-   double lastClose = r[1].close;
+   // Higher-timeframe direction comes from confirmed swing structure.
+   int high1=-1, high2=-1, low1=-1, low2=-1;
+   double h1=0.0, h2=0.0, l1=0.0, l2=0.0;
 
-   if(fast > slow && lastClose > fast) return 1;
-   if(fast < slow && lastClose < fast) return -1;
+   for(int i=3; i<ArraySize(r)-3; ++i)
+   {
+      if(high1<0 && IsPivotHigh(r,i,2))
+      {
+         high1=i; h1=r[i].high;
+      }
+      else if(high1>=0 && high2<0 && IsPivotHigh(r,i,2))
+      {
+         high2=i; h2=r[i].high;
+      }
+
+      if(low1<0 && IsPivotLow(r,i,2))
+      {
+         low1=i; l1=r[i].low;
+      }
+      else if(low1>=0 && low2<0 && IsPivotLow(r,i,2))
+      {
+         low2=i; l2=r[i].low;
+      }
+
+      if(high2>=0 && low2>=0) break;
+   }
+
+   if(high2<0 || low2<0) return 0;
+
+   bool bullishStructure = (h1>h2 && l1>l2);
+   bool bearishStructure = (h1<h2 && l1<l2);
+
+   if(bullishStructure && r[1].close>r[1].open) return 1;
+   if(bearishStructure && r[1].close<r[1].open) return -1;
    return 0;
 }
 
@@ -455,7 +486,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   Print("SMC Sniper APA v1.02 initialized in SIGNAL-ONLY mode. No orders will be placed.");
+   Print("SMC Sniper APA v1.03 initialized in SIGNAL-ONLY mode. No orders will be placed.");
    Print("Style: ", StyleName(), " | Trend TF: ", EnumToString(TrendTimeframe()),
          " | Entry TF: ", EnumToString(EntryTimeframe()));
    return INIT_SUCCEEDED;
@@ -468,6 +499,6 @@ void OnTick()
 
 void OnDeinit(const int reason)
 {
-   Print("SMC Sniper APA v1.02 stopped. Reason: ", reason);
+   Print("SMC Sniper APA v1.03 stopped. Reason: ", reason);
 }
 //+------------------------------------------------------------------+

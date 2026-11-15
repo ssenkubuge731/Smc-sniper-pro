@@ -1550,11 +1550,22 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
   const higherCandles = tradingState.candles[candleKey(symbol, frames[frames.length - 1])] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, frames[0])] || [];
-  const result = tradingState.strategy === "news"
-    ? analyseNews(symbol, candles)
-    : tradingState.strategy === "apa"
-      ? analyseAPA(candles, higherCandles, lowerCandles)
-      : analyseSMC(candles);
+  const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
+  const isSelectedAPAEntryFrame = tradingState.strategy !== "apa" || timeframe === selectedEntryTimeframe;
+  const result = !isSelectedAPAEntryFrame
+    ? {
+        ready: false, strategy: "apa",
+        trend: "Context timeframe only",
+        structure: "No entry analysis on this timeframe",
+        liquidity: "Context scan only",
+        signal: `Context only — APA entries are restricted to selected ${selectedEntryTimeframe.toUpperCase()}`,
+        supply: null, demand: null, orderBlock: null
+      }
+    : tradingState.strategy === "news"
+      ? analyseNews(symbol, candles)
+      : tradingState.strategy === "apa"
+        ? analyseAPA(candles, higherCandles, lowerCandles)
+        : analyseSMC(candles);
 
   const box = $("timeframeResults");
   if (!box) return;
@@ -1863,6 +1874,13 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
+  // APA is multi-timeframe for context, but only the user's selected timeframe
+  // is allowed to create an entry signal or signal-history record.
+  if (tradingState.strategy === "apa") {
+    const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
+    const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
+    if (timeframe !== selectedEntryTimeframe) return;
+  }
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";

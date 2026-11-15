@@ -17,7 +17,7 @@ const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["15m", "30m", "1h", "4h"],
+  intraday: ["1m", "5m", "15m", "30m", "1h", "4h"],
   swing: ["1h", "4h", "1d"]
 };
 
@@ -194,10 +194,12 @@ function updateMode() {
     ? previous
     : frames[0];
 
-  setText(
-    "timeframeInfo",
-    `${mode.toUpperCase()}: ${frames.map(f => f.toUpperCase()).join(", ")}`
-  );
+  const modeInfo = mode === "intraday"
+    ? "Entry: M1 / M5 • Reaction: M15 / M30 / H1 • Trend context: H4"
+    : mode === "scalping"
+      ? "Entry and fast scan: M1 / M5"
+      : "Entry: M5 (configurable in EA) • Reaction: H1 / H4 • Trend context: D1";
+  setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
 }

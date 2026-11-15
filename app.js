@@ -1113,7 +1113,7 @@ function analyseSMC(candles) {
 
 function getAPASequence(candles, poi, direction) {
   const empty = { swept: false, confirmed: false, sweepIndex: -1, sweepExtreme: null,
-    structureLabel: "Waiting for sweep then structure break", displacement: false };
+    sweepLevel: null, structureLabel: "Waiting for sweep then structure break", displacement: false };
   if (!Array.isArray(candles) || candles.length < 12 || !poi) return empty;
   const lastIndex = candles.length - 1;
   const confirm = candles[lastIndex];
@@ -1123,6 +1123,7 @@ function getAPASequence(candles, poi, direction) {
     (direction === "bullish"
       ? confirm.close > confirm.open && (confirm.high - confirm.close) / range <= 0.25
       : confirm.close < confirm.open && (confirm.close - confirm.low) / range <= 0.25);
+  // First report a qualifying sweep independently; BOS/displacement may arrive later.
   for (let i = lastIndex - 1; i >= Math.max(7, lastIndex - 12); i--) {
     const pool = candles.slice(Math.max(0, i - 7), i);
     if (pool.length < 3) continue;
@@ -1135,18 +1136,21 @@ function getAPASequence(candles, poi, direction) {
       : sweep.high > poolHigh && sweep.close < poolHigh;
     if (!swept || !touchedPOI) continue;
     const structureBars = candles.slice(i + 1, lastIndex);
-    if (structureBars.length < 1) continue;
-    const brokenLevel = direction === "bullish"
-      ? Math.max(...structureBars.map(c => c.high))
-      : Math.min(...structureBars.map(c => c.low));
-    const structureBreak = direction === "bullish"
+    const brokenLevel = structureBars.length
+      ? (direction === "bullish"
+          ? Math.max(...structureBars.map(c => c.high))
+          : Math.min(...structureBars.map(c => c.low)))
+      : null;
+    const structureBreak = brokenLevel !== null && (direction === "bullish"
       ? confirm.close > brokenLevel && confirm.close > confirm.open
-      : confirm.close < brokenLevel && confirm.close < confirm.open;
-    if (!structureBreak || !displacement) continue;
-    return { swept: true, confirmed: true, sweepIndex: i,
+      : confirm.close < brokenLevel && confirm.close < confirm.open);
+    return { swept: true, confirmed: Boolean(structureBreak && displacement), sweepIndex: i,
       sweepExtreme: direction === "bullish" ? sweep.low : sweep.high,
-      structureLabel: direction === "bullish" ? "Bullish BOS after sell-side sweep" : "Bearish BOS after buy-side sweep",
-      displacement: true };
+      sweepLevel: direction === "bullish" ? poolLow : poolHigh,
+      structureLabel: structureBreak
+        ? (direction === "bullish" ? "Bullish BOS after sell-side sweep" : "Bearish BOS after buy-side sweep")
+        : "Sweep detected — waiting for later BOS/MSS",
+      displacement: Boolean(structureBreak && displacement) };
   }
   return empty;
 }
@@ -1218,7 +1222,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
   return { ready: true, strategy: "apa", trend: higherTrend,
     structure: bullishSequence.confirmed ? bullishSequence.structureLabel :
       bearishSequence.confirmed ? bearishSequence.structureLabel : structure.label,
-    liquidity: liquidityLabel, signal, entry, sl, tp, invalidation: sl, checks, reasoning,
+    liquidity: liquidityLabel, sweepStatus, sweepDirection, sweepPrice, sweepLevel: sweepState.swept ? sweepState.sweepLevel : null, signal, entry, sl, tp, invalidation: sl, checks, reasoning,
     supply: zones.supply, demand: zones.demand, breaker: "SMC breaker logic is separate from APA",
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
     structureDetails: structure, fvgDetails: getFVGState(confirmedEntry),
@@ -1639,7 +1643,7 @@ function analyseMainSelection(symbol) {
 
   setText("marketTrend", result.trend);
   setText("apaStructure", result.structure);
-  setText("liquidityStatus", result.liquidity);
+  setText("liquidityStatus", result.liquidity);\n  setText("apaSweepStatus", result.sweepStatus ? `${result.sweepStatus} — ${result.sweepDirection}` : "APA sweep status not available");\n  setText("apaSweepPrice", result.sweepPrice == null ? "--" : formatPrice(result.sweepPrice));\n  setText("apaSweepLevel", result.sweepLevel == null ? "--" : formatPrice(result.sweepLevel));
   setText("entrySignal", result.signal);
   setText("tradeReasoning", result.reasoning || "Reasoning is not available for this analysis.");
   setText("supplyZone", formatZone(result.supply));

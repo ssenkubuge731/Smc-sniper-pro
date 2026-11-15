@@ -40,6 +40,7 @@ struct APAZone
    double low;
    double high;
    ENUM_TIMEFRAMES timeframe;
+   datetime createdAt;
    string kind;
    bool valid;
 };
@@ -103,8 +104,9 @@ int GetTrendBias(ENUM_TIMEFRAMES tf)
    bool bullishStructure = (h1>h2 && l1>l2);
    bool bearishStructure = (h1<h2 && l1<l2);
 
-   if(bullishStructure && r[1].close>r[1].open) return 1;
-   if(bearishStructure && r[1].close<r[1].open) return -1;
+   // Trend follows confirmed swing structure; the latest candle may be a pullback.
+   if(bullishStructure) return 1;
+   if(bearishStructure) return -1;
    return 0;
 }
 
@@ -126,7 +128,10 @@ double RecentSwingLow(const MqlRates &r[], int from, int to)
    return value;
 }
 
-bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
+bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
+                              double &sweepExtreme, int &sweepBarIndex);
+
+bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, const MqlRates &entryRates[], APAZone &zone)
 {
    MqlRates r[];
    if(!LoadRates(tf, InpScanBars, r)) return false;
@@ -148,6 +153,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
       double candidateLow = 0.0;
       double candidateHigh = 0.0;
       string candidateKind = "";
+      datetime candidateCreatedAt = 0;
 
       if(bias > 0)
       {
@@ -156,6 +162,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
             candidateLow = r[i+1].high;
             candidateHigh = r[i-1].low;
             candidateKind = "Bullish FVG";
+            candidateCreatedAt = r[i-1].time;
          }
          else
          {
@@ -168,6 +175,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
                candidateLow = r[i].low;
                candidateHigh = r[i].open;
                candidateKind = "Bullish Order Block";
+               candidateCreatedAt = r[i-1].time;
             }
          }
       }
@@ -178,6 +186,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
             candidateLow = r[i-1].high;
             candidateHigh = r[i+1].low;
             candidateKind = "Bearish FVG";
+            candidateCreatedAt = r[i-1].time;
          }
          else
          {
@@ -190,6 +199,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
                candidateLow = r[i].open;
                candidateHigh = r[i].high;
                candidateKind = "Bearish Order Block";
+               candidateCreatedAt = r[i-1].time;
             }
          }
       }
@@ -202,14 +212,34 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
          candidateHigh = swap;
       }
 
-      if(price < candidateLow - buffer || price > candidateHigh + buffer)
-         continue;
+      bool invalidated = false;
+      for(int j = 1; j < i-1; ++j)
+      {
+         if((bias > 0 && r[j].close < candidateLow) ||
+            (bias < 0 && r[j].close > candidateHigh))
+         {
+            invalidated = true;
+            break;
+         }
+      }
+      if(invalidated) continue;
 
-      zone.low = candidateLow;
-      zone.high = candidateHigh;
-      zone.timeframe = tf;
-      zone.kind = candidateKind;
-      zone.valid = true;
+      APAZone candidate;
+      candidate.low = candidateLow;
+      candidate.high = candidateHigh;
+      candidate.timeframe = tf;
+      candidate.createdAt = candidateCreatedAt;
+      candidate.kind = candidateKind;
+      candidate.valid = true;
+
+      bool nearZone = (price >= candidateLow - buffer && price <= candidateHigh + buffer);
+      double priorSweepExtreme = 0.0;
+      int priorSweepIndex = -1;
+      bool sweptAtZone = HasRecentLiquiditySweep(entryRates, bias, candidate,
+                                                  priorSweepExtreme, priorSweepIndex);
+      if(!nearZone && !sweptAtZone) continue;
+
+      zone = candidate;
       return true;
    }
 
@@ -217,7 +247,7 @@ bool FindReactionZone(ENUM_TIMEFRAMES tf, int bias, APAZone &zone)
    return false;
 }
 
-bool FindAutomaticReaction(int bias, APAZone &selected)
+bool FindAutomaticReaction(int bias, const MqlRates &entryRates[], APAZone &selected)
 {
    ENUM_TIMEFRAMES candidates[3];
    if(InpStyle == APA_SCALPING)
@@ -240,7 +270,7 @@ bool FindAutomaticReaction(int bias, APAZone &selected)
    }
 
    for(int i = 0; i < 3; ++i)
-      if(FindReactionZone(candidates[i], bias, selected))
+      if(FindReactionZone(candidates[i], bias, entryRates, selected))
          return true;
 
    return false;
@@ -255,6 +285,7 @@ bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
    // Require the sweep candle to trade inside/through the selected reaction POI.
    for(int i = 2; i <= 8; ++i)
    {
+      if(r[i].time < zone.createdAt) continue;
       double priorLow = RecentSwingLow(r, i + 1, i + 6);
       double priorHigh = RecentSwingHigh(r, i + 1, i + 6);
 
@@ -307,7 +338,8 @@ bool FindPivotBeforeSweep(const MqlRates &r[], bool wantHigh, int sweepBarIndex,
 {
    // Series arrays: a larger index is older. The broken structure level
    // must already exist before the sweep candle forms.
-   for(int i = sweepBarIndex + 1; i < ArraySize(r) - 3; ++i)
+   // Both pivot-confirmation candles must have completed before the sweep.
+   for(int i = sweepBarIndex + 3; i < ArraySize(r) - 3; ++i)
    {
       bool found = wantHigh ? IsPivotHigh(r, i, 2) : IsPivotLow(r, i, 2);
       if(found)
@@ -320,12 +352,13 @@ bool FindPivotBeforeSweep(const MqlRates &r[], bool wantHigh, int sweepBarIndex,
    return false;
 }
 
-int GetLocalStructureBias(const MqlRates &r[])
+int GetLocalStructureBiasBeforeSweep(const MqlRates &r[], int sweepBarIndex)
 {
    int high1=-1, high2=-1, low1=-1, low2=-1;
    double h1=0.0, h2=0.0, l1=0.0, l2=0.0;
 
-   for(int i=3; i<ArraySize(r)-3; ++i)
+   // Use only pivots fully confirmed before the sweep candle.
+   for(int i=sweepBarIndex+3; i<ArraySize(r)-3; ++i)
    {
       if(high1<0 && IsPivotHigh(r,i,2)) { high1=i; h1=r[i].high; }
       else if(high1>=0 && high2<0 && IsPivotHigh(r,i,2)) { high2=i; h2=r[i].high; }
@@ -356,6 +389,7 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias, int sweepBa
    double pivotPrice = 0.0;
    bool bullish = (bias > 0);
    if(!FindPivotBeforeSweep(r, bullish, sweepBarIndex, pivotIndex, pivotPrice)) return false;
+   if(pivotIndex - sweepBarIndex > 24) return false;
 
    double body = MathAbs(r[1].close - r[1].open);
    double averageBody = 0.0;
@@ -366,18 +400,24 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias, int sweepBa
    if(averageBody <= 0.0 || body < averageBody * InpDisplacementFactor)
       return false;
 
+   double candleRange = r[1].high - r[1].low;
+   if(candleRange <= 0.0 || body / candleRange < 0.60)
+      return false;
+
    // A close beyond a confirmed swing is required; a wick alone is insufficient.
    if(bullish)
    {
       if(r[1].close <= pivotPrice || r[1].close <= r[1].open) return false;
-      int priorBias = GetLocalStructureBias(r);
+      if((r[1].high - r[1].close) / candleRange > 0.25) return false;
+      int priorBias = GetLocalStructureBiasBeforeSweep(r, sweepBarIndex);
       structureType = (priorBias < 0) ? "Bullish MSS/CHoCH" : "Bullish BOS";
       brokenLevel = pivotPrice;
       return true;
    }
 
    if(r[1].close >= pivotPrice || r[1].close >= r[1].open) return false;
-   int priorBias = GetLocalStructureBias(r);
+   if((r[1].close - r[1].low) / candleRange > 0.25) return false;
+   int priorBias = GetLocalStructureBiasBeforeSweep(r, sweepBarIndex);
    structureType = (priorBias > 0) ? "Bearish MSS/CHoCH" : "Bearish BOS";
    brokenLevel = pivotPrice;
    return true;
@@ -421,7 +461,7 @@ void ScanAPA()
    }
 
    APAZone zone;
-   if(!FindAutomaticReaction(bias, zone))
+   if(!FindAutomaticReaction(bias, entryRates, zone))
    {
       Print("APA scan: trend found, waiting for price at a reaction POI.");
       return;
@@ -487,7 +527,9 @@ int OnInit()
 {
    if(InpRiskPercent <= 0.0 || InpRiskPercent > 5.0 ||
       InpMaxOpenTrades < 1 || InpDailyLossLimitPercent <= 0.0 ||
-      InpPauseAfterConsecutiveLosses < 1 || InpMinimumRewardRisk < 0.5)
+      InpPauseAfterConsecutiveLosses < 1 || InpMinimumRewardRisk < 0.5 ||
+      InpDisplacementFactor <= 0.0 || InpScanBars < 40 ||
+      InpZoneATRBufferPoints < 0)
    {
       Print("APA: invalid risk-control input. Check settings.");
       return INIT_PARAMETERS_INCORRECT;

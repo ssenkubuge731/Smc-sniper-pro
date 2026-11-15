@@ -4,7 +4,7 @@
 //| This version is signal-only. It does NOT send trade orders.       |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.03"
+#property version   "1.04"
 #property description "APA trend -> reaction POI -> lower-timeframe confirmation scanner"
 
 enum APA_STYLE
@@ -247,9 +247,10 @@ bool FindAutomaticReaction(int bias, APAZone &selected)
 }
 
 bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
-                              double &sweepExtreme)
+                              double &sweepExtreme, int &sweepBarIndex)
 {
    if(ArraySize(r) < 15 || !zone.valid) return false;
+   sweepBarIndex = -1;
 
    // Require the sweep candle to trade inside/through the selected reaction POI.
    for(int i = 2; i <= 8; ++i)
@@ -264,6 +265,7 @@ bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
          if(swept && atPOI)
          {
             sweepExtreme = r[i].low;
+            sweepBarIndex = i;
             return true;
          }
       }
@@ -274,6 +276,7 @@ bool HasRecentLiquiditySweep(const MqlRates &r[], int bias, const APAZone &zone,
          if(swept && atPOI)
          {
             sweepExtreme = r[i].high;
+            sweepBarIndex = i;
             return true;
          }
       }
@@ -299,9 +302,12 @@ bool IsPivotLow(const MqlRates &r[], int index, int wing)
    return true;
 }
 
-bool FindLatestPivot(const MqlRates &r[], bool wantHigh, int &pivotIndex, double &pivotPrice)
+bool FindPivotBeforeSweep(const MqlRates &r[], bool wantHigh, int sweepBarIndex,
+                           int &pivotIndex, double &pivotPrice)
 {
-   for(int i = 3; i < ArraySize(r) - 3; ++i)
+   // Series arrays: a larger index is older. The broken structure level
+   // must already exist before the sweep candle forms.
+   for(int i = sweepBarIndex + 1; i < ArraySize(r) - 3; ++i)
    {
       bool found = wantHigh ? IsPivotHigh(r, i, 2) : IsPivotLow(r, i, 2);
       if(found)
@@ -341,7 +347,7 @@ int GetLocalStructureBias(const MqlRates &r[])
    return 0;
 }
 
-bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
+bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias, int sweepBarIndex,
                                       string &structureType, double &brokenLevel)
 {
    if(ArraySize(r) < 25) return false;
@@ -349,7 +355,7 @@ bool HasStructureBreakAndDisplacement(const MqlRates &r[], int bias,
    int pivotIndex = -1;
    double pivotPrice = 0.0;
    bool bullish = (bias > 0);
-   if(!FindLatestPivot(r, bullish, pivotIndex, pivotPrice)) return false;
+   if(!FindPivotBeforeSweep(r, bullish, sweepBarIndex, pivotIndex, pivotPrice)) return false;
 
    double body = MathAbs(r[1].close - r[1].open);
    double averageBody = 0.0;
@@ -422,7 +428,8 @@ void ScanAPA()
    }
 
    double sweepExtreme = 0.0;
-   if(!HasRecentLiquiditySweep(entryRates, bias, zone, sweepExtreme))
+   int sweepBarIndex = -1;
+   if(!HasRecentLiquiditySweep(entryRates, bias, zone, sweepExtreme, sweepBarIndex))
    {
       Print("APA scan: POI found (", zone.kind, "), waiting for a liquidity sweep at that POI.");
       return;
@@ -430,9 +437,9 @@ void ScanAPA()
 
    string structureType = "";
    double brokenLevel = 0.0;
-   if(!HasStructureBreakAndDisplacement(entryRates, bias, structureType, brokenLevel))
+   if(!HasStructureBreakAndDisplacement(entryRates, bias, sweepBarIndex, structureType, brokenLevel))
    {
-      Print("APA scan: sweep found, waiting for confirmed BOS/CHoCH with displacement.");
+      Print("APA scan: sweep found; waiting for a later close beyond pre-sweep structure with displacement.");
       return;
    }
 
@@ -486,7 +493,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   Print("SMC Sniper APA v1.03 initialized in SIGNAL-ONLY mode. No orders will be placed.");
+   Print("SMC Sniper APA v1.04 initialized in SIGNAL-ONLY mode. No orders will be placed.");
    Print("Style: ", StyleName(), " | Trend TF: ", EnumToString(TrendTimeframe()),
          " | Entry TF: ", EnumToString(EntryTimeframe()));
    return INIT_SUCCEEDED;
@@ -499,6 +506,6 @@ void OnTick()
 
 void OnDeinit(const int reason)
 {
-   Print("SMC Sniper APA v1.03 stopped. Reason: ", reason);
+   Print("SMC Sniper APA v1.04 stopped. Reason: ", reason);
 }
 //+------------------------------------------------------------------+

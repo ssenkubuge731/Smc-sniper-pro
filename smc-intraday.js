@@ -1,7 +1,7 @@
 /* SMC INTRADAY ENGINE — independent from APA; signal-only */
 (function () {
   "use strict";
-  const FRAMES = ["1m","5m","15m","30m","1h","4h"];
+  const FRAMES = ["1h","30m","15m","5m","1m"];
   const state = { latest:new Map(), zones:new Map(), lastPublished:new Map() };
   const N = (x)=>Number(x);
   const valid = c=>c && Number.isFinite(N(c.open)) && Number.isFinite(N(c.high)) && Number.isFinite(N(c.low)) && Number.isFinite(N(c.close));
@@ -184,7 +184,7 @@
   function best(symbol){
     const list=FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.confirmed);
     // Prefer higher evidence; on tie prefer context frames (15m/30m/1h) over noisy 1m.
-    const rank={ "1m":1,"5m":2,"15m":4,"30m":5,"1h":4,"4h":3 };
+    const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
   window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,backtest,state};

@@ -598,6 +598,13 @@ function handleDerivMessage(data) {
     if (isValidCandle(candle)) {
       list.push(candle);
       tradingState.candles[key] = list.slice(-150);
+      if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+        const smcRecord = window.SMCIntradayEngine.evaluate(
+          context.symbol, context.timeframe, tradingState.candles[key]
+        );
+        publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
+        renderSMCMultiFrame(context.symbol);
+      }
       analyseMainSelection(context.symbol);
     }
   }

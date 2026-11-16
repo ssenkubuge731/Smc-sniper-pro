@@ -42,18 +42,31 @@
     if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1);
     addZone("Demand",{low:rl,high:rl+range*.20},"BUY",cs.length-12);
     addZone("Supply",{low:rh-range*.20,high:rh},"SELL",cs.length-12);
-    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker};
-    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker};
+    // Flexible SMC model matrix: a setup may qualify through several distinct
+    // valid routes; no fixed "two entry patterns" restriction is imposed.
+    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,choch:bullMSS,ob:!!bullOB};
+    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker,choch:bearMSS,ob:!!bearOB};
+    const models=(x)=>[
+      {name:"Sweep → MSS → displacement",ok:x.sweep&&x.choch&&x.displacement},
+      {name:"BOS → displacement → imbalance",ok:x.structure&&x.displacement&&x.imbalance},
+      {name:"Breaker → structure → displacement",ok:x.breaker&&x.structure&&x.displacement},
+      {name:"POI reaction → structure → displacement",ok:x.ob&&x.structure&&x.displacement},
+      {name:"MSS → displacement → FVG",ok:x.choch&&x.displacement&&x.imbalance},
+      {name:"Liquidity reclaim → BOS → FVG",ok:x.sweep&&x.structure&&x.imbalance}
+    ].filter(m=>m.ok).map(m=>m.name);
+    const buyModels=models(buy),sellModels=models(sell);
     const bc=Object.values(buy).filter(Boolean).length,sc=Object.values(sell).filter(Boolean).length;
-    const side=bc>sc?"BUY":sc>bc?"SELL":"NONE",conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
     const conflict=bc>0&&sc>0&&Math.abs(bc-sc)<2;
-    const activeZones=zones.filter(z=>z.valid&&z.side===side);
-    const zoneSupport=activeZones.some(z=>z.status==="fresh"||z.status==="tested"||z.status==="reacting"||z.status==="touching");
-    const confirmed=side!=="NONE"&&!conflict&&count>=2&&conf.structure&&conf.displacement&&zoneSupport;
-    const score=Math.min(100,count*16+(conf.sweep?12:0)+(conf.imbalance?10:0)+(conf.breaker?8:0)+(zoneSupport?8:0)-(conflict?25:0));
-    return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,price:N(c.close),zones,
+    const side=buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
+    const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
+    const activeZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
+    const zoneSupport=activeZones.length>0;
+    const entryModels=side==="BUY"?buyModels:side==="SELL"?sellModels:[];
+    const confirmed=side!=="NONE"&&!conflict&&entryModels.length>0&&zoneSupport;
+    const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.breaker?10:0)+(zoneSupport?8:0)-(conflict?30:0));
+    return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,entryModels,price:N(c.close),zones,
       formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
-      note:conflict?"Conflicting BUY/SELL evidence — blocked.":"Zone status is heuristic; replay/backtest required."};
+      note:conflict?"Conflicting BUY/SELL evidence — blocked.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
   function makeEntryPlan(record, candles, rr=2) {

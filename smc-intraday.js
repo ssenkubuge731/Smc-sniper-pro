@@ -81,6 +81,34 @@
     const tp3=side==="BUY"?entry+risk*3:entry-risk*3;
     return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp1,tp2,tp3,rr,method:"Zone midpoint entry preview; SL beyond zone + ATR buffer",warning:"Illustrative levels only; spread, tick size, contract rules and chart validation required."};
   }
+  function backtest(candles,opts={}){
+    const minBars=Math.max(30,opts.warmup||40),horizon=Math.max(5,opts.horizon||30),rr=Number(opts.rr||2);
+    const trades=[];let wins=0,losses=0,ambiguous=0;
+    if(!Array.isArray(candles)||candles.length<minBars+horizon)return {error:"Need at least "+(minBars+horizon)+" candles."};
+    for(let i=minBars;i<candles.length-horizon;i++){
+      const history=candles.slice(0,i+1),record=detect(history);
+      if(!record.ready||!record.confirmed)continue;
+      const plan=makeEntryPlan(record,history,rr);if(!plan||plan.blocked)continue;
+      const entry=Number(record.price),sl=Number(plan.sl),tp=Number(plan.tp2);
+      let outcome="OPEN",exitPrice=null,bars=0;
+      for(let j=i+1;j<=Math.min(candles.length-1,i+horizon);j++){
+        const bar=candles[j],hitSL=record.side==="BUY"?Number(bar.low)<=sl:Number(bar.high)>=sl;
+        const hitTP=record.side==="BUY"?Number(bar.high)>=tp:Number(bar.low)<=tp;
+        bars++;
+        if(hitSL&&hitTP){outcome="AMBIGUOUS_SL_FIRST";exitPrice=sl;ambiguous++;break;}
+        if(hitSL){outcome="SL";exitPrice=sl;break;}
+        if(hitTP){outcome="TP2";exitPrice=tp;break;}
+      }
+      const r=record.side==="BUY"?(exitPrice-entry)/Math.abs(entry-sl):(entry-exitPrice)/Math.abs(entry-sl);
+      if(outcome==="TP2")wins++;else if(outcome==="SL"||outcome==="AMBIGUOUS_SL_FIRST")losses++;
+      trades.push({index:i,side:record.side,score:record.score,entry,sl,tp,outcome,bars,r:exitPrice===null?null:r});
+      i+=Math.max(0,bars-1); // avoid overlapping entries while one setup is being resolved
+    }
+    const resolved=wins+losses,rs=trades.filter(t=>t.r!==null).map(t=>t.r);
+    return {trades,total:trades.length,wins,losses,ambiguous,open:trades.filter(t=>t.outcome==="OPEN").length,
+      winRate:resolved?100*wins/resolved:0,avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0,
+      note:"Candle replay approximation. If one candle hits SL and TP, SL is counted first. No spread/slippage/commission; not proof of profitability."};
+  }
   function evaluate(symbol,timeframe,candles){
     if(!FRAMES.includes(timeframe))return null;
     const result=detect(candles),key=symbol+"|"+timeframe,record=Object.assign({symbol,timeframe,time:Date.now()},result);
@@ -94,5 +122,5 @@
     const rank={ "1m":1,"5m":2,"15m":4,"30m":5,"1h":4,"4h":3 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,state};
+  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,backtest,state};
 })();

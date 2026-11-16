@@ -258,7 +258,7 @@
     <label for="derivAppId">Deriv App ID</label>
     <input id="derivAppId" type="text" placeholder="Enter your Deriv App ID">
     <p class="muted">Public market data connection. Do not enter your API token here.</p>
-    <button id="connectDeriv" class="primary" type="button" onclick="connectDeriv()">
+    <button id="connectDeriv" class="primary" type="button" onclick="document.getElementById('derivConnectionStatus').textContent='Button tapped — checking app script…'; if(typeof connectDeriv==='function'){connectDeriv()}else{document.getElementById('derivConnectionStatus').textContent='App script did not load'}">
   Connect Deriv
 </button>
     <button id="disconnectDeriv" class="danger">Disconnect</button>
@@ -371,7 +371,7 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="app.js?v=20261116-deriv-click-fix-2"></script>
+<script src="app.js?v=20261116-deriv-click-diagnostic-3"></script>
   
 <script>
 document.addEventListener("click", function(event) {

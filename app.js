@@ -1233,6 +1233,15 @@ function getAPASequence(candles, poi, direction) {
 }
 
 function analyseAPA(entryCandles, higherCandles, lowerCandles) {
+  if (!checked("useAPA")) {
+    return { ready: true, strategy: "apa", trend: "APA disabled in settings",
+      structure: "Not evaluated", liquidity: "Not evaluated",
+      signal: "WAIT — APA analysis disabled",
+      reasoning: "APA is disabled in Settings. No APA candidate is generated.",
+      checks: [["APA enabled", false]], entry: null, sl: null, tp: null,
+      invalidation: null, supply: null, demand: null, breaker: "APA disabled",
+      structureDetails: {}, fvgDetails: {}, displacement: false };
+  }
   // Deriv's final candle can still be forming. APA confirmations use closed candles only.
   const confirmedEntry = Array.isArray(entryCandles) ? entryCandles.slice(0, -1) : [];
   const confirmedHigher = Array.isArray(higherCandles) ? higherCandles.slice(0, -1) : [];
@@ -1258,8 +1267,11 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
   const ltfBullish = ltfLast.close > ltfLast.open, ltfBearish = ltfLast.close < ltfLast.open;
   // The sweep itself must overlap the POI. Do not require price to remain
   // inside the zone after the later BOS/displacement has confirmed.
-  const buyReady = higherTrend === "Bullish" && bullishSequence.confirmed && ltfBullish;
-  const sellReady = higherTrend === "Bearish" && bearishSequence.confirmed && ltfBearish;
+  const requireAPAConfirmation = checked("useAPAConfirmation");
+  const buyReady = higherTrend === "Bullish" && bullishSequence.confirmed &&
+    (!requireAPAConfirmation || ltfBullish);
+  const sellReady = higherTrend === "Bearish" && bearishSequence.confirmed &&
+    (!requireAPAConfirmation || ltfBearish);
   const signal = buyReady ? "Potential APA BUY — sweep, later BOS and displacement confirmed" :
     sellReady ? "Potential APA SELL — sweep, later BOS and displacement confirmed" :
     "APA WAIT — require trend → POI → sweep → later BOS/MSS → displacement → entry";

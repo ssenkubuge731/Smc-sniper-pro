@@ -602,6 +602,15 @@ function renderSMCFormationMonitor(record) {
   setText("smcZoneStatus","Zones: "+(zones.length?zones.join(" | "):"none detected")+"\n"+(record.note||""));
 }
 
+function renderSMCEntryPlan(symbol) {
+  const best=window.SMCIntradayEngine?.best(symbol);
+  if(!best){setText("smcEntryPlanStatus","Entry plan: waiting for a confirmed setup.");return;}
+  const candles=tradingState.candles[symbol+"|"+best.timeframe]||[];
+  const plan=window.SMCIntradayEngine.makeEntryPlan(best,candles,2);
+  if(!plan||plan.blocked){setText("smcEntryPlanStatus","Entry plan blocked: "+(plan?.reason||"no plan"));return;}
+  const fmt=x=>Number(x).toPrecision(7);
+  setText("smcEntryPlanStatus","PREVIEW ONLY — "+plan.side+" "+best.timeframe.toUpperCase()+" | Zone "+plan.zone+" ("+plan.zoneStatus+") | Entry area "+fmt(plan.zoneLow)+"–"+fmt(plan.zoneHigh)+" | SL "+fmt(plan.sl)+" | TP1 "+fmt(plan.tp1)+" | TP2 (2R) "+fmt(plan.tp2)+" | TP3 (3R) "+fmt(plan.tp3)+" | "+plan.warning);
+}
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
   const rows=window.SMCIntradayEngine.frames.map(tf=>{
@@ -614,6 +623,7 @@ function renderSMCMultiFrame(symbol) {
   const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>tfZone(r.timeframe,z)));
   setText("smcZoneStatus",zones.length?"Zones: "+zones.slice(-12).join(" | "):"Zones: none currently detected");
+  renderSMCEntryPlan(symbol);
 }
 function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"]";}
 

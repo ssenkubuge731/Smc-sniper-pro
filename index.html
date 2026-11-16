@@ -340,8 +340,9 @@
     <label for="riskPercent">Risk per trade (%)</label>
     <input id="riskPercent" type="number" min="0.1" max="1" step="0.1" value="0.5">
 
-    <label for="lotSize">Fixed lot size / stake (optional)</label>
+    <label for="lotSize">Fixed lot size / stake (used for each entry)</label>
     <input id="lotSize" type="number" min="0.01" step="0.01" value="0.01">
+    <p class="muted">SMC Intraday applies this same manually selected lot size to each qualifying timeframe entry. Entry, SL and TP prices are calculated separately from that timeframe's market structure; lot size changes trade exposure, not price levels.</p>
 
     <label for="stopLoss">Stop loss (points)</label>
     <input id="stopLoss" type="number" min="1" value="300">
@@ -377,8 +378,8 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="./smc-intraday.js?v=20261116-1"></script>
-<script src="./app.js?v=20261116-smc-engine-1"></script>
+<script src="./smc-intraday.js?v=20261116-2"></script>
+<script src="./app.js?v=20261116-smc-engine-2"></script>
   
 
 

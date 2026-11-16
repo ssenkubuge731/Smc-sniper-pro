@@ -1892,11 +1892,15 @@ function renderDemoPositions() {
   open.slice(0, 20).forEach((record, index) => {
     const row = document.createElement("div");
     row.className = "result-item";
+    const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
+    const details = legacySmcScalp
+      ? `Entry ${formatPrice(record.entry)} | SL/TP not recorded\nStatus: LEGACY SMC entry saved under the old scalp exit rules.`
+      : record.mode === "scalping"
+        ? `Entry ${formatPrice(record.entry)} | SL not used | TP not used\nStatus: OPEN — basket closes at first positive simulated price move.`
+        : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nStatus: OPEN — waiting for individual TP or SL`;
     row.textContent =
-      `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\\n` +
-      (record.mode === "scalping"
-        ? `Entry ${formatPrice(record.entry)} | SL not used | TP not used\\nStatus: OPEN — basket closes at first positive simulated price move.`
-        : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\\nStatus: OPEN — waiting for individual TP or SL`);
+      `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\n` +
+      details;
     box.appendChild(row);
   });
 }
@@ -1906,7 +1910,7 @@ function renderScalpActivity() {
   if (!box) return;
   box.replaceChildren();
   const records = tradingState.signalHistory
-    .filter(record => record.mode === "scalping")
+    .filter(record => record.mode === "scalping" && record.strategy !== "smc")
     .slice(0, 30);
   const observations = tradingState.scalpObservations || [];
   if (!records.length && !observations.length) {
@@ -1968,14 +1972,20 @@ function renderSignalHistory() {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
+    const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
     const outcome = record.status === "OPEN"
-      ? (record.mode === "scalping" ? "WAIT — first positive basket price move (no SL/TP)" : "WAIT — TP/SL not reached yet")
+      ? (legacySmcScalp
+          ? "LEGACY OPEN — saved under old SMC scalp rules; no SL/TP was stored"
+          : record.mode === "scalping" ? "WAIT — first positive basket price move (no SL/TP)" : "WAIT — TP/SL not reached yet")
       : record.status;
+    const details = legacySmcScalp
+      ? `Entry ${formatPrice(record.entry)} | SL/TP not recorded\nResult: ${outcome}`
+      : record.mode === "scalping"
+        ? `Entry ${formatPrice(record.entry)} | SL not used | TP not used\nResult: ${outcome}`
+        : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nResult: ${outcome}`;
     row.textContent =
-      `${date} | ${record.symbol} | ${record.strategy.toUpperCase()} ${record.timeframe.toUpperCase()} | ${record.direction}\\n` +
-      (record.mode === "scalping"
-        ? `Entry ${formatPrice(record.entry)} | SL not used | TP not used\\nResult: ${outcome}`
-        : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\\nResult: ${outcome}`);
+      `${date} | ${record.symbol} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()} | ${record.direction}\n` +
+      details;
     box.appendChild(row);
   });
 }
@@ -2050,7 +2060,10 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
 
   // Keep a live scan trace even when analysis says WAIT. A WAIT is
   // an observation, never an opened or simulated trade.
-  if (tradingState.mode === "scalping") {
+  const activeStrategy = result.strategy || tradingState.strategy;
+  const isScalp = activeStrategy !== "smc" && tradingState.mode === "scalping";
+
+  if (isScalp) {
     const observation = {
       key: `${symbol}|${timeframe}`,
       symbol,
@@ -2068,7 +2081,6 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   }
   if (!direction) return;
 
-  const isScalp = tradingState.mode === "scalping";
   const entry = Number(result.entry);
   const sl = isScalp ? null : Number(result.sl);
   const tp = isScalp ? null : Number(result.tp);
@@ -2083,7 +2095,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
 
   const lastCandle = candles[candles.length - 1];
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
-  const strategy = result.strategy || tradingState.strategy;
+  const strategy = activeStrategy;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
@@ -2106,7 +2118,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,
-    mode: tradingState.mode,
+    mode: strategy === "smc" ? "intraday" : tradingState.mode,
     exitPolicy: isScalp ? "basket-first-positive" : "individual-tp-sl",
     createdAt: Date.now(),
     signalCandleEpoch: candleEpoch,

@@ -69,11 +69,5 @@
     const rank={ "1m":1,"5m":2,"15m":4,"30m":5,"1h":4,"4h":3 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  function diagnostics(symbol){
-    return FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(Boolean).map(r=>({
-      timeframe:r.timeframe,side:r.side,confirmed:!!r.confirmed,score:r.score||0,
-      formations:r.formations||{},zones:r.zones||[],count:r.count||0
-    })));
-  }
   window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,state};
 })();

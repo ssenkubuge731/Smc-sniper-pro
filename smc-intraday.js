@@ -8,53 +8,52 @@
   const hi = xs=>Math.max(...xs.map(x=>N(x.high)));
   const lo = xs=>Math.min(...xs.map(x=>N(x.low)));
   function detect(candles) {
-    if(!Array.isArray(candles)||candles.length<30||!candles.every(valid)) return {ready:false,status:"Need 30 valid candles"};
-    const cs=candles, c=cs.at(-1), p=cs.at(-2), prior=cs.slice(-22,-2), recent=cs.slice(-12,-2);
-    const ph=hi(prior), pl=lo(prior), rh=hi(recent), rl=lo(recent);
-    const range=Math.max(N(c.high)-N(c.low),1e-12), body=Math.abs(N(c.close)-N(c.open));
-    const bull=c.close>c.open, bear=c.close<c.open, bodyRatio=body/range;
-    const bullSweep=N(c.low)<pl && N(c.close)>pl, bearSweep=N(c.high)>ph && N(c.close)<ph;
-    const bullDisplacement=bull&&bodyRatio>=.60&&N(c.close)>N(p.high);
-    const bearDisplacement=bear&&bodyRatio>=.60&&N(c.close)<N(p.low);
-    const bullBOS=N(c.close)>ph, bearBOS=N(c.close)<pl;
-    // Local swing points and structure shifts (simple confirmed pivot approximation).
-    const w=cs.slice(-8,-2), swingHigh=hi(w), swingLow=lo(w);
-    const bullMSS=bull&&N(c.close)>swingHigh&&N(p.close)<=swingHigh;
-    const bearMSS=bear&&N(c.close)<swingLow&&N(p.close)>=swingLow;
-    const bullFVG=N(cs.at(-2).low)>N(cs.at(-4).high), bearFVG=N(cs.at(-2).high)<N(cs.at(-4).low);
+    if(!Array.isArray(candles)||candles.length<30||!candles.every(valid))return {ready:false,status:"Need 30 valid candles"};
+    const cs=candles,c=cs.at(-1),p=cs.at(-2),prior=cs.slice(-22,-2),recent=cs.slice(-12,-2);
+    const ph=hi(prior),pl=lo(prior),rh=hi(recent),rl=lo(recent);
+    const range=Math.max(N(c.high)-N(c.low),1e-12),body=Math.abs(N(c.close)-N(c.open));
+    const bull=N(c.close)>N(c.open),bear=N(c.close)<N(c.open),ratio=body/range;
+    const bullSweep=N(c.low)<pl&&N(c.close)>pl,bearSweep=N(c.high)>ph&&N(c.close)<ph;
+    const bullDisp=bull&&ratio>=.60&&N(c.close)>N(p.high),bearDisp=bear&&ratio>=.60&&N(c.close)<N(p.low);
+    const bullBOS=N(c.close)>ph,bearBOS=N(c.close)<pl;
+    const sh=hi(cs.slice(-8,-2)),sl=lo(cs.slice(-8,-2));
+    const bullMSS=bull&&N(c.close)>sh&&N(p.close)<=sh,bearMSS=bear&&N(c.close)<sl&&N(p.close)>=sl;
+    const bullFVG=N(cs.at(-2).low)>N(cs.at(-4).high),bearFVG=N(cs.at(-2).high)<N(cs.at(-4).low);
     const bullIFVG=bull&&N(c.close)>N(cs.at(-4).high)&&N(p.close)<=N(cs.at(-4).high);
     const bearIFVG=bear&&N(c.close)<N(cs.at(-4).low)&&N(p.close)>=N(cs.at(-4).low);
-    const eqTol=range*.08;
-    const eqh=Math.abs(N(cs.at(-3).high)-N(cs.at(-7).high))<=eqTol;
-    const eql=Math.abs(N(cs.at(-3).low)-N(cs.at(-7).low))<=eqTol;
-    // Candidate OB: last opposite candle before a displacement; breaker if later decisively crossed.
-    const findOpp=(direction)=>{for(let i=cs.length-3;i>=Math.max(0,cs.length-12);i--){if(direction==="bull"&&cs[i].close<cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};if(direction==="bear"&&cs[i].close>cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};}return null;};
-    const bullOB=bullDisplacement?findOpp("bull"):null, bearOB=bearDisplacement?findOpp("bear"):null;
-    const bullBreaker=bull&&N(c.close)>N(p.high)&&bearOB&&N(c.close)>bearOB.high;
-    const bearBreaker=bear&&N(c.close)<N(p.low)&&bullOB&&N(c.close)<bullOB.low;
-    // Track zones through touched/reaction/mitigation/invalidation lifecycle.
+    const eqTol=Math.max(range*.08,(ph-pl)*.015);
+    const eqh=Math.abs(N(cs.at(-3).high)-N(cs.at(-7).high))<=eqTol,eql=Math.abs(N(cs.at(-3).low)-N(cs.at(-7).low))<=eqTol;
+    const findOpp=d=>{for(let i=cs.length-3;i>=Math.max(0,cs.length-12);i--){if(d==="bull"&&cs[i].close<cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};if(d==="bear"&&cs[i].close>cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};}return null;};
+    const bullOB=bullDisp?findOpp("bull"):null,bearOB=bearDisp?findOpp("bear"):null;
+    const bullBreaker=bull&&bearOB&&N(c.close)>bearOB.high,bearBreaker=bear&&bullOB&&N(c.close)<bullOB.low;
     const zones=[];
-    const addZone=(type,z,side)=>{if(!z)return;const touched=N(c.low)<=z.high&&N(c.high)>=z.low;const invalid=side==="BUY"?N(c.close)<z.low:N(c.close)>z.high;const reaction=side==="BUY"?bull&&N(c.close)>z.high:bear&&N(c.close)<z.low;zones.push({type,side,low:z.low,high:z.high,status:invalid?"invalidated":reaction?"reacting":touched?"touched":"fresh"});};
-    addZone("Bull OB",bullOB,"BUY");addZone("Bear OB",bearOB,"SELL");
-    if(bullFVG)addZone("Bull FVG",{low:N(cs.at(-4).high),high:N(cs.at(-2).low)},"BUY");
-    if(bearFVG)addZone("Bear FVG",{low:N(cs.at(-2).high),high:N(cs.at(-4).low)},"SELL");
-    // Supply/demand approximations from recent range extremes; context, not standalone entry.
-    addZone("Demand",{low:rl,high:rl+range*.20},"BUY");
-    addZone("Supply",{low:rh-range*.20,high:rh},"SELL");
-    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisplacement,imbalance:bullFVG||bullIFVG,breaker:bullBreaker};
-    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisplacement,imbalance:bearFVG||bearIFVG,breaker:bearBreaker};
-    const bc=Object.values(buy).filter(Boolean).length, sc=Object.values(sell).filter(Boolean).length;
-    const side=bc>sc?"BUY":sc>bc?"SELL":"NONE", conf=side==="BUY"?buy:side==="SELL"?sell:{};
-    const count=Object.values(conf).filter(Boolean).length;
-    // Two aligned confirmations minimum; structure + displacement required for this initial gate.
-    const confirmed=side!=="NONE"&&count>=2&&conf.structure&&conf.displacement;
-    const score=Math.min(100,count*18+(conf.sweep?10:0)+(conf.imbalance?10:0)+(conf.breaker?8:0));
-    return {ready:true,side,confirmations:conf,count,confirmed,score,price:N(c.close),zones,
-      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,
-      liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,
-      orderBlock:!!(bullOB||bearOB),breakerBlock:bullBreaker||bearBreaker,
-      displacement:bullDisplacement||bearDisplacement,inducement:false},
-      note:"EQH/EQL and zone boundaries are heuristic; verify on chart."};
+    const addZone=(type,z,side,origin)=>{if(!z)return;const touched=cs.slice(origin+1).some(x=>N(x.low)<=z.high&&N(x.high)>=z.low);
+      const invalid=side==="BUY"?N(c.close)<z.low:N(c.close)>z.high;
+      const inZone=N(c.low)<=z.high&&N(c.high)>=z.low;
+      const reaction=side==="BUY"?bull&&N(c.close)>z.high:bear&&N(c.close)<z.low;
+      const stateName=invalid?"invalidated":reaction&&inZone?"reacting":touched?"tested":inZone?"touching":"fresh";
+      zones.push({id:type+"-"+origin,type,side,low:z.low,high:z.high,origin,status:stateName,valid:!invalid,tests:cs.slice(origin+1).filter(x=>N(x.low)<=z.high&&N(x.high)>=z.low).length});};
+    if(bullOB)addZone("Order Block",bullOB,"BUY",bullOB.index);
+    if(bearOB)addZone("Order Block",bearOB,"SELL",bearOB.index);
+    if(bullFVG)addZone("FVG",{low:N(cs.at(-4).high),high:N(cs.at(-2).low)},"BUY",cs.length-3);
+    if(bearFVG)addZone("FVG",{low:N(cs.at(-2).high),high:N(cs.at(-4).low)},"SELL",cs.length-3);
+    // Liquidity sweep/reclaim zones and recent range supply/demand are contextual candidates.
+    if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1);
+    if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1);
+    addZone("Demand",{low:rl,high:rl+range*.20},"BUY",cs.length-12);
+    addZone("Supply",{low:rh-range*.20,high:rh},"SELL",cs.length-12);
+    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker};
+    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker};
+    const bc=Object.values(buy).filter(Boolean).length,sc=Object.values(sell).filter(Boolean).length;
+    const side=bc>sc?"BUY":sc>bc?"SELL":"NONE",conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
+    const conflict=bc>0&&sc>0&&Math.abs(bc-sc)<2;
+    const activeZones=zones.filter(z=>z.valid&&z.side===side);
+    const zoneSupport=activeZones.some(z=>z.status==="fresh"||z.status==="tested"||z.status==="reacting"||z.status==="touching");
+    const confirmed=side!=="NONE"&&!conflict&&count>=2&&conf.structure&&conf.displacement&&zoneSupport;
+    const score=Math.min(100,count*16+(conf.sweep?12:0)+(conf.imbalance?10:0)+(conf.breaker?8:0)+(zoneSupport?8:0)-(conflict?25:0));
+    return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,price:N(c.close),zones,
+      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
+      note:conflict?"Conflicting BUY/SELL evidence — blocked.":"Zone status is heuristic; replay/backtest required."};
   }
   function evaluate(symbol,timeframe,candles){
     if(!FRAMES.includes(timeframe))return null;

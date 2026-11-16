@@ -639,32 +639,36 @@ function renderSMCFormationMonitor(record) {
 }
 
 function renderSMCEntryPlan(symbol) {
-  if (!window.SMCIntradayEngine) return;
+  const output = $("smcEntryPlanStatus");
+  if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
-  const plans = window.SMCIntradayEngine.frames.map(timeframe => {
+  const frames = window.SMCIntradayEngine.frames;
+  const fmt = value => Number(value).toPrecision(7);
+  const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
-    if (!record || !record.confirmed) return null;
+    if (!record) return timeframe.toUpperCase() + " — waiting for candle analysis";
+    if (!record.ready) return timeframe.toUpperCase() + " — " + (record.status || "waiting for enough candles");
+    if (!record.confirmed) return timeframe.toUpperCase() + " — scanning; no confirmed entry yet";
     const candles = tradingState.candles[symbol + "|" + timeframe] || [];
     const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-    if (!plan || plan.blocked) return null;
-    return { timeframe, plan };
-  }).filter(Boolean);
-  if (!plans.length) {
-    setText("smcEntryPlanStatus", "No confirmed timeframe entry plan yet. Each timeframe will show its own Entry, SL and TP when its setup qualifies.");
-    return;
-  }
-  const fmt = value => Number(value).toPrecision(7);
-  const lines = plans.map(({ timeframe, plan }) =>
-    timeframe.toUpperCase() + " " + plan.side +
-    " | Entry " + fmt(plan.entry) +
-    " | SL " + fmt(plan.sl) +
-    " | TP1 " + fmt(plan.tp1) +
-    " | TP2 " + fmt(plan.tp2) +
-    " | TP3 " + fmt(plan.tp3) +
-    " | Lot " + lot +
-    " | POI " + plan.zone + " (" + plan.zoneStatus + ")"
-  );
-  setText("smcEntryPlanStatus", "DEMO PREVIEW — fixed lot size " + lot + " is applied separately to each timeframe.\n" + lines.join("\n") + "\nSL is structure/ATR-based; TP targets are 1.5R, 2R and 3R. " + plans[0].plan.warning);
+    if (!plan) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — plan needs more candle data";
+    if (plan.blocked) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — SL/TP held: " + plan.reason;
+    return timeframe.toUpperCase() + " " + plan.side +
+      " | Entry " + fmt(plan.entry) +
+      " | SL " + fmt(plan.sl) +
+      " | TP1 " + fmt(plan.tp1) +
+      " | TP2 " + fmt(plan.tp2) +
+      " | TP3 " + fmt(plan.tp3) +
+      " | Lot " + lot +
+      " | POI " + plan.zone + " (" + plan.zoneStatus + ")";
+  });
+  output.style.whiteSpace = "pre-line";
+  setText("smcEntryPlanStatus",
+    "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
+    "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
+    lines.join("\n") +
+    "\nSL is based on that timeframe's POI/structure + ATR buffer; TP1/TP2/TP3 = 1.5R/2R/3R. " +
+    "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
 }
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;

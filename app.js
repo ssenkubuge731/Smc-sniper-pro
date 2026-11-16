@@ -931,18 +931,22 @@ function getTrend(candles) {
 
 function getStructure(candles) {
   if (!Array.isArray(candles) || candles.length < 20)
-    return { label: "Waiting", bosUp: false, bosDown: false, mssUp: false, mssDown: false };
+    return { label: "Waiting", bosUp: false, bosDown: false, mssUp: false, mssDown: false, chochUp: false, chochDown: false };
   const sample = candles.slice(-20), last = sample[sample.length - 1];
   const prior = sample.slice(0, -1);
   const priorHigh = Math.max(...prior.map(c => c.high));
   const priorLow = Math.min(...prior.map(c => c.low));
   const oldTrend = getTrend(sample.slice(0, -5));
   const bosUp = last.close > priorHigh, bosDown = last.close < priorLow;
-  const mssUp = oldTrend === "Bearish" && bosUp;
-  const mssDown = oldTrend === "Bullish" && bosDown;
-  return { label: mssUp ? "Bullish MSS / CHoCH" : mssDown ? "Bearish MSS / CHoCH" :
-    bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" : "No confirmed break",
-    bosUp, bosDown, mssUp, mssDown };
+  const chochUp = oldTrend === "Bearish" && bosUp;
+  const chochDown = oldTrend === "Bullish" && bosDown;
+  const sweep = getLiquidity(sample), displaced = getDisplacement(sample);
+  const mssUp = chochUp && displaced && sweep.sweepLow;
+  const mssDown = chochDown && displaced && sweep.sweepHigh;
+  const label = mssUp ? "Bullish MSS" : mssDown ? "Bearish MSS" :
+    chochUp ? "Bullish CHoCH" : chochDown ? "Bearish CHoCH" :
+    bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" : "No confirmed break";
+  return { label, bosUp, bosDown, mssUp, mssDown, chochUp, chochDown };
 }
 
 function getLiquidity(candles) {
@@ -1065,10 +1069,10 @@ function analyseSMC(candles) {
   if (useTrend && trend === "Bullish") bullConfirmations.push("Bullish trend");
   if (useTrend && trend === "Bearish") bearConfirmations.push("Bearish trend");
 
-  const bullStructure = (useBOS && structure.bosUp) || (useMSS && structure.mssUp) || (useCHoCH && structure.mssUp);
-  const bearStructure = (useBOS && structure.bosDown) || (useMSS && structure.mssDown) || (useCHoCH && structure.mssDown);
-  if (bullStructure) bullConfirmations.push(structure.mssUp ? (useCHoCH ? "Bullish CHoCH/MSS" : "Bullish MSS") : "Bullish BOS");
-  if (bearStructure) bearConfirmations.push(structure.mssDown ? (useCHoCH ? "Bearish CHoCH/MSS" : "Bearish MSS") : "Bearish BOS");
+  const bullStructure = (useBOS && structure.bosUp) || (useMSS && structure.mssUp) || (useCHoCH && structure.chochUp);
+  const bearStructure = (useBOS && structure.bosDown) || (useMSS && structure.mssDown) || (useCHoCH && structure.chochDown);
+  if (bullStructure) bullConfirmations.push(useMSS && structure.mssUp ? "Bullish MSS" : useCHoCH && structure.chochUp ? "Bullish CHoCH" : "Bullish BOS");
+  if (bearStructure) bearConfirmations.push(useMSS && structure.mssDown ? "Bearish MSS" : useCHoCH && structure.chochDown ? "Bearish CHoCH" : "Bearish BOS");
 
   if (useLiquidity && liquidity.sweepLow) bullConfirmations.push("Low-side liquidity sweep");
   if (useLiquidity && liquidity.sweepHigh) bearConfirmations.push("High-side liquidity sweep");

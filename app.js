@@ -2283,6 +2283,15 @@ function initApp() {
   // News calendar
   $("refreshNews")?.addEventListener("click", () => loadNewsCalendar(true));
 
+  // SMC historical replay — uses the selected symbol/timeframe cached candles only.
+  $("runSMCHistoricalTest")?.addEventListener("click", () => {
+    const symbol=$("marketSelect")?.value||$("symbolSelect")?.value||tradingState.selectedSymbol;
+    const tf=$("timeframe")?.value||$("scannerTimeframe")?.value||"15m";
+    const candles=tradingState.candles[symbol+"|"+tf]||[];
+    const result=window.SMCIntradayEngine?.backtest(candles,{warmup:40,horizon:30,rr:2});
+    if(!result||result.error){setText("smcBacktestStatus","Historical test: "+(result?.error||"engine unavailable"));return;}
+    setText("smcBacktestStatus","REPLAY ("+symbol+" "+tf+") — signals "+result.total+" | TP2 "+result.wins+" | SL "+result.losses+" (ambiguous SL-first "+result.ambiguous+") | unresolved "+result.open+" | win rate "+result.winRate.toFixed(1)+"% | average "+result.avgR.toFixed(2)+"R. "+result.note);
+  });
   // Settings
   $("saveSettings")?.addEventListener("click", saveSettings);
 

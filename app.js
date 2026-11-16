@@ -647,11 +647,11 @@ function renderSMCMultiFrame(symbol) {
   const best=window.SMCIntradayEngine.best(symbol);
   setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
   const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
-  const zones=all.flatMap(r=>(r.zones||[]).map(z=>tfZone(r.timeframe,z)));
-  setText("smcZoneStatus",zones.length?"Zones: "+zones.slice(-12).join(" | "):"Zones: none currently detected");
+  const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
+  setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
   renderSMCEntryPlan(symbol);
 }
-function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"]";}
+function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"] rank "+Math.round(z.score||0)+"/100 ("+(z.tests||0)+" tests)";}
 
 /* =========================================================
    MARKET LOADING — FIXED

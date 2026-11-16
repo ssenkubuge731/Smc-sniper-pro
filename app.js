@@ -559,9 +559,11 @@ function handleDerivMessage(data) {
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
     if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
-      window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
+      const current = window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
+      renderSMCFormationMonitor(current);
       const best = window.SMCIntradayEngine.best(context.symbol);
       if (best) setText("smcEngineStatus", `SMC best: ${best.side} ${best.timeframe.toUpperCase()} • score ${best.score}/100 • confirmed`);
+      else setText("smcEngineStatus", `SMC ${context.symbol} ${context.timeframe.toUpperCase()}: no confirmed setup yet`);
     }
     analyseMainSelection(context.symbol);
   }
@@ -587,6 +589,20 @@ function handleDerivMessage(data) {
       updateMarketPrice(symbol, quote);
     }
   }
+}
+
+function renderSMCFormationMonitor(record) {
+  if (!record || !record.ready) {
+    setText("smcFormationStatus", record?.status || "Waiting for SMC candles.");
+    setText("smcZoneStatus", "Zone lifecycle: waiting for valid candles.");
+    return;
+  }
+  const f=record.formations||{};
+  const labels=[["BOS","BOS"],["MSS","MSS"],["CHoCH","CHoCH"],["liquiditySweep","Liquidity sweep"],["EQH","Equal highs"],["EQL","Equal lows"],["FVG","FVG"],["IFVG","IFVG"],["orderBlock","Order Block"],["breakerBlock","Breaker Block"],["displacement","Displacement"]];
+  const found=labels.filter(([k])=>f[k]).map(([,v])=>v);
+  setText("smcFormationStatus","Detected formations ("+record.timeframe+"): "+(found.length?found.join(" • "):"none on latest candle"));
+  const zones=(record.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
+  setText("smcZoneStatus","Zones: "+(zones.length?zones.join(" | "):"none detected")+"\n"+(record.note||""));
 }
 
 /* =========================================================

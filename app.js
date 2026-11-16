@@ -196,10 +196,10 @@ function updateMode() {
     : frames[0];
 
   const modeInfo = mode === "intraday"
-    ? "Entry: M1 / M5 • Reaction: M15 / M30 / H1 • Trend context: H4"
+    ? "Independent SMC scan and entry opportunities on every timeframe: M1, M5, M15, M30, H1 and H4"
     : mode === "scalping"
-      ? "Entry and fast scan: M1 / M5"
-      : "Entry: M5 (configurable in EA) • Reaction: H1 / H4 • Trend context: D1";
+      ? "APA scalping scan and selected-entry logic: M1 / M5"
+      : "Swing timeframe set: H1 / H4 / D1";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
@@ -581,7 +581,10 @@ function handleDerivMessage(data) {
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
     if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
-      window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
+      const smcRecord = window.SMCIntradayEngine.evaluate(
+        context.symbol, context.timeframe, tradingState.candles[key]
+      );
+      publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
       renderSMCMultiFrame(context.symbol);
     }
     analyseMainSelection(context.symbol);
@@ -652,6 +655,23 @@ function renderSMCMultiFrame(symbol) {
   renderSMCEntryPlan(symbol);
 }
 function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"] rank "+Math.round(z.score||0)+"/100 ("+(z.tests||0)+" tests)";}
+
+// Each SMC timeframe can publish its own demo signal independently.
+// This records a signal preview only; it never sends a broker order.
+function publishSMCSignal(symbol, timeframe, record, candles) {
+  if (!record || !record.confirmed || !window.SMCIntradayEngine) return;
+  const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
+  if (!plan || plan.blocked) return;
+  recordCandidateSignal(symbol, timeframe, {
+    strategy: "smc",
+    signal: plan.side + " — SMC " + timeframe.toUpperCase() + " confirmed",
+    entry: plan.entry,
+    sl: plan.sl,
+    tp: plan.tp2,
+    trend: plan.side,
+    reasoning: record.entryModels.join(" | ")
+  }, candles);
+}
 
 /* =========================================================
    MARKET LOADING — FIXED

@@ -559,11 +559,8 @@ function handleDerivMessage(data) {
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
     if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
-      const current = window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
-      renderSMCFormationMonitor(current);
-      const best = window.SMCIntradayEngine.best(context.symbol);
-      if (best) setText("smcEngineStatus", `SMC best: ${best.side} ${best.timeframe.toUpperCase()} • score ${best.score}/100 • confirmed`);
-      else setText("smcEngineStatus", `SMC ${context.symbol} ${context.timeframe.toUpperCase()}: no confirmed setup yet`);
+      window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
+      renderSMCMultiFrame(context.symbol);
     }
     analyseMainSelection(context.symbol);
   }
@@ -604,6 +601,21 @@ function renderSMCFormationMonitor(record) {
   const zones=(record.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
   setText("smcZoneStatus","Zones: "+(zones.length?zones.join(" | "):"none detected")+"\n"+(record.note||""));
 }
+
+function renderSMCMultiFrame(symbol) {
+  if (!window.SMCIntradayEngine) return;
+  const rows=window.SMCIntradayEngine.frames.map(tf=>{
+    const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
+    return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
+  });
+  setText("smcFormationStatus","SMC timeframes — "+symbol+": "+rows.join(" | "));
+  const best=window.SMCIntradayEngine.best(symbol);
+  setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
+  const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const zones=all.flatMap(r=>(r.zones||[]).map(z=>tfZone(r.timeframe,z)));
+  setText("smcZoneStatus",zones.length?"Zones: "+zones.slice(-12).join(" | "):"Zones: none currently detected");
+}
+function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"]";}
 
 /* =========================================================
    MARKET LOADING — FIXED

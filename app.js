@@ -1643,7 +1643,10 @@ function analyseMainSelection(symbol) {
 
   setText("marketTrend", result.trend);
   setText("apaStructure", result.structure);
-  setText("liquidityStatus", result.liquidity);\n  setText("apaSweepStatus", result.sweepStatus ? `${result.sweepStatus} — ${result.sweepDirection}` : "APA sweep status not available");\n  setText("apaSweepPrice", result.sweepPrice == null ? "--" : formatPrice(result.sweepPrice));\n  setText("apaSweepLevel", result.sweepLevel == null ? "--" : formatPrice(result.sweepLevel));
+  setText("liquidityStatus", result.liquidity);
+  setText("apaSweepStatus", result.sweepStatus ? `${result.sweepStatus} — ${result.sweepDirection}` : "APA sweep status not available");
+  setText("apaSweepPrice", result.sweepPrice == null ? "--" : formatPrice(result.sweepPrice));
+  setText("apaSweepLevel", result.sweepLevel == null ? "--" : formatPrice(result.sweepLevel));
   setText("entrySignal", result.signal);
   setText("tradeReasoning", result.reasoning || "Reasoning is not available for this analysis.");
   setText("supplyZone", formatZone(result.supply));

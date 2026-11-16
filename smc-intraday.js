@@ -30,11 +30,13 @@
     const zones=[],zoneStart=Math.max(2,cs.length-45);
     const addZone=(type,z,side,origin,impulse=false)=>{if(!z||!Number.isFinite(N(z.low))||!Number.isFinite(N(z.high))||N(z.high)<=N(z.low))return;
       const loZ=Math.min(N(z.low),N(z.high)),hiZ=Math.max(N(z.low),N(z.high));
-      const touches=cs.slice(origin+1).filter(x=>N(x.low)<=hiZ&&N(x.high)>=loZ);
+      const post=cs.slice(origin+1);
+      const touches=post.filter(x=>N(x.low)<=hiZ&&N(x.high)>=loZ);
       const touched=touches.length>0,invalid=side==="BUY"?N(c.close)<loZ:N(c.close)>hiZ;
       const inZone=N(c.low)<=hiZ&&N(c.high)>=loZ;
       const reaction=inZone&&(side==="BUY"?bull&&N(c.close)>hiZ:bear&&N(c.close)<loZ);
-      const status=invalid?"invalidated":reaction?"reacting":inZone?"touching":touched?"tested":"fresh";
+      const fullyMitigated=post.some(x=>side==="BUY"?N(x.low)<=loZ:N(x.high)>=hiZ);
+      const status=invalid?"invalidated":reaction?"reacting":inZone?"touching":fullyMitigated?"fully_mitigated":touched?"partially_mitigated":"fresh";
       const age=cs.length-1-origin,tests=touches.length;
       const width=hiZ-loZ,mid=(hiZ+loZ)/2,dist=Math.abs(N(c.close)-mid);
       const distancePenalty=Math.min(18,dist/Math.max(range,1e-12)*5);
@@ -56,11 +58,42 @@
         if(N(bar.close)<N(bar.open)&&N(cs[j].close)>N(cs[j].open)){addZone("Order Block",{low:N(cs[j].low),high:N(cs[j].high)},"SELL",j,true);break;}
       }
     }
-    // Current sweep-reclaim and rolling range supply/demand candidates.
+    // Historical breaker blocks: an identified OB becomes a breaker only
+    // after a later candle closes through its far boundary. The breaker is
+    // then tracked as a new, independently retestable POI.
+    for(let i=Math.max(3,zoneStart);i<cs.length-1;i++){
+      const bar=cs[i],br=Math.max(N(bar.high)-N(bar.low),1e-12);
+      if(Math.abs(N(bar.close)-N(bar.open))/br<.6)continue;
+      for(let j=i-1;j>=Math.max(0,i-4);j--){
+        const opposingBull=N(bar.close)>N(bar.open)&&N(cs[j].close)<N(cs[j].open);
+        const opposingBear=N(bar.close)<N(bar.open)&&N(cs[j].close)>N(cs[j].open);
+        if(!opposingBull&&!opposingBear)continue;
+        const obLow=N(cs[j].low),obHigh=N(cs[j].high);
+        for(let k=i+1;k<cs.length;k++){
+          const broken=opposingBull?N(cs[k].close)<obLow:N(cs[k].close)>obHigh;
+          if(broken){
+            addZone("Breaker Block",{low:obLow,high:obHigh},opposingBull?"SELL":"BUY",k,true);
+            break;
+          }
+        }
+        break;
+      }
+    }
+    // Confirmed swing-based supply/demand candidates. A pivot needs two
+    // candles on each side; a meaningful departure strengthens its score.
+    for(let i=Math.max(2,zoneStart);i<cs.length-2;i++){
+      const x=cs[i],left=cs.slice(i-2,i),right=cs.slice(i+1,i+3);
+      const pivotLow=N(x.low)<=Math.min(...left.map(q=>N(q.low)),...right.map(q=>N(q.low)));
+      const pivotHigh=N(x.high)>=Math.max(...left.map(q=>N(q.high)),...right.map(q=>N(q.high)));
+      const departure=cs.slice(i+1,Math.min(cs.length,i+4));
+      const upDeparture=departure.some(q=>N(q.close)>N(q.open)&&Math.abs(N(q.close)-N(q.open))/Math.max(N(q.high)-N(q.low),1e-12)>=.55&&N(q.close)>N(x.high));
+      const downDeparture=departure.some(q=>N(q.close)<N(q.open)&&Math.abs(N(q.close)-N(q.open))/Math.max(N(q.high)-N(q.low),1e-12)>=.55&&N(q.close)<N(x.low));
+      if(pivotLow)addZone("Demand",{low:N(x.low),high:Math.min(N(x.open),N(x.close))},"BUY",i,upDeparture);
+      if(pivotHigh)addZone("Supply",{low:Math.max(N(x.open),N(x.close)),high:N(x.high)},"SELL",i,downDeparture);
+    }
+    // Current sweep-reclaim candidates remain separately visible.
     if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1,true);
     if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1,true);
-    addZone("Demand",{low:rl,high:rl+range*.20},"BUY",cs.length-12,false);
-    addZone("Supply",{low:rh-range*.20,high:rh},"SELL",cs.length-12,false);
     // Rank valid candidates by freshness, origin impulse, mitigation and distance.
     for(const z of zones){const overlaps=zones.filter(q=>q!==z&&q.side===z.side&&q.low<=z.high&&q.high>=z.low).length;z.confluence=overlaps;z.score=Math.min(100,z.score+Math.min(15,overlaps*5));}
     zones.sort((a,b)=>b.score-a.score);
@@ -83,7 +116,7 @@
     const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
     // until current price actually interacts with a valid zone.
-    const watchZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
+    const watchZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","partially_mitigated","fully_mitigated","reacting","touching"].includes(z.status));
     const entryZones=watchZones.filter(z=>["reacting","touching"].includes(z.status));
     const zoneSupport=entryZones.length>0;
     const entryModels=side==="BUY"?buyModels:side==="SELL"?sellModels:[];

@@ -55,6 +55,32 @@
       formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":"Zone status is heuristic; replay/backtest required."};
   }
+
+  function makeEntryPlan(record, candles, rr=2) {
+    if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<15) return null;
+    const side=record.side, price=Number(record.price);
+    const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
+    if(!candidates.length)return {blocked:true,reason:"No valid supporting zone"};
+    // Choose the closest zone to current price; prefer a reacting/tested zone on equal distance.
+    candidates.sort((a,b)=>{
+      const da=price<a.low?a.low-price:price>a.high?price-a.high:0;
+      const db=price<b.low?b.low-price:price>b.high?price-b.high:0;
+      const pa=(a.status==="reacting"?-0.15:a.status==="tested"?-0.08:0);
+      const pb=(b.status==="reacting"?-0.15:b.status==="tested"?-0.08:0);
+      return (da+pa)-(db+pb);
+    });
+    const z=candidates[0], entry=(z.low+z.high)/2;
+    const tr=candles.slice(-14); let sum=0;
+    for(let i=1;i<tr.length;i++)sum+=Math.max(Number(tr[i].high)-Number(tr[i].low),Math.abs(Number(tr[i].high)-Number(tr[i-1].close)),Math.abs(Number(tr[i].low)-Number(tr[i-1].close)));
+    const atr=sum/(tr.length-1),buffer=Math.max(atr*.12,(z.high-z.low)*.08);
+    const sl=side==="BUY"?z.low-buffer:z.high+buffer;
+    const risk=Math.abs(entry-sl);
+    if(!Number.isFinite(risk)||risk<=0)return {blocked:true,reason:"Invalid risk distance"};
+    const tp1=side==="BUY"?entry+risk*1.5:entry-risk*1.5;
+    const tp2=side==="BUY"?entry+risk*rr:entry-risk*rr;
+    const tp3=side==="BUY"?entry+risk*3:entry-risk*3;
+    return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp1,tp2,tp3,rr,method:"Zone midpoint entry preview; SL beyond zone + ATR buffer",warning:"Illustrative levels only; spread, tick size, contract rules and chart validation required."};
+  }
   function evaluate(symbol,timeframe,candles){
     if(!FRAMES.includes(timeframe))return null;
     const result=detect(candles),key=symbol+"|"+timeframe,record=Object.assign({symbol,timeframe,time:Date.now()},result);
@@ -68,5 +94,5 @@
     const rank={ "1m":1,"5m":2,"15m":4,"30m":5,"1h":4,"4h":3 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,state};
+  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,state};
 })();

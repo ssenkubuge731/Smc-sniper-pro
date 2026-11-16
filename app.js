@@ -17,7 +17,7 @@ const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["1m", "5m", "15m", "30m", "1h", "4h"],
+  intraday: ["1h", "30m", "15m", "5m", "1m"],
   swing: ["1h", "4h", "1d"]
 };
 
@@ -196,7 +196,7 @@ function updateMode() {
     : frames[0];
 
   const modeInfo = mode === "intraday"
-    ? "Independent SMC scan and entry opportunities on every timeframe: M1, M5, M15, M30, H1 and H4"
+    ? "Independent SMC scan and entry opportunities from H1 down to M1: H1, M30, M15, M5 and M1"
     : mode === "scalping"
       ? "APA scalping scan and selected-entry logic: M1 / M5"
       : "Swing timeframe set: H1 / H4 / D1";
@@ -639,13 +639,32 @@ function renderSMCFormationMonitor(record) {
 }
 
 function renderSMCEntryPlan(symbol) {
-  const best=window.SMCIntradayEngine?.best(symbol);
-  if(!best){setText("smcEntryPlanStatus","Entry plan: waiting for a confirmed setup.");return;}
-  const candles=tradingState.candles[symbol+"|"+best.timeframe]||[];
-  const plan=window.SMCIntradayEngine.makeEntryPlan(best,candles,2);
-  if(!plan||plan.blocked){setText("smcEntryPlanStatus","Entry plan blocked: "+(plan?.reason||"no plan"));return;}
-  const fmt=x=>Number(x).toPrecision(7);
-  setText("smcEntryPlanStatus","PREVIEW ONLY — "+plan.side+" "+best.timeframe.toUpperCase()+" | Zone "+plan.zone+" ("+plan.zoneStatus+") | Entry area "+fmt(plan.zoneLow)+"–"+fmt(plan.zoneHigh)+" | SL "+fmt(plan.sl)+" | TP1 "+fmt(plan.tp1)+" | TP2 (2R) "+fmt(plan.tp2)+" | TP3 (3R) "+fmt(plan.tp3)+" | "+plan.warning);
+  if (!window.SMCIntradayEngine) return;
+  const lot = Number(valueOf("lotSize")) || 0.01;
+  const plans = window.SMCIntradayEngine.frames.map(timeframe => {
+    const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
+    if (!record || !record.confirmed) return null;
+    const candles = tradingState.candles[symbol + "|" + timeframe] || [];
+    const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
+    if (!plan || plan.blocked) return null;
+    return { timeframe, plan };
+  }).filter(Boolean);
+  if (!plans.length) {
+    setText("smcEntryPlanStatus", "No confirmed timeframe entry plan yet. Each timeframe will show its own Entry, SL and TP when its setup qualifies.");
+    return;
+  }
+  const fmt = value => Number(value).toPrecision(7);
+  const lines = plans.map(({ timeframe, plan }) =>
+    timeframe.toUpperCase() + " " + plan.side +
+    " | Entry " + fmt(plan.entry) +
+    " | SL " + fmt(plan.sl) +
+    " | TP1 " + fmt(plan.tp1) +
+    " | TP2 " + fmt(plan.tp2) +
+    " | TP3 " + fmt(plan.tp3) +
+    " | Lot " + lot +
+    " | POI " + plan.zone + " (" + plan.zoneStatus + ")"
+  );
+  setText("smcEntryPlanStatus", "DEMO PREVIEW — fixed lot size " + lot + " is applied separately to each timeframe.\n" + lines.join("\n") + "\nSL is structure/ATR-based; TP targets are 1.5R, 2R and 3R. " + plans[0].plan.warning);
 }
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
@@ -2082,6 +2101,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
+    lotSize: Number(valueOf("lotSize")) || null,
     mode: tradingState.mode,
     exitPolicy: isScalp ? "basket-first-positive" : "individual-tp-sl",
     createdAt: Date.now(),

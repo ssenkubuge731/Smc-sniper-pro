@@ -558,6 +558,11 @@ function handleDerivMessage(data) {
       .slice(-150);
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
+    if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+      window.SMCIntradayEngine.evaluate(context.symbol, context.timeframe, tradingState.candles[key]);
+      const best = window.SMCIntradayEngine.best(context.symbol);
+      if (best) setText("smcEngineStatus", `SMC best: ${best.side} ${best.timeframe.toUpperCase()} • score ${best.score}/100 • confirmed`);
+    }
     analyseMainSelection(context.symbol);
   }
 
@@ -2190,6 +2195,12 @@ function loadSettings() {
 ========================================================= */
 
 function initApp() {
+  // Independent SMC intraday confirmation signals (no order execution)
+  window.addEventListener("smc:signal", event => {
+    const s = event.detail;
+    addResult(`SMC CONFIRMED ${s.side} ${s.symbol} ${s.timeframe.toUpperCase()} • ${s.count} confirmations • score ${s.score}/100`, "scannerResults");
+  });
+
   // Navigation
   document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
     button.addEventListener("click", () => {

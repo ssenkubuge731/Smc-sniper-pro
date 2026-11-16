@@ -81,21 +81,24 @@
     const conflict=bc>0&&sc>0&&Math.abs(bc-sc)<2;
     const side=buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
     const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
-    const activeZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
-    const zoneSupport=activeZones.length>0;
+    // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
+    // until current price actually interacts with a valid zone.
+    const watchZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
+    const entryZones=watchZones.filter(z=>["reacting","touching"].includes(z.status));
+    const zoneSupport=entryZones.length>0;
     const entryModels=side==="BUY"?buyModels:side==="SELL"?sellModels:[];
     const confirmed=side!=="NONE"&&!conflict&&entryModels.length>0&&zoneSupport;
     const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.breaker?10:0)+(zoneSupport?8:0)-(conflict?30:0));
     return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,entryModels,price:N(c.close),zones,
       formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
-      note:conflict?"Conflicting BUY/SELL evidence — blocked.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
+      note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
   function makeEntryPlan(record, candles, rr=2) {
     if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<15) return null;
     const side=record.side, price=Number(record.price);
-    const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
-    if(!candidates.length)return {blocked:true,reason:"No valid supporting zone"};
+    const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
+    if(!candidates.length)return {blocked:true,reason:"Price has not interacted with a valid supporting POI yet"};
     // Strength-first selection: a fresh, high-quality zone can outrank a nearer weak zone.
     candidates.sort((a,b)=>(b.score||0)-(a.score||0)||a.distance-b.distance);
     const z=candidates[0], entry=(z.low+z.high)/2;

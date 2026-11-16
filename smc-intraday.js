@@ -43,12 +43,12 @@
       zones.push({id:type+"-"+String(cs[origin].time??cs[origin].timestamp??origin),type,side,low:loZ,high:hiZ,origin,status,valid:!invalid,tests,age,impulse,score,mid,distance:dist});
     };
     // Historical three-candle fair value gaps.
-    for(let i=2;i<cs.length;i++){
-      if(N(cs[i-2].high)<N(cs[i].low))addZone("FVG",{low:N(cs[i-2].high),high:N(cs[i].low)},"BUY",i-1,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
-      if(N(cs[i-2].low)>N(cs[i].high))addZone("FVG",{low:N(cs[i].high),high:N(cs[i-2].low)},"SELL",i-1,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
+    for(let i=Math.max(2,zoneStart);i<cs.length;i++){
+      if(N(cs[i-2].high)<N(cs[i].low))addZone("FVG",{low:N(cs[i-2].high),high:N(cs[i].low)},"BUY",i,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
+      if(N(cs[i-2].low)>N(cs[i].high))addZone("FVG",{low:N(cs[i].high),high:N(cs[i-2].low)},"SELL",i,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
     }
     // Historical order blocks: last opposing candle before a strong directional candle.
-    for(let i=3;i<cs.length;i++){
+    for(let i=Math.max(3,zoneStart);i<cs.length;i++){
       const bar=cs[i],br=Math.max(N(bar.high)-N(bar.low),1e-12),strong=Math.abs(N(bar.close)-N(bar.open))/br>=.6;
       if(!strong)continue;
       for(let j=i-1;j>=Math.max(0,i-4);j--){

@@ -48,6 +48,7 @@ const tradingState = {
   lastPrices: {},
   candles: {},
   requestContexts: new Map(),
+  tickSubscriptions: new Map(),
 
   requestId: 1,
   scanTimer: null,
@@ -431,6 +432,7 @@ function connectDeriv() {
     tradingState.derivConnected = false;
     tradingState.derivSocket = null;
     tradingState.requestContexts.clear();
+    tradingState.tickSubscriptions.clear();
 
     if (tradingState.pingTimer) {
       clearInterval(tradingState.pingTimer);
@@ -469,6 +471,7 @@ function disconnectDeriv() {
   tradingState.derivConnected = false;
   tradingState.derivSocket = null;
   tradingState.requestContexts.clear();
+  tradingState.tickSubscriptions.clear();
 
   if (socket && socket.readyState < WebSocket.CLOSING) {
     socket.close();
@@ -493,6 +496,25 @@ function scheduleDerivReconnect() {
 /* =========================================================
    DERIV REQUESTS
 ========================================================= */
+
+function syncDerivTickSubscriptions() {
+  if (!isSocketOpen()) return;
+  const wanted = tradingState.selectedSymbols;
+  for (const [symbol, subscriptionId] of tradingState.tickSubscriptions) {
+    if (!wanted.has(symbol)) {
+      if (subscriptionId) sendRequest({ forget: subscriptionId });
+      tradingState.tickSubscriptions.delete(symbol);
+    }
+  }
+  for (const symbol of wanted) {
+    if (!tradingState.tickSubscriptions.has(symbol)) {
+      tradingState.tickSubscriptions.set(symbol, null);
+      if (!sendRequest({ ticks: symbol, subscribe: 1 }, { type: "tick", symbol })) {
+        tradingState.tickSubscriptions.delete(symbol);
+      }
+    }
+  }
+}
 
 function sendRequest(payload, context = null) {
   if (!isSocketOpen()) return false;
@@ -580,6 +602,10 @@ function handleDerivMessage(data) {
   if (data.msg_type === "tick" && data.tick) {
     const symbol = data.tick.symbol;
     const quote = Number(data.tick.quote);
+    const subscriptionId = data.subscription?.id;
+    if (symbol && subscriptionId && tradingState.tickSubscriptions.has(symbol)) {
+      tradingState.tickSubscriptions.set(symbol, subscriptionId);
+    }
 
     if (symbol && Number.isFinite(quote)) {
       tradingState.lastPrices[symbol] = quote;
@@ -659,6 +685,7 @@ function loadMarkets(markets) {
 
   renderMarketList();
   updatePairCount();
+  syncDerivTickSubscriptions();
 
   if (!tradingState.availableSymbols.length) {
     setConnectionStatus("Connected, but no markets were returned.");
@@ -731,6 +758,7 @@ function renderMarketList() {
           tradingState.selectedSymbols.delete(item.symbol);
         }
         updatePairCount();
+        syncDerivTickSubscriptions();
       });
 
       const text = document.createElement("span");
@@ -748,12 +776,14 @@ function selectAllPairs() {
   });
   renderMarketList();
   updatePairCount();
+  syncDerivTickSubscriptions();
 }
 
 function clearPairs() {
   tradingState.selectedSymbols.clear();
   renderMarketList();
   updatePairCount();
+  syncDerivTickSubscriptions();
 }
 
 function updatePairCount() {
@@ -1352,6 +1382,7 @@ async function loadNewsCalendar(force = false) {
   if (!force && Date.now() - tradingState.newsLoadedAt < 15 * 60 * 1000) return;
 
   tradingState.newsLoading = true;
+  tradingState.newsError = "";
   setText("newsCalendarStatus", "Loading calendar...");
   try {
     const currencies = getNewsCurrenciesForRequest();
@@ -1373,7 +1404,9 @@ async function loadNewsCalendar(force = false) {
     }
   } catch (error) {
     tradingState.newsError = error && error.message ? error.message : "Unknown calendar error";
-    setText("newsCalendarStatus", "Calendar unavailable");
+    tradingState.newsEvents = [];
+    tradingState.newsLoadedAt = 0;
+    setText("newsCalendarStatus", "Calendar unavailable — signals disabled");
     renderNewsCalendar();
     setText("newsReasoning",
       "WAIT: the economic calendar could not be loaded. News signals are disabled until reliable event data is available. " +
@@ -1424,6 +1457,20 @@ function getNewsCurrencyBias(event) {
 }
 
 function analyseNews(symbol, candles) {
+  const calendarFresh = tradingState.newsLoadedAt > 0 &&
+    Date.now() - tradingState.newsLoadedAt <= 15 * 60 * 1000 &&
+    !tradingState.newsError && !tradingState.newsLoading;
+  if (!calendarFresh) {
+    return {
+      ready: true, strategy: "news", trend: "Calendar unavailable or stale",
+      structure: "Not evaluated", liquidity: "Not used by news engine",
+      signal: "WAIT — fresh calendar required",
+      reasoning: "WAIT: News Trading requires a successful calendar refresh within 15 minutes. No news signal is permitted from stale or failed calendar data.",
+      checks: [["Fresh economic calendar", false]], entry: null, sl: null, tp: null,
+      invalidation: null, supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
   const pair = getForexPairCurrencies(symbol);
   if (!pair) {
     return {
@@ -2141,7 +2188,10 @@ function collectSettings() {
     "takeProfit",
     "maxTrades",
     "dailyLossLimit",
-    "maxConsecutiveLosses"
+    "maxConsecutiveLosses",
+    "useAPA", "useATR", "useAPAConfirmation", "useTrend", "useLiquidity",
+    "useBOS", "useMSS", "useCHoCH", "useDisplacement", "useOB", "useFVG",
+    "useIFVG", "useBreaker", "useSupplyDemand", "apaEntryStyle"
   ];
 
   const settings = {};

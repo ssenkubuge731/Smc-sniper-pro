@@ -26,22 +26,44 @@
     const findOpp=d=>{for(let i=cs.length-3;i>=Math.max(0,cs.length-12);i--){if(d==="bull"&&cs[i].close<cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};if(d==="bear"&&cs[i].close>cs[i].open)return {low:N(cs[i].low),high:N(cs[i].high),index:i};}return null;};
     const bullOB=bullDisp?findOpp("bull"):null,bearOB=bearDisp?findOpp("bear"):null;
     const bullBreaker=bull&&bearOB&&N(c.close)>bearOB.high,bearBreaker=bear&&bullOB&&N(c.close)<bullOB.low;
-    const zones=[];
-    const addZone=(type,z,side,origin)=>{if(!z)return;const touched=cs.slice(origin+1).some(x=>N(x.low)<=z.high&&N(x.high)>=z.low);
-      const invalid=side==="BUY"?N(c.close)<z.low:N(c.close)>z.high;
-      const inZone=N(c.low)<=z.high&&N(c.high)>=z.low;
-      const reaction=side==="BUY"?bull&&N(c.close)>z.high:bear&&N(c.close)<z.low;
-      const stateName=invalid?"invalidated":reaction&&inZone?"reacting":touched?"tested":inZone?"touching":"fresh";
-      zones.push({id:type+"-"+origin,type,side,low:z.low,high:z.high,origin,status:stateName,valid:!invalid,tests:cs.slice(origin+1).filter(x=>N(x.low)<=z.high&&N(x.high)>=z.low).length});};
-    if(bullOB)addZone("Order Block",bullOB,"BUY",bullOB.index);
-    if(bearOB)addZone("Order Block",bearOB,"SELL",bearOB.index);
-    if(bullFVG)addZone("FVG",{low:N(cs.at(-4).high),high:N(cs.at(-2).low)},"BUY",cs.length-3);
-    if(bearFVG)addZone("FVG",{low:N(cs.at(-2).high),high:N(cs.at(-4).low)},"SELL",cs.length-3);
-    // Liquidity sweep/reclaim zones and recent range supply/demand are contextual candidates.
-    if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1);
-    if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1);
-    addZone("Demand",{low:rl,high:rl+range*.20},"BUY",cs.length-12);
-    addZone("Supply",{low:rh-range*.20,high:rh},"SELL",cs.length-12);
+    // Build a rolling catalogue of independent POIs, not just the latest OB/FVG.
+    const zones=[],zoneStart=Math.max(2,cs.length-45);
+    const addZone=(type,z,side,origin,impulse=false)=>{if(!z||!Number.isFinite(N(z.low))||!Number.isFinite(N(z.high))||N(z.high)<=N(z.low))return;
+      const loZ=Math.min(N(z.low),N(z.high)),hiZ=Math.max(N(z.low),N(z.high));
+      const touches=cs.slice(origin+1).filter(x=>N(x.low)<=hiZ&&N(x.high)>=loZ);
+      const touched=touches.length>0,invalid=side==="BUY"?N(c.close)<loZ:N(c.close)>hiZ;
+      const inZone=N(c.low)<=hiZ&&N(c.high)>=loZ;
+      const reaction=inZone&&(side==="BUY"?bull&&N(c.close)>hiZ:bear&&N(c.close)<loZ);
+      const status=invalid?"invalidated":reaction?"reacting":inZone?"touching":touched?"tested":"fresh";
+      const age=cs.length-1-origin,tests=touches.length;
+      const width=hiZ-loZ,mid=(hiZ+loZ)/2,dist=Math.abs(N(c.close)-mid);
+      const distancePenalty=Math.min(18,dist/Math.max(range,1e-12)*5);
+      const freshBonus=status==="fresh"?18:status==="tested"?5:status==="reacting"?9:0;
+      const score=Math.max(0,Math.min(100,35+(impulse?18:0)+freshBonus-Math.min(20,age*.35)-Math.min(24,tests*8)-distancePenalty));
+      zones.push({id:type+"-"+String(cs[origin].time??cs[origin].timestamp??origin),type,side,low:loZ,high:hiZ,origin,status,valid:!invalid,tests,age,impulse,score,mid,distance:dist});
+    };
+    // Historical three-candle fair value gaps.
+    for(let i=2;i<cs.length;i++){
+      if(N(cs[i-2].high)<N(cs[i].low))addZone("FVG",{low:N(cs[i-2].high),high:N(cs[i].low)},"BUY",i-1,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
+      if(N(cs[i-2].low)>N(cs[i].high))addZone("FVG",{low:N(cs[i].high),high:N(cs[i-2].low)},"SELL",i-1,Math.abs(N(cs[i-1].close)-N(cs[i-1].open))/Math.max(N(cs[i-1].high)-N(cs[i-1].low),1e-12)>=.6);
+    }
+    // Historical order blocks: last opposing candle before a strong directional candle.
+    for(let i=3;i<cs.length;i++){
+      const bar=cs[i],br=Math.max(N(bar.high)-N(bar.low),1e-12),strong=Math.abs(N(bar.close)-N(bar.open))/br>=.6;
+      if(!strong)continue;
+      for(let j=i-1;j>=Math.max(0,i-4);j--){
+        if(N(bar.close)>N(bar.open)&&N(cs[j].close)<N(cs[j].open)){addZone("Order Block",{low:N(cs[j].low),high:N(cs[j].high)},"BUY",j,true);break;}
+        if(N(bar.close)<N(bar.open)&&N(cs[j].close)>N(cs[j].open)){addZone("Order Block",{low:N(cs[j].low),high:N(cs[j].high)},"SELL",j,true);break;}
+      }
+    }
+    // Current sweep-reclaim and rolling range supply/demand candidates.
+    if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1,true);
+    if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1,true);
+    addZone("Demand",{low:rl,high:rl+range*.20},"BUY",cs.length-12,false);
+    addZone("Supply",{low:rh-range*.20,high:rh},"SELL",cs.length-12,false);
+    // Rank valid candidates by freshness, origin impulse, mitigation and distance.
+    for(const z of zones){const overlaps=zones.filter(q=>q!==z&&q.side===z.side&&q.low<=z.high&&q.high>=z.low).length;z.confluence=overlaps;z.score=Math.min(100,z.score+Math.min(15,overlaps*5));}
+    zones.sort((a,b)=>b.score-a.score);
     // Flexible SMC model matrix: a setup may qualify through several distinct
     // valid routes; no fixed "two entry patterns" restriction is imposed.
     const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,choch:bullMSS,ob:!!bullOB};
@@ -74,14 +96,8 @@
     const side=record.side, price=Number(record.price);
     const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["fresh","tested","reacting","touching"].includes(z.status));
     if(!candidates.length)return {blocked:true,reason:"No valid supporting zone"};
-    // Choose the closest zone to current price; prefer a reacting/tested zone on equal distance.
-    candidates.sort((a,b)=>{
-      const da=price<a.low?a.low-price:price>a.high?price-a.high:0;
-      const db=price<b.low?b.low-price:price>b.high?price-b.high:0;
-      const pa=(a.status==="reacting"?-0.15:a.status==="tested"?-0.08:0);
-      const pb=(b.status==="reacting"?-0.15:b.status==="tested"?-0.08:0);
-      return (da+pa)-(db+pb);
-    });
+    // Strength-first selection: a fresh, high-quality zone can outrank a nearer weak zone.
+    candidates.sort((a,b)=>(b.score||0)-(a.score||0)||a.distance-b.distance);
     const z=candidates[0], entry=(z.low+z.high)/2;
     const tr=candles.slice(-14); let sum=0;
     for(let i=1;i<tr.length;i++)sum+=Math.max(Number(tr[i].high)-Number(tr[i].low),Math.abs(Number(tr[i].high)-Number(tr[i-1].close)),Math.abs(Number(tr[i].low)-Number(tr[i-1].close)));

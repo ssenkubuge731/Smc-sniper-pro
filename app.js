@@ -2285,7 +2285,7 @@ function initApp() {
 
   // SMC historical replay — uses the selected symbol/timeframe cached candles only.
   $("runSMCHistoricalTest")?.addEventListener("click", () => {
-    const symbol=$("marketSelect")?.value||$("symbolSelect")?.value||tradingState.selectedSymbol;
+    const symbol=tradingState.lastAnalysedSymbol||Array.from(tradingState.selectedSymbols||[])[0]||tradingState.availableSymbols?.[0]?.symbol;
     const tf=$("timeframe")?.value||$("scannerTimeframe")?.value||"15m";
     const candles=tradingState.candles[symbol+"|"+tf]||[];
     const result=window.SMCIntradayEngine?.backtest(candles,{warmup:40,horizon:30,rr:2});

@@ -111,8 +111,10 @@
     ].filter(m=>m.ok).map(m=>m.name);
     const buyModels=models(buy),sellModels=models(sell);
     const bc=Object.values(buy).filter(Boolean).length,sc=Object.values(sell).filter(Boolean).length;
-    const conflict=bc>0&&sc>0&&Math.abs(bc-sc)<2;
-    const side=buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
+    // A complete qualifying model on each side is a hard conflict.
+    // Do not let a larger raw evidence count on one side override it.
+    const conflict=buyModels.length>0&&sellModels.length>0;
+    const side=conflict?"NONE":buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
     const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
     // until current price actually interacts with a valid zone.

@@ -1171,7 +1171,16 @@ function analyseSMC(candles) {
     blockedDirectionReason = "BUY blocked: price is reacting at supply and a bullish structural reversal is not confirmed.";
   }
 
-  const conflicting = buyReady && sellReady;
+  // Block a direction when both sides independently have the minimum
+  // two confirmation groups, even though the final candle cannot be both
+  // bullish and bearish. Candle colour must not hide opposing SMC evidence.
+  const conflicting = bullConfirmations.length >= 2 && bearConfirmations.length >= 2;
+  if (conflicting) {
+    buyReady = false;
+    sellReady = false;
+    blockedDirectionReason = "Conflicting SMC evidence: both bullish and bearish sides have at least 2 independent confirmations. WAIT for the conflict to resolve.";
+  }
+
   const signal = conflicting
     ? "Conflicting confirmations — no signal"
     : buyReady

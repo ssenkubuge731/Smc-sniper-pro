@@ -1719,64 +1719,39 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const higherCandles = tradingState.candles[candleKey(symbol, frames[frames.length - 1])] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, frames[0])] || [];
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
-  const isSelectedAPAEntryFrame = tradingState.strategy !== "apa" || timeframe === selectedEntryTimeframe;
-  const result = !isSelectedAPAEntryFrame
-    ? {
-        ready: false, strategy: "apa",
-        trend: "Context timeframe only",
-        structure: "No entry analysis on this timeframe",
-        liquidity: "Context scan only",
-        signal: `Context only — APA entries are restricted to selected ${selectedEntryTimeframe.toUpperCase()}`,
-        supply: null, demand: null, orderBlock: null
-      }
-    : tradingState.strategy === "news"
-      ? analyseNews(symbol, candles)
-      : tradingState.strategy === "apa"
-        ? analyseAPA(candles, higherCandles, lowerCandles)
-        : analyseSMC(candles);
-
   const box = $("timeframeResults");
   if (!box) return;
-
-  if (result.ready) {
-    evaluateSignalHistory(symbol, timeframe, candles);
-    recordCandidateSignal(symbol, timeframe, result, candles);
-  }
-
-  const resultKey = `${symbol}|${timeframe}`;
-  let item = Array.from(box.children).find(
-    child => child.dataset && child.dataset.resultKey === resultKey
-  );
-
-  if (!item) {
-    item = document.createElement("div");
-    item.className = "result-item";
-    item.dataset.resultKey = resultKey;
-    box.prepend(item);
-  }
-
-  const zoneText = zone => zone
-    ? `${formatPrice(zone.low)}–${formatPrice(zone.high)}`
-    : "not identified";
-  const scannerDetails = result.strategy === "smc"
+  const analyses = tradingState.strategy === "both"
     ? [
-        `Supply ${zoneText(result.supply)}`,
-        `Demand ${zoneText(result.demand)}`,
-        `OB ${result.orderBlock ? zoneText(result.orderBlock) : "not identified"}`,
-        `OB reaction ${result.orderBlockTouched ? "yes" : "no"}`,
-        `Breaker ${result.breaker || "not identified"}`,
-        `FVG/IFVG ${result.fvgDetails && (result.fvgDetails.bullishFVG || result.fvgDetails.bearishFVG || result.fvgDetails.bullishIFVG || result.fvgDetails.bearishIFVG) ? "detected" : "not detected"}`,
-        `Confirmations BUY ${result.bullishConfirmations || 0} / SELL ${result.bearishConfirmations || 0}`
-      ].join(" | ")
-    : result.strategy === "apa"
-      ? [`Supply ${zoneText(result.supply)}`, `Demand ${zoneText(result.demand)}`, `POI ${result.orderBlock ? zoneText(result.orderBlock) : "not identified"}`].join(" | ")
-      : result.reasoning || "News analysis";
-  item.textContent = `${symbol} ${timeframe.toUpperCase()}: ${result.trend} | ${result.structure} | ${result.signal}\n${scannerDetails}`;
-
-
-  while (box.children.length > 30) {
-    box.removeChild(box.lastChild);
-  }
+        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
+        analyseSMC(candles)
+      ]
+    : [tradingState.strategy === "news"
+        ? analyseNews(symbol, candles)
+        : tradingState.strategy === "apa"
+          ? (timeframe === selectedEntryTimeframe
+              ? analyseAPA(candles, higherCandles, lowerCandles)
+              : { ready: false, strategy: "apa", trend: "Context timeframe only", structure: "No entry analysis on this timeframe", signal: "Context only — APA entries are restricted to selected " + selectedEntryTimeframe.toUpperCase(), supply: null, demand: null })
+          : analyseSMC(candles)];
+  const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
+  analyses.forEach(result => {
+    if (!result) return;
+    if (result.ready) {
+      evaluateSignalHistory(symbol, timeframe, candles);
+      recordCandidateSignal(symbol, timeframe, result, candles);
+    }
+    const strategyName = result.strategy || tradingState.strategy;
+    const resultKey = symbol + "|" + timeframe + "|" + strategyName;
+    let item = Array.from(box.children).find(child => child.dataset && child.dataset.resultKey === resultKey);
+    if (!item) { item = document.createElement("div"); item.className = "result-item"; item.dataset.resultKey = resultKey; box.prepend(item); }
+    const details = strategyName === "smc"
+      ? ["Supply " + zoneText(result.supply), "Demand " + zoneText(result.demand), "OB " + zoneText(result.orderBlock), "Breaker " + (result.breaker || "not identified"), "Confirmations BUY " + (result.bullishConfirmations || 0) + " / SELL " + (result.bearishConfirmations || 0)].join(" | ")
+      : strategyName === "apa"
+        ? ["Supply " + zoneText(result.supply), "Demand " + zoneText(result.demand), "POI " + zoneText(result.orderBlock)].join(" | ")
+        : (result.reasoning || "News analysis");
+    item.textContent = symbol + " " + timeframe.toUpperCase() + " — " + strategyName.toUpperCase() + ": " + (result.trend || "Waiting") + " | " + (result.structure || "Structure pending") + " | " + (result.signal || "Waiting for confirmation") + "\n" + details;
+  });
+  while (box.children.length > 60) box.removeChild(box.lastChild);
 }
 
 function analyseMainSelection(symbol) {

@@ -263,7 +263,7 @@
     <h3>Deriv market connection</h3>
     <label for="derivAppId">Deriv App ID</label>
     <input id="derivAppId" type="text" placeholder="Enter your Deriv App ID">
-    <p class="muted">Public market data connection. Do not enter your API token here.</p>
+    <p class="muted">Deriv public market-data connection only. This does not log in to your trading account or place orders. Do not enter your API token here.</p>
     <button id="connectDeriv" class="primary" type="button" >
   Connect Deriv
 </button>
@@ -285,9 +285,10 @@
     </select>
     <label for="mt5Server">Broker server</label>
     <input id="mt5Server" type="text" placeholder="Enter MT5 server name">
-    <p class="muted">Deriv MT5 is selected first. Exness and FBS are also listed for later. A real MT5 connection needs a Windows VPS running the MT5 terminal plus a secure bridge. This screen does not claim a connection before those components exist.</p>
+    <p class="muted">Supported connection route: any broker that provides a compatible MetaTrader 5 account and server. The list includes Deriv, Exness, FBS, IC Markets, Pepperstone and XM; choose Other MT5 broker for another MT5 provider. Availability of symbols, account types and server names depends on the broker.</p>
+    <p class="warning">Important: selecting a broker does not connect the account. The MT5 terminal and secure cloud bridge must be running on a Windows PC/VPS. Never enter your MT5 password on this website.</p>
     <button id="connectMT5" class="primary" type="button">Check MT5 setup</button>
-    <p id="mt5ConnectionStatus">Preparation only — not connected. Use Deriv API for scanning until the VPS bridge is installed.</p>
+    <p id="mt5ConnectionStatus">Setup only — NOT CONNECTED. The website currently reads bridge heartbeat status; it does not yet send trade commands to the EA.</p>
     <h4>Cloud bridge status</h4>
     <p id="mt5BridgeStatus">Checking cloud bridge…</p>
     <p id="mt5LastHeartbeat">No heartbeat received yet.</p>

@@ -17,7 +17,7 @@ const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["1h", "30m", "15m", "5m", "1m"],
+  intraday: ["1m", "5m", "15m", "30m", "1h"],
   swing: ["1h", "4h", "1d"]
 };
 
@@ -196,7 +196,7 @@ function updateMode() {
     : frames[0];
 
   const modeInfo = mode === "intraday"
-    ? "Independent SMC scan and entry opportunities from H1 down to M1: H1, M30, M15, M5 and M1"
+    ? "Intraday analysis and entry timeframes: M1, M5, M15, M30 and H1"
     : mode === "scalping"
       ? "APA scalping scan and selected-entry logic: M1 / M5"
       : "Swing timeframe set: H1 / H4 / D1";

@@ -220,22 +220,21 @@ function updateActiveTimeframes() {
 ========================================================= */
 
 function syncStrategy(value) {
-  if (!["apa", "smc", "news"].includes(value)) value = "apa";
+  if (!["apa", "smc", "both", "news"].includes(value)) value = "apa";
   tradingState.strategy = value;
-
   ["strategySelect", "scannerStrategy", "strategySettings"].forEach(id => {
     if ($(id)) $(id).value = value;
   });
-
-  $("apaSettings")?.classList.toggle("hidden", value !== "apa");
-  $("smcSettings")?.classList.toggle("hidden", value !== "smc");
-
+  $("apaSettings")?.classList.toggle("hidden", !["apa", "both"].includes(value));
+  $("smcSettings")?.classList.toggle("hidden", !["smc", "both"].includes(value));
   setText("strategyInfo",
     value === "apa"
       ? "APA Advanced Price Action selected — original APA sequence."
       : value === "smc"
         ? "SMC selected — independent Smart Money Concepts confirmation engine."
-        : "News Trading selected — independent Forex economic-news and price-reaction engine.");
+        : value === "both"
+          ? "BOTH selected — APA and SMC analyse independently; signals and outcomes stay separately labelled."
+          : "News Trading selected — independent Forex economic-news and price-reaction engine.");
 
   if (value === "news") {
     loadNewsCalendar(true);
@@ -1788,15 +1787,24 @@ function analyseMainSelection(symbol) {
   const lowerFrame = frames[0];
   const higherCandles = tradingState.candles[candleKey(symbol, higherFrame)] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, lowerFrame)] || [];
-  const result = tradingState.strategy === "news"
-    ? analyseNews(symbol, candles)
-    : tradingState.strategy === "apa"
-      ? analyseAPA(candles, higherCandles, lowerCandles)
-      : analyseSMC(candles);
+  const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
+  const analysisResults = tradingState.strategy === "both"
+    ? [
+        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
+        analyseSMC(candles)
+      ]
+    : [tradingState.strategy === "news"
+        ? analyseNews(symbol, candles)
+        : tradingState.strategy === "apa"
+          ? analyseAPA(candles, higherCandles, lowerCandles)
+          : analyseSMC(candles)];
+  const readyResults = analysisResults.filter(item => item && item.ready);
+  const result = readyResults.find(item => item.strategy === "apa") ||
+    readyResults.find(item => item.strategy === "smc") || readyResults[0] || analysisResults[0];
 
   // History outcome tracking must run even when there is no fresh signal.
   evaluateSignalHistory(symbol, timeframe, candles);
-  if (!result.ready) return;
+  if (!result || !result.ready) return;
   tradingState.lastAnalysedSymbol = symbol;
   const newsActive = result.strategy === "news";
   $("newsTradingPanel")?.classList.toggle("news-active", newsActive);
@@ -1812,8 +1820,14 @@ function analyseMainSelection(symbol) {
   setText("apaSweepStatus", result.sweepStatus ? `${result.sweepStatus} — ${result.sweepDirection}` : "APA sweep status not available");
   setText("apaSweepPrice", result.sweepPrice == null ? "--" : formatPrice(result.sweepPrice));
   setText("apaSweepLevel", result.sweepLevel == null ? "--" : formatPrice(result.sweepLevel));
-  setText("entrySignal", result.signal);
-  setText("tradeReasoning", result.reasoning || "Reasoning is not available for this analysis.");
+  setText("entrySignal", tradingState.strategy === "both"
+    ? readyResults.map(item => item.strategy.toUpperCase() + ": " + item.signal).join(" | ")
+    : result.signal);
+  setText("tradeReasoning", tradingState.strategy === "both"
+    ? (readyResults.length
+        ? readyResults.map(item => item.strategy.toUpperCase() + ": " + (item.reasoning || item.signal)).join("\n\n")
+        : "APA and SMC are waiting for separate confirmations.")
+    : (result.reasoning || "Reasoning is not available for this analysis."));
   setText("supplyZone", formatZone(result.supply));
   setText("demandZone", formatZone(result.demand));
   setText("breakerBlock", result.breaker);
@@ -1845,16 +1859,18 @@ function analyseMainSelection(symbol) {
   if (checklist) {
     checklist.replaceChildren();
 
-    result.checks.forEach(([name, passed]) => {
-      const row = document.createElement("div");
-      row.className = "result-item";
-      row.textContent = `${passed ? "✓" : "○"} ${name}`;
-      checklist.appendChild(row);
+    (tradingState.strategy === "both" ? readyResults : [result]).forEach(item => {
+      (item.checks || []).forEach(([name, passed]) => {
+        const row = document.createElement("div");
+        row.className = "result-item";
+        row.textContent = item.strategy.toUpperCase() + " — " + (passed ? "✓ " : "○ ") + name;
+        checklist.appendChild(row);
+      });
     });
   }
-
   tradingState.lastSignals[symbol] = result;
-  recordCandidateSignal(symbol, timeframe, result, candles);
+  (tradingState.strategy === "both" ? readyResults : [result])
+    .forEach(item => recordCandidateSignal(symbol, timeframe, item, candles));
 }
 
 /* =========================================================
@@ -2058,7 +2074,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
   // is allowed to create an entry signal or signal-history record.
-  if (tradingState.strategy === "apa") {
+  if (result.strategy === "apa") {
     const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
     const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
     if (timeframe !== selectedEntryTimeframe) return;

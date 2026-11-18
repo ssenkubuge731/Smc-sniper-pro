@@ -979,25 +979,64 @@ function getTrend(candles) {
 }
 
 function getStructure(candles) {
-  if (!Array.isArray(candles) || candles.length < 20)
-    return { label: "Waiting", bosUp: false, bosDown: false, mssUp: false, mssDown: false, chochUp: false, chochDown: false };
-  const sample = candles.slice(-20), last = sample[sample.length - 1];
-  const prior = sample.slice(0, -1);
-  const priorHigh = Math.max(...prior.map(c => c.high));
-  const priorLow = Math.min(...prior.map(c => c.low));
-  const oldTrend = getTrend(sample.slice(0, -5));
-  const bosUp = last.close > priorHigh, bosDown = last.close < priorLow;
-  const chochUp = oldTrend === "Bearish" && bosUp;
-  const chochDown = oldTrend === "Bullish" && bosDown;
-  const sweep = getLiquidity(sample), displaced = getDisplacement(sample);
-  const mssUp = chochUp && displaced && sweep.sweepLow;
-  const mssDown = chochDown && displaced && sweep.sweepHigh;
+  const empty = {
+    label: "Waiting", bosUp: false, bosDown: false,
+    mssUp: false, mssDown: false,
+    chochUp: false, chochDown: false,
+    brokenHigh: null, brokenLow: null
+  };
+  if (!Array.isArray(candles) || candles.length < 20) return empty;
+
+  // Use confirmed swing points only. The final two candles are excluded
+  // from pivot selection so an unfinished swing cannot become a level.
+  const sample = candles.slice(-80);
+  let swingHigh = null, swingLow = null;
+  for (let i = 2; i < sample.length - 2; i++) {
+    const c = sample[i];
+    const isHigh = c.high > sample[i - 1].high &&
+      c.high > sample[i - 2].high &&
+      c.high >= sample[i + 1].high &&
+      c.high >= sample[i + 2].high;
+    const isLow = c.low < sample[i - 1].low &&
+      c.low < sample[i - 2].low &&
+      c.low <= sample[i + 1].low &&
+      c.low <= sample[i + 2].low;
+    if (isHigh) swingHigh = { price: c.high, index: i };
+    if (isLow) swingLow = { price: c.low, index: i };
+  }
+  if (!swingHigh || !swingLow) return empty;
+
+  const last = sample[sample.length - 1];
+  const previous = sample[sample.length - 2];
+  const oldTrend = getTrend(sample.slice(0, -1));
+  const breakUp = last.close > swingHigh.price && previous.close <= swingHigh.price;
+  const breakDown = last.close < swingLow.price && previous.close >= swingLow.price;
+
+  // A continuation break is BOS; a break against the established trend
+  // is CHoCH. MSS requires that reversal break plus a recent liquidity
+  // sweep and displacement in the direction of the break.
+  const chochUp = breakUp && oldTrend === "Bearish";
+  const chochDown = breakDown && oldTrend === "Bullish";
+  const bosUp = breakUp && !chochUp;
+  const bosDown = breakDown && !chochDown;
+
+  const recent = sample.slice(-9);
+  const sweep = getLiquidity(recent);
+  const displaced = getDisplacement(sample);
+  const mssUp = chochUp && sweep.sweepLow && last.close > last.open && displaced;
+  const mssDown = chochDown && sweep.sweepHigh && last.close < last.open && displaced;
+
   const label = mssUp ? "Bullish MSS" : mssDown ? "Bearish MSS" :
     chochUp ? "Bullish CHoCH" : chochDown ? "Bearish CHoCH" :
-    bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" : "No confirmed break";
-  return { label, bosUp, bosDown, mssUp, mssDown, chochUp, chochDown };
-}
+    bosUp ? "Bullish BOS" : bosDown ? "Bearish BOS" : "No new confirmed break";
 
+  return {
+    label, bosUp, bosDown, mssUp, mssDown, chochUp, chochDown,
+    brokenHigh: breakUp ? swingHigh.price : null,
+    brokenLow: breakDown ? swingLow.price : null,
+    priorTrend: oldTrend
+  };
+}
 function getLiquidity(candles) {
   if (!Array.isArray(candles) || candles.length < 8)
     return { label: "Waiting", sweepLow: false, sweepHigh: false };

@@ -1,7 +1,7 @@
 /* SMC INTRADAY ENGINE — independent from APA; signal-only */
 (function () {
   "use strict";
-  const FRAMES = ["1h","30m","15m","5m","1m"];
+  const FRAMES = ["1m","5m","15m","30m","1h"];
   const state = { latest:new Map(), zones:new Map(), lastPublished:new Map() };
   const N = (x)=>Number(x);
   const valid = c=>c && Number.isFinite(N(c.open)) && Number.isFinite(N(c.high)) && Number.isFinite(N(c.low)) && Number.isFinite(N(c.close));

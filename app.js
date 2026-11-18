@@ -1754,6 +1754,49 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   while (box.children.length > 60) box.removeChild(box.lastChild);
 }
 
+function renderDashboardStrategyResults(symbol, timeframe, results) {
+  const panel = $("dashboardStrategyResults");
+  if (!panel) return;
+  const active = tradingState.strategy;
+  panel.classList.toggle("hidden", active === "news");
+
+  const engines = [
+    { key: "apa", id: "dashboardApaResult", title: "APA — Advanced Price Action" },
+    { key: "smc", id: "dashboardSmcResult", title: "SMC — Smart Money Concepts" }
+  ];
+
+  engines.forEach((engine, index) => {
+    const output = $(engine.id);
+    if (!output) return;
+    const card = output.closest(".analysis-engine-card");
+    if (card) card.classList.toggle("hidden", active !== "both" && active !== engine.key);
+
+    const result = results.find(item => item && item.strategy === engine.key) ||
+      (active === "both" ? results[index] : active === engine.key ? results[0] : null);
+    if (!result) {
+      output.textContent = "Waiting for " + engine.key.toUpperCase() + " analysis.";
+      return;
+    }
+
+    const heading = symbol + " | " + String(timeframe).toUpperCase();
+    if (!result.ready) {
+      output.textContent = heading + "\\nStatus: " +
+        (result.signal || result.trend || "Waiting for required candles") +
+        "\\nThis engine has not produced a confirmed analysis yet.";
+      return;
+    }
+
+    output.textContent = heading +
+      "\\nTrend: " + (result.trend || "Not available") +
+      "\\nStructure: " + (result.structure || "Not available") +
+      "\\nDecision: " + (result.signal || "WAIT") +
+      "\\nEntry: " + formatPrice(result.entry) +
+      " | SL: " + formatPrice(result.sl) +
+      " | TP: " + formatPrice(result.tp) +
+      "\\nReason: " + (result.reasoning || "No additional reasoning available.");
+  });
+}
+
 function analyseMainSelection(symbol) {
   const timeframe = valueOf("timeframe") || "1m";
   const candles = tradingState.candles[candleKey(symbol, timeframe)] || [];
@@ -1773,14 +1816,15 @@ function analyseMainSelection(symbol) {
         : tradingState.strategy === "apa"
           ? analyseAPA(candles, higherCandles, lowerCandles)
           : analyseSMC(candles)];
+  renderDashboardStrategyResults(symbol, timeframe, analysisResults);
   const readyResults = analysisResults.filter(item => item && item.ready);
   const result = readyResults.find(item => item.strategy === "apa") ||
     readyResults.find(item => item.strategy === "smc") || readyResults[0] || analysisResults[0];
 
   // History outcome tracking must run even when there is no fresh signal.
   evaluateSignalHistory(symbol, timeframe, candles);
-  if (!result || !result.ready) return;
   tradingState.lastAnalysedSymbol = symbol;
+  if (!result || !result.ready) return;
   const newsActive = result.strategy === "news";
   $("newsTradingPanel")?.classList.toggle("news-active", newsActive);
   if (newsActive) {

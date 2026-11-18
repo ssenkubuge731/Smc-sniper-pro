@@ -1825,8 +1825,75 @@ function renderTimeframeAnalysis(symbol, timeframe) {
       "\n" + details;
     if (item.parentNode !== box) box.prepend(item);
   });
+  renderSMCMultiTimeframeAlignment(symbol);
   while (box.children.length > 60) box.removeChild(box.lastChild);
 }
+
+function renderSMCMultiTimeframeAlignment(symbol) {
+  const box = $("timeframeResults");
+  if (!box) return;
+
+  const existing = Array.from(box.children).find(child =>
+    child.dataset && child.dataset.resultKey === symbol + "|SMC|ALIGNMENT"
+  );
+  if (tradingState.strategy !== "smc" && tradingState.strategy !== "both") {
+    if (existing) existing.remove();
+    return;
+  }
+
+  const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
+  const results = frames.map(timeframe => {
+    const candles = tradingState.candles[candleKey(symbol, timeframe)] || [];
+    if (candles.length < 20) return { timeframe, status: "waiting", signal: "WAIT" };
+    const analysis = analyseSMC(candles);
+    const signal = String(analysis.signal || "");
+    const direction = /\bBUY\b/i.test(signal) ? "BUY" :
+      /\bSELL\b/i.test(signal) ? "SELL" : "";
+    return {
+      timeframe,
+      status: analysis.ready ? "ready" : "waiting",
+      direction,
+      signal,
+      entry: analysis.entry,
+      sl: analysis.sl,
+      tp: analysis.tp
+    };
+  });
+
+  const buys = results.filter(item => item.direction === "BUY");
+  const sells = results.filter(item => item.direction === "SELL");
+  const waiting = results.filter(item => item.status !== "ready" || !item.direction);
+  let verdict = "No multi-timeframe setup yet — wait for confirmed SMC signals.";
+  if (buys.length && sells.length) {
+    verdict = "CONFLICT — BUY and SELL candidates disagree across timeframes. WAIT; do not treat either side as aligned.";
+  } else if (buys.length >= 2) {
+    verdict = "BULLISH ALIGNMENT — " + buys.length + " of " + frames.length + " timeframes show BUY candidates. Review each timeframe's own Entry, SL and TP.";
+  } else if (sells.length >= 2) {
+    verdict = "BEARISH ALIGNMENT — " + sells.length + " of " + frames.length + " timeframes show SELL candidates. Review each timeframe's own Entry, SL and TP.";
+  } else if (buys.length === 1) {
+    verdict = "SINGLE BUY CANDIDATE — not yet confirmed by another timeframe.";
+  } else if (sells.length === 1) {
+    verdict = "SINGLE SELL CANDIDATE — not yet confirmed by another timeframe.";
+  }
+
+  const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
+  const frameLines = results.map(item => {
+    const side = item.direction || (item.status === "ready" ? "WAIT" : "WAITING FOR DATA");
+    return item.timeframe.toUpperCase() + ": " + side +
+      (item.direction ? " | Entry " + priceText(item.entry) + " | SL " + priceText(item.sl) + " | TP " + priceText(item.tp) : "");
+  });
+  const summary = existing || document.createElement("div");
+  summary.className = "result-item";
+  summary.dataset.resultKey = symbol + "|SMC|ALIGNMENT";
+  summary.textContent = symbol + " — SMC MULTI-TIMEFRAME CHECK\n" +
+    verdict + "\n" +
+    "BUY candidates: " + buys.map(item => item.timeframe.toUpperCase()).join(", ") .replace(/^$/, "none") +
+    " | SELL candidates: " + sells.map(item => item.timeframe.toUpperCase()).join(", ").replace(/^$/, "none") +
+    " | Waiting: " + waiting.length + "\n" + frameLines.join("\n") +
+    "\nAlignment is a confirmation aid only. Each timeframe keeps its own signal and trade levels; no order is placed.";
+  if (summary.parentNode !== box) box.prepend(summary);
+}
+
 function renderDashboardStrategyResults(symbol, timeframe, results) {
   const panel = $("dashboardStrategyResults");
   if (!panel) return;

@@ -1070,6 +1070,92 @@ function getDisplacement(candles) {
   return Math.abs(c.close - c.open) / Math.max(c.high - c.low, 1e-10) >= 0.65;
 }
 
+function calculateSMCStructureLevels(candles, direction, zones, bullishOB, bearishOB) {
+  if (!Array.isArray(candles) || candles.length < 20) {
+    return { entry: null, sl: null, tp: null, riskReward: null,
+      slReason: "Waiting for enough candles", tpReason: "Waiting for structure" };
+  }
+
+  const sample = candles.slice(-80);
+  const last = sample[sample.length - 1];
+  const entry = last.close;
+  const poi = direction === "buy"
+    ? (bullishOB || zones.demand)
+    : (bearishOB || zones.supply);
+
+  if (!poi) {
+    return { entry, sl: null, tp: null, riskReward: null,
+      slReason: "No valid directional Order Block or POI identified",
+      tpReason: "No trade levels: directional POI is missing" };
+  }
+
+  // Place invalidation beyond the POI and the recent local extreme,
+  // with a small volatility buffer to reduce ordinary wick stop-outs.
+  const recent = sample.slice(-8, -1);
+  const ranges = sample.slice(-14, -1).map(c => Math.max(0, c.high - c.low));
+  const averageRange = ranges.length
+    ? ranges.reduce((sum, value) => sum + value, 0) / ranges.length
+    : 0;
+  const buffer = averageRange * 0.10;
+  const localLow = Math.min(...recent.map(c => c.low), last.low);
+  const localHigh = Math.max(...recent.map(c => c.high), last.high);
+  const sl = direction === "buy"
+    ? Math.min(poi.low, localLow) - buffer
+    : Math.max(poi.high, localHigh) + buffer;
+  const risk = direction === "buy" ? entry - sl : sl - entry;
+
+  if (!Number.isFinite(risk) || risk <= 0) {
+    return { entry, sl: null, tp: null, riskReward: null,
+      slReason: "POI invalidation is on the wrong side of entry",
+      tpReason: "No valid risk distance; wait for a better entry" };
+  }
+
+  // Find the nearest confirmed opposing swing/liquidity pool beyond entry.
+  let target = null;
+  for (let i = 2; i < sample.length - 2; i++) {
+    const c = sample[i];
+    const isSwingHigh = c.high > sample[i - 1].high &&
+      c.high > sample[i - 2].high &&
+      c.high >= sample[i + 1].high &&
+      c.high >= sample[i + 2].high;
+    const isSwingLow = c.low < sample[i - 1].low &&
+      c.low < sample[i - 2].low &&
+      c.low <= sample[i + 1].low &&
+      c.low <= sample[i + 2].low;
+    if (direction === "buy" && isSwingHigh && c.high > entry &&
+        (target === null || c.high < target)) target = c.high;
+    if (direction === "sell" && isSwingLow && c.low < entry &&
+        (target === null || c.low > target)) target = c.low;
+  }
+
+  // Use the opposing supply/demand boundary as a structural target only
+  // when it is beyond entry and no confirmed swing target was found.
+  if (target === null) {
+    if (direction === "buy" && zones.supply && zones.supply.low > entry) target = zones.supply.low;
+    if (direction === "sell" && zones.demand && zones.demand.high < entry) target = zones.demand.high;
+  }
+
+  if (target === null) {
+    return { entry, sl, tp: null, riskReward: null,
+      slReason: "SL beyond " + (direction === "buy" ? "bullish" : "bearish") + " POI and recent swing extreme",
+      tpReason: "No confirmed opposing liquidity/swing target beyond entry — WAIT" };
+  }
+
+  const reward = direction === "buy" ? target - entry : entry - target;
+  const riskReward = reward / risk;
+  if (!Number.isFinite(reward) || reward <= 0 || riskReward < 1.5) {
+    return { entry, sl, tp: null, riskReward,
+      slReason: "SL beyond " + (direction === "buy" ? "bullish" : "bearish") + " POI and recent swing extreme",
+      tpReason: "Nearest liquidity target offers less than 1:1.5 reward-to-risk — WAIT" };
+  }
+
+  return {
+    entry, sl, tp: target, riskReward,
+    slReason: "Beyond " + (direction === "buy" ? "bullish" : "bearish") + " POI and recent swing extreme",
+    tpReason: "Nearest confirmed opposing swing/liquidity target"
+  };
+}
+
 function analyseSMC(candles) {
   if (!Array.isArray(candles) || candles.length < 20) {
     return {
@@ -1229,16 +1315,14 @@ function analyseSMC(candles) {
           bearConfirmations.length + " confirmations"
         : "Waiting — need 2 compatible confirmations";
 
-  const entry = last.close;
-  const sl = buyReady && !conflicting
-    ? Math.min(last.low, zones.demand ? zones.demand.low : last.low)
-    : sellReady && !conflicting
-      ? Math.max(last.high, zones.supply ? zones.supply.high : last.high)
-      : null;
-  const risk = sl === null ? null : Math.abs(entry - sl);
-  const tp = risk === null ? null : (buyReady ? entry + risk * 2 : entry - risk * 2);
-
   const activeSide = conflicting ? "conflicting" : buyReady ? "buy" : sellReady ? "sell" : "wait";
+  const levels = activeSide === "buy" || activeSide === "sell"
+    ? calculateSMCStructureLevels(candles, activeSide, zones, bullishOB, bearishOB)
+    : { entry: last.close, sl: null, tp: null, riskReward: null,
+        slReason: "No confirmed directional setup", tpReason: "No confirmed directional setup" };
+  const entry = levels.entry;
+  const sl = levels.sl;
+  const tp = levels.tp;
   const activeConfirmations = activeSide === "buy" ? bullConfirmations : activeSide === "sell" ? bearConfirmations : [];
   const opposingConfirmations = activeSide === "buy" ? bearConfirmations : activeSide === "sell" ? bullConfirmations : [];
   const reasoning = conflicting
@@ -1268,7 +1352,10 @@ function analyseSMC(candles) {
     ready: true, strategy: "smc", trend, structure: structure.label,
     liquidity: liquidity.label, signal, entry,
     sl: conflicting ? null : sl, tp: conflicting ? null : tp,
-    invalidation: conflicting ? null : sl, checks,
+    invalidation: conflicting ? null : sl,
+    riskReward: conflicting ? null : levels.riskReward,
+    slReason: levels.slReason, tpReason: levels.tpReason,
+    checks,
     displacement, supply: useSupplyDemand ? zones.supply : null, demand: useSupplyDemand ? zones.demand : null, breaker,
     breakerFound: bullishBreaker || bearishBreaker,
     orderBlock: useOB ? (trend === "Bullish" ? (bullishOB || bearishOB) : (bearishOB || bullishOB)) : null,
@@ -1804,6 +1891,9 @@ function renderTimeframeAnalysis(symbol, timeframe) {
     const details = isSmc
       ? [
           "Entry " + priceText(result.entry) + " | SL " + priceText(result.sl) + " | TP " + priceText(result.tp),
+          "SL logic: " + (result.slReason || "structure invalidation"),
+          "TP logic: " + (result.tpReason || "opposing liquidity target") +
+            (Number.isFinite(result.riskReward) ? " | R:R " + result.riskReward.toFixed(2) + ":1" : ""),
           "Structure detections: " + (structureFlags.join(", ") || result.structure || "none confirmed"),
           "Liquidity: " + (result.liquidity || "waiting"),
           "Displacement: " + (result.displacement ? "detected" : "not detected"),

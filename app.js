@@ -1734,6 +1734,7 @@ function renderTimeframeAnalysis(symbol, timeframe) {
               : { ready: false, strategy: "apa", trend: "Context timeframe only", structure: "No entry analysis on this timeframe", signal: "Context only — APA entries are restricted to selected " + selectedEntryTimeframe.toUpperCase(), supply: null, demand: null })
           : analyseSMC(candles)];
   const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
+  const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
   analyses.forEach(result => {
     if (!result) return;
     if (result.ready) {
@@ -1743,17 +1744,50 @@ function renderTimeframeAnalysis(symbol, timeframe) {
     const strategyName = result.strategy || tradingState.strategy;
     const resultKey = symbol + "|" + timeframe + "|" + strategyName;
     let item = Array.from(box.children).find(child => child.dataset && child.dataset.resultKey === resultKey);
-    if (!item) { item = document.createElement("div"); item.className = "result-item"; item.dataset.resultKey = resultKey; box.prepend(item); }
-    const details = strategyName === "smc"
-      ? ["Supply " + zoneText(result.supply), "Demand " + zoneText(result.demand), "OB " + zoneText(result.orderBlock), "Breaker " + (result.breaker || "not identified"), "Confirmations BUY " + (result.bullishConfirmations || 0) + " / SELL " + (result.bearishConfirmations || 0)].join(" | ")
+    if (!item) { item = document.createElement("div"); item.className = "result-item"; item.dataset.resultKey = resultKey; }
+    const isSmc = strategyName === "smc";
+    const structure = result.structureDetails || {};
+    const fvg = result.fvgDetails || {};
+    const structureFlags = [
+      structure.bosUp ? "Bullish BOS" : "",
+      structure.bosDown ? "Bearish BOS" : "",
+      structure.mssUp ? "Bullish MSS" : "",
+      structure.mssDown ? "Bearish MSS" : "",
+      structure.chochUp ? "Bullish CHoCH" : "",
+      structure.chochDown ? "Bearish CHoCH" : ""
+    ].filter(Boolean);
+    const imbalanceFlags = [
+      fvg.bullishFVG ? "Bullish FVG" : "",
+      fvg.bearishFVG ? "Bearish FVG" : "",
+      fvg.bullishIFVG ? "Bullish IFVG" : "",
+      fvg.bearishIFVG ? "Bearish IFVG" : ""
+    ].filter(Boolean);
+    const details = isSmc
+      ? [
+          "Entry " + priceText(result.entry) + " | SL " + priceText(result.sl) + " | TP " + priceText(result.tp),
+          "Structure detections: " + (structureFlags.join(", ") || result.structure || "none confirmed"),
+          "Liquidity: " + (result.liquidity || "waiting"),
+          "Displacement: " + (result.displacement ? "detected" : "not detected"),
+          "Imbalances: " + (imbalanceFlags.join(", ") || "none confirmed"),
+          "Supply " + zoneText(result.supply) + " | Demand " + zoneText(result.demand),
+          "Order Block " + zoneText(result.orderBlock) + " | Breaker " + (result.breaker || "not identified"),
+          "Confirmations BUY " + (result.bullishConfirmations || 0) + " / SELL " + (result.bearishConfirmations || 0),
+          result.reasoning || ""
+        ].filter(Boolean).join("\n")
       : strategyName === "apa"
-        ? ["Supply " + zoneText(result.supply), "Demand " + zoneText(result.demand), "POI " + zoneText(result.orderBlock)].join(" | ")
+        ? [
+            "Entry " + priceText(result.entry) + " | SL " + priceText(result.sl) + " | TP " + priceText(result.tp),
+            "Supply " + zoneText(result.supply) + " | Demand " + zoneText(result.demand) + " | POI " + zoneText(result.orderBlock)
+          ].join("\n")
         : (result.reasoning || "News analysis");
-    item.textContent = symbol + " " + timeframe.toUpperCase() + " — " + strategyName.toUpperCase() + ": " + (result.trend || "Waiting") + " | " + (result.structure || "Structure pending") + " | " + (result.signal || "Waiting for confirmation") + "\n" + details;
+    item.textContent = symbol + " " + timeframe.toUpperCase() + " — " + strategyName.toUpperCase() +
+      "\nTrend: " + (result.trend || "Waiting") +
+      "\nDecision: " + (result.signal || "Waiting for confirmation") +
+      "\n" + details;
+    if (item.parentNode !== box) box.prepend(item);
   });
   while (box.children.length > 60) box.removeChild(box.lastChild);
 }
-
 function renderDashboardStrategyResults(symbol, timeframe, results) {
   const panel = $("dashboardStrategyResults");
   if (!panel) return;

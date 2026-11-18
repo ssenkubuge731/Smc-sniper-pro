@@ -335,10 +335,10 @@ function prepareMT5Connection() {
 
   const serverText = server
     ? " Server: " + server + "."
-    : " Add the exact server name from your Deriv MT5 account when you have it.";
+    : " Server name is still missing; copy it exactly from your broker's MT5 login screen.";
   setText("mt5ConnectionStatus",
-    brokerName + " setup saved on this device." + serverText +
-    " Status: NOT CONNECTED. The Windows VPS and secure MT5 bridge are still required.");
+    brokerName + " selection saved on this device." + serverText +
+    " Status: NOT CONNECTED. This only saves setup details; the website-to-EA command channel is not implemented yet.");
 }
 
 /* =========================================================
@@ -2347,12 +2347,8 @@ function loadSettings() {
       }
     });
 
-    // Pre-fill the confirmed first broker setup. These are non-secret
-    // connection details only; no MT5 credentials are stored.
-    if ($("mt5Broker") && !saved.mt5Broker) $("mt5Broker").value = "deriv";
-    if ($("mt5Server") && !saved.mt5Server) {
-      $("mt5Server").value = "Access Server - London, Hedge";
-    }
+    // Default to Deriv, but never guess a broker server name.
+    // The user must copy the exact server shown in their MT5 account.
 
     if (saved.mode && $("tradingStyle")) {
       $("tradingStyle").value = saved.mode;
@@ -2440,6 +2436,7 @@ function initApp() {
   if ($("mt5Server") && tradingState.settings.mt5Server) {
     $("mt5Server").value = tradingState.settings.mt5Server;
   }
+  // Keep both broker selectors and their panels in sync on every page load.
   updateBrokerPanels("brokerType");
   updatePairCount();
 

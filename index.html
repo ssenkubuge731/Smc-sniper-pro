@@ -74,6 +74,7 @@
     <select id="strategySelect">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="both">BOTH — APA + SMC (independent engines)</option>
       <option value="news">News Trading — Economic Events</option>
     </select>
     <p id="strategyInfo" class="muted">Select the strategy to use for your selected markets.</p>
@@ -117,6 +118,7 @@
     <select id="scannerStrategy">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="both">BOTH — APA + SMC (independent engines)</option>
       <option value="news">News Trading — Economic Events</option>
     </select>
     <label for="apaEntryStyle">APA entry style</label>
@@ -124,7 +126,7 @@
       <option value="confirmed">Confirmed APA entry</option>
       <option value="early">Early APA entry</option>
     </select>
-    <p class="muted">APA and SMC — Smart Money Concepts are separate strategies. Only the selected strategy should generate signals. Scalping prioritizes a rapid scan cycle on the selected market.</p>
+    <p class="muted">APA and SMC — Smart Money Concepts are separate strategies. APA, SMC or BOTH can be selected; BOTH keeps the two engines and their signals separate. Scalping prioritizes a rapid scan cycle on the selected market.</p>
   </div>
 
   <div class="panel" id="newsTradingPanel">
@@ -310,6 +312,7 @@
     <select id="strategySettings">
       <option value="apa">APA — Advanced Price Action</option>
       <option value="smc">SMC — Smart Money Concepts</option>
+      <option value="both">BOTH — APA + SMC (independent engines)</option>
       <option value="news">News Trading — Economic Events</option>
     </select>
 
@@ -380,7 +383,7 @@
 </footer>
 
 <script src="./smc-intraday.js?v=20261116-2"></script>
-<script src="./app.js?v=20261116-smc-history-policy-4"></script>
+<script src="./app.js?v=20261118-both-engines-1"></script>
   
 
 

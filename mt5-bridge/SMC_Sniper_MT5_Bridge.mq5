@@ -75,10 +75,10 @@ string GetJsonString(const string json,const string key)
    int pos=StringFind(json,needle);
    if(pos<0)return "";
    pos+=StringLen(needle);
-   while(pos<StringLen(json)&&(StringGetCharacter(json,pos)==' '||StringGetCharacter(json,pos)=='\\t'))pos++;
+   while(pos<StringLen(json)&&StringGetCharacter(json,pos)==' ')pos++;
    if(pos>=StringLen(json)||StringGetCharacter(json,pos)!='"')return "";
    pos++;
-   int end=StringFind(json,"\\\"",pos);
+   int end=StringFind(json,"\\"",pos);
    if(end<0)return "";
    return StringSubstr(json,pos,end-pos);
 }
@@ -87,7 +87,7 @@ bool FetchConfiguration()
    if(StringLen(InpBridgeToken)<24)return false;
    char data[],result[];
    string resultHeaders;
-   string headers="Authorization: Bearer "+InpBridgeToken+"\\r\\n";
+   string headers="Authorization: Bearer "+InpBridgeToken+"\r\n";
    ResetLastError();
    int status=WebRequest("GET",InpConfigURL,headers,InpRequestTimeoutMs,data,result,resultHeaders);
    if(status==-1){Print("SMC bridge config fetch failed. WebRequest error ",GetLastError());return false;}

@@ -90,6 +90,35 @@ test("timeframe evaluations keep independent keys/state",()=>{
  assert.equal(engine.frames.join(","),"1m,5m,15m,30m,1h");
  assert.equal(engine.state.latest.size,5);
 });
+test("multitimeframe BUY/SELL/WAIT results stay isolated and retain per-frame plans",()=>{
+ const symbol="MTF-ISOLATION-"+Date.now();
+ const bull=bullPattern(),bear=bearPattern(),neutral=bars(100);
+ const inputs={"1m":bull,"5m":bear,"15m":neutral,"30m":neutral,"1h":neutral};
+ const expected={"1m":"BUY","5m":"SELL","15m":"NONE","30m":"NONE","1h":"NONE"};
+ const results={};
+ for(const tf of engine.frames){
+  const r=engine.evaluate(symbol,tf,inputs[tf]);
+  results[tf]=r;
+  assert.equal(r.side,expected[tf],tf+" side mismatch");
+  assert.equal(r.confirmed,tf==="1m"||tf==="5m",tf+" confirmation mismatch");
+  assert.ok(engine.state.latest.has(symbol+"|"+tf),tf+" missing state key");
+ }
+ assert.equal(engine.state.latest.get(symbol+"|1m").side,"BUY");
+ assert.equal(engine.state.latest.get(symbol+"|5m").side,"SELL");
+ assert.equal(engine.state.latest.get(symbol+"|15m").side,"NONE");
+ assert.notEqual(results["1m"],results["5m"],"records must be distinct");
+ // Opposite signals on different frames are not treated as a same-frame model conflict.
+ assert.equal(results["1m"].conflict,false);
+ assert.equal(results["5m"].conflict,false);
+ // Each frame's trade plan is computed from its own record and candle stream.
+ const plans={"1m":engine.makeEntryPlan(rec("BUY",[101,102]),buyCandles()),
+              "5m":engine.makeEntryPlan(rec("SELL",[99,100]),sellCandles())};
+ assert.ok(plans["1m"]&&!plans["1m"].blocked,JSON.stringify(plans["1m"]));
+ assert.ok(plans["5m"]&&!plans["5m"].blocked,JSON.stringify(plans["5m"]));
+ assert.equal(plans["1m"].side,"BUY");assert.equal(plans["5m"].side,"SELL");
+ assert.ok(plans["1m"].entry!==plans["5m"].entry,"entries should be independently derived");
+ assert.notEqual(plans["1m"],plans["5m"],"plans must not share object state");
+});
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

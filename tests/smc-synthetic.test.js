@@ -293,7 +293,7 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function calculateDemoEquity(");
  const riskStart=source.indexOf("function calculateDemoRiskGuard(");
- const riskEnd=source.indexOf("\\nfunction ",riskStart+10);
+ const riskEnd=source.indexOf("\nfunction ",riskStart+10);
  assert.ok(start>=0&&riskStart>start&&riskEnd>riskStart,"equity and risk helpers exist");
  const fn=source.slice(start,riskEnd);const sandbox={valueOf:()=>""};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;

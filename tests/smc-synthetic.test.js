@@ -440,6 +440,51 @@ test("H4 and D1 invalid structural target and sub-2R cases remain WAIT",()=>{
   assert.ok(under&&under.blocked&&under.rr<2,tf+" must WAIT below 2R");
  }
 });
+test("H4 and D1 volatility spikes widen structural SL beyond POI and extreme wick",()=>{
+ for(const tf of ["4h","1d"]){
+  const cndl=buyCandles();cndl[29]={open:104,high:112,low:94,close:106,time:29};
+  const p=engine.makeEntryPlan(rec("BUY",[101,102]),cndl,2);
+  assert.ok(p&&!p.blocked,tf+" spike plan should remain structurally valid if target RR supports it: "+JSON.stringify(p));
+  assert.ok(p.sl<94,"BUY SL must sit below volatility spike wick");
+  assert.ok(p.sl<101,"BUY SL below POI");
+  const s=sellCandles();s[29]={open:96,high:108,low:88,close:94,time:29};
+  const ps=engine.makeEntryPlan(rec("SELL",[99,100]),s,2);
+  assert.ok(ps&&!ps.blocked,tf+" sell spike plan: "+JSON.stringify(ps));
+  assert.ok(ps.sl>108,"SELL SL beyond spike wick");
+  assert.ok(ps.sl>100,"SELL SL above POI");
+ }
+});
+test("H4 and D1 stale POIs older than configured maximum are excluded",()=>{
+ for(const tf of ["4h","1d"]){
+  const c=buyCandles(),record=rec("BUY",[101,102]);
+  record.zones[0].age=45;record.timeframe=tf;
+  const plan=engine.makeEntryPlan(record,c,2);
+  assert.ok(plan&&plan.blocked,tf+" stale POI must not produce plan");
+  assert.match(plan.reason,/valid supporting POI/i);
+ }
+});
+test("H4 and D1 structure invalidation rejects BUY and SELL supporting POIs",()=>{
+ for(const tf of ["4h","1d"]){
+  const cb=buyCandles(),rb=rec("BUY",[101,102]);rb.timeframe=tf;
+  cb[29]={open:101,high:102,low:98,close:99};
+  const pb=engine.makeEntryPlan(rb,cb,2);
+  assert.ok(pb&&pb.blocked,tf+" BUY POI broken by close under low must be rejected");
+  const cs=sellCandles(),rs=rec("SELL",[99,100]);rs.timeframe=tf;
+  cs[29]={open:99,high:102,low:98,close:101};
+  const ps=engine.makeEntryPlan(rs,cs,2);
+  assert.ok(ps&&ps.blocked,tf+" SELL POI broken by close above high must be rejected");
+ }
+});
+test("H4 and D1 timeframe-specific RR thresholds block subminimum and allow valid plans",()=>{
+ const c=buyCandles(110,105),r=rec("BUY",[101,102]);
+ const plan2=engine.makeEntryPlan(r,c,2),plan25=engine.makeEntryPlan(r,c,2.5);
+ assert.ok(plan2&&!plan2.blocked&&plan2.rr>=2,"2R threshold permits setup");
+ assert.ok(plan25&&plan25.blocked&&plan25.rr<2.5,"2.5R threshold blocks same setup");
+ const sell=sellCandles(90,96),rs=rec("SELL",[99,100]);
+ const ps2=engine.makeEntryPlan(rs,sell,2),ps3=engine.makeEntryPlan(rs,sell,3);
+ assert.ok(ps2&&!ps2.blocked&&ps2.rr>=2);
+ assert.ok(ps3&&ps3.blocked&&ps3.rr<3);
+});
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

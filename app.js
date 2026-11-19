@@ -54,6 +54,7 @@ const tradingState = {
 
   requestId: 1,
   scanTimer: null,
+  mt5ScannerTimer: null,
   scanGeneration: 0,
   scanQueue: [],
   scanQueueTimer: null,
@@ -280,6 +281,7 @@ function updateBrokerPanels(sourceId = "brokerType") {
 
 const MT5_PUBLIC_STATUS_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
 const MT5_CONFIG_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/config";
+const MT5_MARKET_DATA_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/market-data";
 const BRIDGE_ALLOWED_FRAMES = {
   scalping: ["1m","5m"],
   intraday: ["1m","5m","15m","30m","1h"],
@@ -2642,6 +2644,53 @@ function manageScalpingBasketSimulation(symbol, quote) {
    SCANNER
 ========================================================= */
 
+async function scanMT5MarketData(){
+  if(!tradingState.running||tradingState.broker!=="mt5")return;
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
+  const frames=BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping;
+  if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
+  let fresh=0,stale=0,missing=0;
+  for(const symbol of symbols.slice(0,10)){
+    for(const timeframe of frames){
+      try{
+        const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
+        const response=await fetch(url,{cache:"no-store"});
+        if(!response.ok){missing++;continue;}
+        const packet=await response.json();
+        if(packet.status!=="FRESH"||packet.ageSeconds>90){stale++;continue;}
+        const bars=(packet.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(isValidCandle).slice(-150);
+        if(bars.length<30){missing++;continue;}
+        const key=candleKey(symbol,timeframe);
+        tradingState.candles[key]=bars;
+        fresh++;
+        renderTimeframeAnalysis(symbol,timeframe);
+        if((tradingState.strategy==="smc"||tradingState.strategy==="both")&&window.SMCIntradayEngine){
+          const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars);
+          publishSMCSignal(symbol,timeframe,record,bars);
+          renderSMCMultiFrame(symbol);
+        }
+        analyseMainSelection(symbol);
+        addResult("MT5 DATA "+symbol+" "+timeframe.toUpperCase()+" • "+bars.length+" candles • received "+packet.receivedAt,"scannerResults");
+      }catch(error){missing++;}
+    }
+  }
+  setText("scannerStatus","MT5 scanner: "+fresh+" fresh feeds • "+stale+" stale • "+missing+" missing. Demo-only analysis.");
+  setText("derivConnectionStatus","Scanner data source: MT5 broker candles (read-only).");
+}
+function startMT5Scanner(){
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  if(!symbols.length){addResult("MT5 scanner requires symbols in the bridge settings, e.g. XAUUSD,EURUSD.");setText("scannerStatus","Enter MT5 symbols in bridge settings.");return;}
+  stopScanner(false);
+  tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
+  tradingState.mode=valueOf("bridgeMode")||"scalping";
+  tradingState.strategy=valueOf("bridgeStrategy")||"apa";
+  tradingState.selectedSymbols=new Set(symbols);
+  setText("scannerResults","MT5 market-data scanner started. Waiting for fresh candles.");
+  setText("scannerStatus","MT5 data scanner starting — read-only.");
+  scanMT5MarketData();
+  tradingState.mt5ScannerTimer=setInterval(scanMT5MarketData,15000);
+}
 function startScanner(resume = false) {
   const persistedRisk = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
   if (persistedRisk.locked) {

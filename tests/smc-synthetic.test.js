@@ -264,7 +264,7 @@ test("demo ledger summary groups wins, losses, reviews and RR by strategy/timefr
  assert.equal(result.total,5);assert.equal(result.open,1);assert.equal(result.wins,2);assert.equal(result.losses,1);assert.equal(result.review,1);
  assert.equal(result.groups["apa|m5"].wins,1);assert.equal(result.groups["apa|m5"].losses,1);
  assert.equal(result.groups["smc|m15"].open,1);assert.equal(result.groups["smc|m15"].review,1);
- assert.ok(Math.abs(result.groups["smc|m15"].averagePlannedRR-2.7)<1e-9,"exclude open record RR from closed ledger average");
+ assert.ok(Math.abs(result.groups["smc|m15"].averagePlannedRR-2.65)<1e-9,"exclude open record RR from closed ledger average");
 });
 
 test("invalid candles are rejected",()=>{

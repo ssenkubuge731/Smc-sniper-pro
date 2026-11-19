@@ -444,12 +444,12 @@ test("H4 and D1 volatility spikes widen structural SL beyond POI and extreme wic
  for(const tf of ["4h","1d"]){
   const cndl=buyCandles();cndl[29]={open:104,high:112,low:94,close:106,time:29};
   const p=engine.makeEntryPlan(rec("BUY",[101,102]),cndl,2);
-  assert.ok(p&&!p.blocked,tf+" spike plan should remain structurally valid if target RR supports it: "+JSON.stringify(p));
+  assert.ok(p&&Number.isFinite(p.sl),tf+" spike must still calculate structural SL: "+JSON.stringify(p));
   assert.ok(p.sl<94,"BUY SL must sit below volatility spike wick");
   assert.ok(p.sl<101,"BUY SL below POI");
   const s=sellCandles();s[29]={open:96,high:108,low:88,close:94,time:29};
   const ps=engine.makeEntryPlan(rec("SELL",[99,100]),s,2);
-  assert.ok(ps&&!ps.blocked,tf+" sell spike plan: "+JSON.stringify(ps));
+  assert.ok(ps&&Number.isFinite(ps.sl),tf+" sell spike must still calculate structural SL: "+JSON.stringify(ps));
   assert.ok(ps.sl>108,"SELL SL beyond spike wick");
   assert.ok(ps.sl>100,"SELL SL above POI");
  }

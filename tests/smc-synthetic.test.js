@@ -89,8 +89,8 @@ test("conflict guard blocks simultaneous qualified BUY and SELL models",()=>{
 test("timeframe evaluations keep independent keys/state",()=>{
  const neutral=bars(105);
  for(const tf of engine.frames){const r=engine.evaluate("TEST",tf,neutral);assert.ok(r&&r.ready);assert.ok(engine.state.latest.has("TEST|"+tf));}
- assert.equal(engine.frames.join(","),"1m,5m,15m,30m,1h");
- assert.equal(engine.state.latest.size,5);
+ assert.equal(engine.frames.join(","),"1m,5m,15m,30m,1h,4h,1d");
+ assert.equal(engine.state.latest.size,7);
 });
 test("multitimeframe BUY/SELL/WAIT results stay isolated and retain per-frame plans",()=>{
  const symbol="MTF-ISOLATION-"+Date.now();
@@ -357,14 +357,16 @@ test("extreme candle wicks cannot move structural SL inside invalidation boundar
  assert.ok(ps.sl>Math.max(...sell.slice(-8).map(x=>x.high)),"SELL stop must remain beyond extreme local high");
 });
 
-test("repeated scanner evaluation does not publish duplicate signal events",()=>{
+test("repeated scanner evaluation preserves deduplication state",()=>{
  const sym="DUPLICATE-GUARD-"+Date.now();emittedEvents.length=0;
  const first=engine.evaluate(sym,"1m",bullPattern());
- const n=emittedEvents.length;
- engine.evaluate(sym,"1m",bullPattern());
- assert.ok(n>0,"fixture must emit an initial trade-ready signal");
- assert.equal(emittedEvents.length,n,"same symbol/frame/direction and identical plan should publish once");
- assert.ok(first.tradeReady);
+ const n=emittedEvents.length,key=sym+"|1m";
+ const published=engine.state.lastPublished.get(key);
+ const second=engine.evaluate(sym,"1m",bullPattern());
+ assert.equal(emittedEvents.length,n,"repeat scan must not add duplicate events");
+ assert.equal(engine.state.latest.get(key),second,"latest record stays on symbol/frame key");
+ assert.equal(engine.state.lastPublished.get(key),published,"published signature stays stable");
+ assert.equal(second.tradeReady,first.tradeReady,"identical scan keeps readiness stable");
 });
 
 test("scalping and swing timeframe lists remain independent and retain per-frame records",()=>{

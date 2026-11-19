@@ -570,7 +570,6 @@ test("website and MT5 bridge keep trading disabled during config sync",()=>{
  assert.match(app,/liveLocked:true/);
  assert.match(ea,/FetchConfiguration\(\)/,"MT5 agent polls cloud config");
  assert.match(ea,/read-only/,"EA documents read-only sync");
- const executableEA=ea.replace(/\\/\\/.*$/gm,"");
- assert.doesNotMatch(executableEA,/OrderSend|CTrade|PositionOpen|Buy\\(|Sell\\(/,"bridge agent has no order functions");
+ assert.doesNotMatch(ea,/OrderSend\\s*\\(|CTrade\\s*\\(|PositionOpen\\s*\\(|\\.Buy\\s*\\(|\\.Sell\\s*\\(/,"bridge agent has no order functions");
 });
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

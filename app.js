@@ -2754,6 +2754,7 @@ function scanSelectedMarkets() {
 function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
+  if(tradingState.mt5ScannerTimer){clearInterval(tradingState.mt5ScannerTimer);tradingState.mt5ScannerTimer=null;}
   clearScanQueue();
   for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
     if (isSocketOpen()) sendRequest({ forget: subscriptionId });

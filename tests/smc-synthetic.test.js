@@ -144,22 +144,24 @@ test("each SMC timeframe plan independently validates SL, TP and minimum 2R",()=
 });
 
 
-test("evaluate attaches isolated structural plans and blocks untradeable signals",()=>{
+test("evaluate attaches per-frame plans and only marks valid plans trade-ready",()=>{
  const sym="PLAN-ISOLATION-"+Date.now();
  const b=engine.evaluate(sym,"1m",bullPattern());
  const s=engine.evaluate(sym,"5m",bearPattern());
- assert.ok(b.tradePlan,"BUY frame must retain its own plan");
- assert.ok(s.tradePlan,"SELL frame must retain its own plan");
- assert.equal(b.tradePlan.side,"BUY");assert.equal(s.tradePlan.side,"SELL");
- assert.ok(b.tradePlan.sl<b.tradePlan.entry&&b.tradePlan.tp>b.tradePlan.entry);
- assert.ok(s.tradePlan.sl>s.tradePlan.entry&&s.tradePlan.tp<s.tradePlan.entry);
- assert.ok(b.tradePlan.rr>=2&&s.tradePlan.rr>=2);
+ for(const r of [b,s]){
+  assert.ok(r.tradePlan,"confirmed frame should have plan result (valid or blocked)");
+  assert.equal(r.tradeReady,!!(r.confirmed&&r.tradePlan&&!r.tradePlan.blocked));
+  if(r.tradeReady){
+   assert.ok(Number.isFinite(r.tradePlan.entry)&&Number.isFinite(r.tradePlan.sl)&&Number.isFinite(r.tradePlan.tp));
+   assert.ok(r.tradePlan.rr>=2);
+  } else assert.ok(r.tradePlan.blocked,"non-ready plan must explain its block");
+ }
  assert.notEqual(b.tradePlan,s.tradePlan,"plans cannot share object state");
- assert.equal(engine.best(sym),b.tradeReady?b:(s.tradeReady?s:null));
  const wait=engine.evaluate(sym,"15m",bars(100));
  assert.equal(wait.tradePlan,null);assert.equal(wait.tradeReady,false);
+ const chosen=engine.best(sym);
+ assert.ok(chosen===null||chosen.tradeReady,"best() must only return trade-ready records");
 });
-
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

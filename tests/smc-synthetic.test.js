@@ -213,10 +213,10 @@ test("APA, SMC and BOTH routing keeps strategy analyses separate",()=>{
  const end=source.indexOf("\nfunction ",start+10);
  assert.ok(start>=0&&end>start,"timeframe renderer must be located");
  const renderer=source.slice(start,end);
- assert.match(renderer,/tradingState\\.strategy === "both"/,"BOTH must explicitly route separate analyses");
- assert.match(renderer,/analyseAPA\\(candles, higherCandles, lowerCandles\\)/,"APA analyzer must be called independently");
- assert.match(renderer,/analyseSMC\\(candles\\)/,"SMC analyzer must be called independently");
- assert.match(renderer,/resultKey = symbol \\+ "\\|" \\+ timeframe \\+ "\\|" \\+ strategyName/,"results must key by symbol, timeframe and strategy");
+ assert.match(renderer,/tradingState\.strategy === "both"/,"BOTH must explicitly route separate analyses");
+ assert.match(renderer,/analyseAPA\(candles, higherCandles, lowerCandles\)/,"APA analyzer must be called independently");
+ assert.match(renderer,/analyseSMC\(candles\)/,"SMC analyzer must be called independently");
+ assert.match(renderer,/resultKey = symbol \+ "\|" \+ timeframe \+ "\|" \+ strategyName/,"results must key by symbol, timeframe and strategy");
  assert.match(renderer,/strategyName === "smc"/,"SMC results must retain their identity");
  assert.match(renderer,/strategyName === "apa"/,"APA results must retain their identity");
 });

@@ -4,7 +4,8 @@ const path = require("node:path");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const source = fs.readFileSync("smc-intraday.js", "utf8");
-const fakeWindow = { dispatchEvent(){} };
+const emittedEvents=[];
+const fakeWindow = { dispatchEvent(event){emittedEvents.push(event);} };
 const sandbox = { window: fakeWindow, CustomEvent: class CustomEvent { constructor(type,opts){this.type=type;this.detail=opts?.detail;} }, console, Map, Math, Number, Array, Object, String, Date };
 vm.runInNewContext(source, sandbox, {filename:"smc-intraday.js"});
 const engine = fakeWindow.SMCIntradayEngine;
@@ -170,6 +171,30 @@ test("scanner integration requires validated plans and rejects untradeable recor
  assert.match(source,/!record\.tradeReady/,"scanner should reject records not trade-ready");
  assert.match(source,/NOT TRADE-READY; WAIT/,"scanner should display WAIT on invalid plan");
  assert.match(source,/!record\.tradeReady \|\| !record\.tradePlan/,"signal publisher must gate on tradeReady and attached plan");
+});
+
+test("best() selects highest-scoring trade-ready frame and ignores blocked signals",()=>{
+ const sym="BEST-READY-"+Date.now();
+ engine.state.latest.set(sym+"|1m",{symbol:sym,timeframe:"1m",score:99,confirmed:true,tradeReady:false,tradePlan:{blocked:true}});
+ engine.state.latest.set(sym+"|5m",{symbol:sym,timeframe:"5m",score:70,confirmed:true,tradeReady:true,tradePlan:{blocked:false,side:"BUY",rr:2}});
+ engine.state.latest.set(sym+"|15m",{symbol:sym,timeframe:"15m",score:85,confirmed:true,tradeReady:true,tradePlan:{blocked:false,side:"SELL",rr:2.5}});
+ const selected=engine.best(sym);
+ assert.equal(selected.timeframe,"15m","highest-scoring trade-ready frame should win");
+ assert.equal(selected.tradeReady,true);
+});
+
+test("engine only dispatches SMC signal events for trade-ready records",()=>{
+ const sym="EVENT-GATE-"+Date.now();emittedEvents.length=0;
+ const inputs=[["1m",bullPattern()],["5m",bearPattern()],["15m",bars(100)]];
+ const records=inputs.map(([tf,c])=>engine.evaluate(sym,tf,c));
+ assert.ok(records.some(r=>r.confirmed),"fixtures should include confirmed setups");
+ for(const event of emittedEvents){
+  assert.equal(event.type,"smc:signal");
+  assert.equal(event.detail.tradeReady,true,"published record must be trade-ready");
+  assert.ok(event.detail.tradePlan&&!event.detail.tradePlan.blocked);
+  assert.ok(event.detail.tradePlan.rr>=2);
+ }
+ assert.equal(emittedEvents.length,records.filter(r=>r.tradeReady).length,"dispatch count must match ready records");
 });
 
 test("invalid candles are rejected",()=>{

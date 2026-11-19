@@ -706,7 +706,8 @@ function renderSMCEntryPlan(symbol) {
   if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
   const frames = window.SMCIntradayEngine.framesForMode
-    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
   const fmt = value => Number(value).toPrecision(7);
   const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
@@ -2577,7 +2578,12 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (alreadyOpen) return;
 
   const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
-  if (riskGuard.locked) {\n    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");\n    return;\n  }\n\n  const record = {
+  if (riskGuard.locked) {
+    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");
+    return;
+  }
+
+  const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,

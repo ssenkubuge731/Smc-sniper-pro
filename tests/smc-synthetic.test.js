@@ -309,6 +309,19 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  assert.equal(guard(clean,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,false,"healthy ledger stays unlocked");
 });
 
+test("demo risk lock persistence survives restart and manual reset does not erase history",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(source,/const DEMO_RISK_LOCK_KEY = "smcSniperProDemoRiskLockV1"/,"dedicated persisted lock key exists");
+ const start=source.indexOf("function calculateDemoRiskGuard(");const end=source.indexOf("\nfunction calculateDemoEquity(",start);
+ assert.ok(start>=0&&end>start,"risk guard can be isolated");const fn=source.slice(start,end);
+ assert.match(fn,/localStorage\.getItem\(DEMO_RISK_LOCK_KEY/,"reads persisted lock");
+ assert.match(fn,/localStorage\.setItem\(DEMO_RISK_LOCK_KEY/,"persists when breached");
+ assert.match(fn,/persisted\?\.locked/,"reuses lock after page reload");
+ assert.match(source,/localStorage\.removeItem\(DEMO_RISK_LOCK_KEY\)/,"manual reset clears only lock key");
+ assert.match(source,/Reset demo risk lock \(manual\)/,"reset is explicit UI action");
+ assert.match(source,/renderSignalHistory\(\);/,"history rerender after reset");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

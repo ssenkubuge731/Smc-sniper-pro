@@ -286,11 +286,16 @@ const BRIDGE_ALLOWED_FRAMES = {
   scalping: ["1m","5m"],
   intraday: ["1m","5m","15m","30m","1h"]
 };
+function getBridgeFrames(mode,strategy){
+  if(mode==="scalping") return [...BRIDGE_ALLOWED_FRAMES.scalping];
+  if(strategy==="apa"||strategy==="both") return [...APA_REQUIRED_FRAMES];
+  return [...BRIDGE_ALLOWED_FRAMES.intraday];
+}
 function renderBridgeTimeframes(){
   const mode=valueOf("bridgeMode")||"scalping",box=$("bridgeTimeframes");
   if(!box)return;
   box.replaceChildren();
-  (BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping).forEach(tf=>{
+  (getBridgeFrames(mode,valueOf("bridgeStrategy"))).forEach(tf=>{
     const label=document.createElement("label");label.className="check";
     const input=document.createElement("input");input.type="checkbox";input.value=tf;input.checked=true;input.dataset.bridgeTf="1";
     label.appendChild(input);label.appendChild(document.createTextNode(tf.toUpperCase()));
@@ -1585,7 +1590,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
 }
 
 
-/* APA TOP-DOWN ENGINE: D1 context -> H4/H1 confirmation -> mode setup -> M1 trigger. */
+/* APA TOP-DOWN ENGINE: D1 -> H4 -> H1 -> M30 -> M15 setup -> M5 refinement -> M1 trigger. */
 function analyseAPATopDown(symbol) {
   if (tradingState.mode !== "intraday") {
     return { ready: false, strategy: "apa", signal: "APA is Intraday-only — select Intraday to analyse APA", entry: null, sl: null, tp: null, reasoning: "APA does not generate Scalping or Swing signals." };
@@ -1596,12 +1601,15 @@ function analyseAPATopDown(symbol) {
   const h1 = tradingState.candles[candleKey(symbol, "1h")] || [];
   const m30 = tradingState.candles[candleKey(symbol, "30m")] || [];
   const setup = tradingState.candles[candleKey(symbol, setupTimeframe)] || [];
+  const m5 = tradingState.candles[candleKey(symbol, "5m")] || [];
   const m1 = tradingState.candles[candleKey(symbol, "1m")] || [];
   const closed = candles => Array.isArray(candles) ? candles.slice(0, -1) : [];
   const d1Trend = getTrend(closed(daily)), h4Trend = getTrend(closed(h4)), h1Trend = getTrend(closed(h1));
-  const m30Trend = tradingState.mode === "intraday" ? getTrend(closed(m30)) : "not required";
-  const enough = closed(daily).length >= 12 && closed(h4).length >= 12 && closed(h1).length >= 12 && closed(setup).length >= 20 && closed(m1).length >= 20;
-  const context = tradingState.mode === "intraday" ? [d1Trend,h4Trend,h1Trend,m30Trend] : [d1Trend,h4Trend,h1Trend];
+  const m30Trend = getTrend(closed(m30)), m5Trend = getTrend(closed(m5));
+  const enough = closed(daily).length >= 12 && closed(h4).length >= 12 &&
+    closed(h1).length >= 12 && closed(m30).length >= 12 &&
+    closed(setup).length >= 20 && closed(m5).length >= 12 && closed(m1).length >= 20;
+  const context = [d1Trend,h4Trend,h1Trend,m30Trend,m5Trend];
   const bullishContext = context.every(t => t === "Bullish"), bearishContext = context.every(t => t === "Bearish");
   const base = analyseAPA(setup, daily, m1);
   const direction = /\bBUY\b/i.test(base.signal || "") ? "BUY" : /\bSELL\b/i.test(base.signal || "") ? "SELL" : "";
@@ -1615,10 +1623,10 @@ function analyseAPATopDown(symbol) {
   const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;
   const tp = risk > 0 ? (direction === "BUY" ? entry + risk * 2 : entry - risk * 2) : null;
   const valid = Boolean(enough && base.ready && direction && contextAligned && trigger && Number.isFinite(entry) && risk > 0);
-  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + (tradingState.mode === "intraday" ? " / M30 " + m30Trend : "");
+  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + " / M30 " + m30Trend + " / M5 " + m5Trend;
   const waitReason = !enough ? "Waiting for sufficient closed candles across required timeframes" : !direction ? "Setup timeframe has no completed APA sequence" : !contextAligned ? "Higher-timeframe trend alignment is not confirmed" : !trigger ? "Waiting for M1 structure/sweep plus displacement entry trigger" : "APA sequence confirmed";
   return { ...base, ready: true, strategy: "apa", setupTimeframe, entryTimeframe: "1m", trend: contextText, signal: valid ? "Potential APA " + direction + " — top-down setup and M1 trigger confirmed" : "APA WAIT — " + waitReason, entry: valid ? entry : null, sl: valid ? sl : null, tp: valid ? tp : null, invalidation: valid ? sl : null, riskReward: valid && risk > 0 ? 2 : null,
-    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ...(tradingState.mode === "intraday" ? [["M30 context alignment", m30Trend === (direction === "BUY" ? "Bullish" : "Bearish")]] : []), ["Setup timeframe sweep → BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))], ["M1 directional displacement", Boolean(direction && m1Displacement && (direction === "BUY" ? m1Bull : m1Bear))], ["M1 BOS/MSS/CHoCH or liquidity sweep", Boolean(direction && (direction === "BUY" ? (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow) : (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh)))], ["M1 entry trigger", valid]],
+    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ...(tradingState.mode === "intraday" ? [["M30 context alignment", m30Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["M5 refinement alignment", m5Trend === (direction === "BUY" ? "Bullish" : "Bearish")]], ["Setup timeframe sweep → BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))], ["M1 directional displacement", Boolean(direction && m1Displacement && (direction === "BUY" ? m1Bull : m1Bear))], ["M1 BOS/MSS/CHoCH or liquidity sweep", Boolean(direction && (direction === "BUY" ? (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow) : (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh)))], ["M1 entry trigger", valid]],
     reasoning: "Top-down: " + contextText + ". Setup timeframe: " + setupTimeframe.toUpperCase() + ". Final trigger: M1. " + waitReason + ". " + (base.reasoning || ""), m1Structure, m1Sweep, m1Displacement };
 }
 
@@ -2703,9 +2711,11 @@ async function scanMT5MarketData(){
   if(!tradingState.running||tradingState.broker!=="mt5")return;
   const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
   const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
-  const allowed=BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping;
+  const strategy=valueOf("bridgeStrategy")||tradingState.strategy||"apa";
+  const allowed=getBridgeFrames(mode,strategy);
   const checkedFrames=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
-  const frames=checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed;
+  const required=(mode==="intraday"&&(strategy==="apa"||strategy==="both"))?APA_REQUIRED_FRAMES:[];
+  const frames=[...new Set([...required,...(checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed)])];
   if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
   let fresh=0,stale=0,missing=0;
   for(const symbol of symbols.slice(0,10)){
@@ -2721,6 +2731,7 @@ async function scanMT5MarketData(){
         const key=candleKey(symbol,timeframe);
         tradingState.candles[key]=bars;
         fresh++;
+        if(timeframe==="1m") manageScalpingBasketSimulation(symbol,bars[bars.length-1].close);
         renderTimeframeAnalysis(symbol,timeframe);
         if((tradingState.strategy==="smc"||tradingState.strategy==="both")&&window.SMCIntradayEngine){
           const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars,tradingState.mode);

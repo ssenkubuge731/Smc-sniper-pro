@@ -106,6 +106,20 @@ export default {
   let raw;try{raw=await request.text();}catch{return json({error:"Could not read request body"},400);}
   if(new TextEncoder().encode(raw).length>MAX_BODY_BYTES)return json({error:"Payload too large"},413);
   let body;try{body=JSON.parse(raw);}catch{return json({error:"Invalid JSON"},400);}
+  if(url.pathname==="/mt5/market-data"){
+    const symbol=body?.symbol,timeframe=body?.timeframe,bars=body?.candles;
+    if(!validText(symbol,32)||!/^[A-Za-z0-9._/ -]+$/.test(symbol)||
+      !Object.values(FRAMES).flat().includes(timeframe)||!Array.isArray(bars)||bars.length<30||bars.length>150||
+      !bars.every((c,i)=>c&&Number.isInteger(c.epoch)&&c.epoch>0&&
+        Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&
+        c.high>=Math.max(c.open,c.close,c.low)&&c.low<=Math.min(c.open,c.close,c.high)&&
+        (i===0||c.epoch>bars[i-1].epoch))){
+      return json({error:"Invalid market-data packet. Need 30–150 ordered valid OHLC candles."},400);
+    }
+    const packet={symbol,timeframe,candles:bars.slice(-150),receivedAt:new Date().toISOString(),source:"MT5"};
+    await env.MT5_HEARTBEATS.put("market:"+encodeURIComponent(symbol)+"|"+timeframe,JSON.stringify(packet),{expirationTtl:MARKET_DATA_TTL_SECONDS});
+    return json({accepted:true,status:"MARKET_DATA_SAVED",symbol,timeframe,candleCount:packet.candles.length,receivedAt:packet.receivedAt});
+  }
   if(url.pathname==="/mt5/config"){
     const validated=validateConfig(body);
     if(!validated.ok)return json({error:validated.error},400);

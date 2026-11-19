@@ -203,8 +203,8 @@ test("SMC signal publisher maps structural TP from plan.tp, not legacy tp2",()=>
  const end=source.indexOf("\n/* =========================================================",start);
  assert.ok(start>=0&&end>start,"publisher function should be found");
  const publisher=source.slice(start,end);
- assert.match(publisher,/tp:\\s*plan\\.tp\\s*,/,"published TP must use structural plan.tp");
- assert.doesNotMatch(publisher,/plan\\.tp2/,"legacy tp2 property must not be used");
+ assert.match(publisher,/tp:\s*plan\.tp\s*,/,"published TP must use structural plan.tp");
+ assert.doesNotMatch(publisher,/plan\.tp2/,"legacy tp2 property must not be used");
 });
 
 test("invalid candles are rejected",()=>{

@@ -245,6 +245,28 @@ test("trade outcome handling flags same-candle SL and TP as review and uses post
  assert.match(fn,/outcomeCandleEpoch/,"outcome candle timestamp must be stored");
 });
 
+test("demo ledger summary groups wins, losses, reviews and RR by strategy/timeframe",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function summarizeDemoLedger(");
+ const end=source.indexOf("\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"ledger summarizer should be present");
+ const fn=source.slice(start,end);
+ const sandbox={};vm.runInNewContext(fn+";summarizeDemoLedger",sandbox);
+ const summarize=sandbox.summarizeDemoLedger;
+ const records=[
+  {strategy:"apa",timeframe:"m5",status:"TP HIT",plannedRR:2.4},
+  {strategy:"apa",timeframe:"m5",status:"SL HIT",plannedRR:2},
+  {strategy:"smc",timeframe:"m15",status:"OPEN",riskReward:2.1},
+  {strategy:"smc",timeframe:"m15",status:"REVIEW — SL and TP touched in same candle",riskReward:2.3},
+  {strategy:"smc",timeframe:"m15",status:"TP HIT",plannedRR:3}
+ ];
+ const result=summarize(records);
+ assert.equal(result.total,5);assert.equal(result.open,1);assert.equal(result.wins,2);assert.equal(result.losses,1);assert.equal(result.review,1);
+ assert.equal(result.groups["apa|m5"].wins,1);assert.equal(result.groups["apa|m5"].losses,1);
+ assert.equal(result.groups["smc|m15"].open,1);assert.equal(result.groups["smc|m15"].review,1);
+ assert.ok(Math.abs(result.groups["smc|m15"].averagePlannedRR-2.7)<1e-9,"exclude open record RR from closed ledger average");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

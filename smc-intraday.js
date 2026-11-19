@@ -176,7 +176,7 @@
       const history=candles.slice(0,i+1),record=detect(history);
       if(!record.ready||!record.confirmed)continue;
       const plan=makeEntryPlan(record,history,rr);if(!plan||plan.blocked)continue;
-      const entry=Number(record.price),sl=Number(plan.sl),tp=Number(plan.tp2);
+      const entry=Number(plan.entry),sl=Number(plan.sl),tp=Number(plan.tp);
       let outcome="OPEN",exitPrice=null,bars=0;
       for(let j=i+1;j<=Math.min(candles.length-1,i+horizon);j++){
         const bar=candles[j],hitSL=record.side==="BUY"?Number(bar.low)<=sl:Number(bar.high)>=sl;

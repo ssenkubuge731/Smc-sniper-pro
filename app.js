@@ -739,7 +739,9 @@ function renderSMCEntryPlan(symbol) {
 
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
-  const frames=window.SMCIntradayEngine.framesForMode\n    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;\n  const rows=frames.map(tf=>{
+  const frames=window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;\n  const rows=frames.map(tf=>{
     const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
     return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
   });

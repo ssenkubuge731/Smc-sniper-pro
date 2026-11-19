@@ -113,7 +113,7 @@
     const bc=Object.values(buy).filter(Boolean).length,sc=Object.values(sell).filter(Boolean).length;
     // A complete qualifying model on each side is a hard conflict.
     // Do not let a larger raw evidence count on one side override it.
-    const conflict=buyModels.length>0&&sellModels.length>0;
+    const conflict=hasConflict(buyModels,sellModels);
     const side=conflict?"NONE":buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
     const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
@@ -129,6 +129,7 @@
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
+  function hasConflict(buyModels,sellModels){return Array.isArray(buyModels)&&Array.isArray(sellModels)&&buyModels.length>0&&sellModels.length>0;}
   function makeEntryPlan(record, candles, minimumRR=2) {
     if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<20) return null;
     const side=record.side, candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
@@ -210,5 +211,5 @@
     const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,backtest,state};
+  window.SMCIntradayEngine={frames:FRAMES.slice(),detect,hasConflict,evaluate,best,makeEntryPlan,backtest,state};
 })();

@@ -648,10 +648,9 @@ function renderSMCEntryPlan(symbol) {
     if (!record) return timeframe.toUpperCase() + " — waiting for candle analysis";
     if (!record.ready) return timeframe.toUpperCase() + " — " + (record.status || "waiting for enough candles");
     if (!record.confirmed) return timeframe.toUpperCase() + " — scanning; no confirmed entry yet";
-    const candles = tradingState.candles[symbol + "|" + timeframe] || [];
-    const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-    if (!plan) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — plan needs more candle data";
-    if (plan.blocked) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — SL/TP held: " + plan.reason;
+    const plan = record.tradePlan;
+    if (!plan) return timeframe.toUpperCase() + " " + record.side + " — trade plan unavailable; WAIT";
+    if (plan.blocked || !record.tradeReady) return timeframe.toUpperCase() + " " + record.side + " — NOT TRADE-READY; WAIT: " + (plan.reason || "plan validation failed");
     return [
       timeframe.toUpperCase() + " " + plan.side,
       "Entry " + fmt(plan.entry),
@@ -691,9 +690,8 @@ function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"�
 // Each SMC timeframe can publish its own demo signal independently.
 // This records a signal preview only; it never sends a broker order.
 function publishSMCSignal(symbol, timeframe, record, candles) {
-  if (!record || !record.confirmed || !window.SMCIntradayEngine) return;
-  const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-  if (!plan || plan.blocked) return;
+  if (!record || !record.confirmed || !record.tradeReady || !record.tradePlan || !window.SMCIntradayEngine) return;
+  const plan = record.tradePlan;
   recordCandidateSignal(symbol, timeframe, {
     strategy: "smc",
     signal: plan.side + " — SMC " + timeframe.toUpperCase() + " confirmed",

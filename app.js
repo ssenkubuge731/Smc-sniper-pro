@@ -666,7 +666,7 @@ function renderSMCEntryPlan(symbol) {
     "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
     "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
     lines.join("\n") +
-    "\nSL is based on that timeframe's POI/structure + ATR buffer; TP1/TP2/TP3 = 1.5R/2R/3R. " +
+    "\nEach timeframe uses its own POI/swing invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
     "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
 }
 function renderSMCMultiFrame(symbol) {

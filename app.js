@@ -2236,6 +2236,39 @@ function renderScalpActivity() {
   }
 }
 
+function summarizeDemoLedger(records) {
+  const summary = { total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0, groups: {} };
+  (Array.isArray(records) ? records : []).forEach(record => {
+    if (!record || !record.status) return;
+    summary.total++;
+    const status = String(record.status).toUpperCase();
+    if (status === "OPEN") summary.open++;
+    else if (status === "TP HIT") summary.wins++;
+    else if (status === "SL HIT") summary.losses++;
+    else if (status.startsWith("REVIEW")) summary.review++;
+    else summary.otherClosed++;
+    const strategy = String(record.strategy || "APA").toLowerCase();
+    const timeframe = String(record.timeframe || "unknown").toLowerCase();
+    const key = strategy + "|" + timeframe;
+    if (!summary.groups[key]) summary.groups[key] = { strategy, timeframe, total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0 };
+    const group = summary.groups[key];
+    group.total++;
+    if (status === "OPEN") group.open++;
+    else if (status === "TP HIT") group.wins++;
+    else if (status === "SL HIT") group.losses++;
+    else if (status.startsWith("REVIEW")) group.review++;
+    else group.otherClosed++;
+    const rr = Number(record.riskReward ?? record.plannedRR);
+    if (Number.isFinite(rr) && rr > 0 && record.mode !== "scalping") {
+      group.plannedRRTotal += rr; group.plannedRRCount++;
+      summary.plannedRRTotal += rr; summary.plannedRRCount++;
+    }
+  });
+  summary.averagePlannedRR = summary.plannedRRCount ? summary.plannedRRTotal / summary.plannedRRCount : null;
+  Object.values(summary.groups).forEach(group => { group.averagePlannedRR = group.plannedRRCount ? group.plannedRRTotal / group.plannedRRCount : null; });
+  return summary;
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
   renderScalpActivity();

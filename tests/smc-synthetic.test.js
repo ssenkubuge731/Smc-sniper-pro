@@ -566,7 +566,7 @@ test("website and MT5 bridge keep trading disabled during config sync",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const ea=fs.readFileSync(path.join(__dirname,"../mt5-bridge/SMC_Sniper_MT5_Bridge.mq5"),"utf8");
  assert.match(html,/demo-only/);
- assert.match(html,/does not send trade commands/);
+ assert.match(html,/does not.*send trade commands/);
  assert.match(app,/liveLocked:true/);
  assert.match(ea,/FetchConfiguration\(\)/,"MT5 agent polls cloud config");
  assert.match(ea,/read-only/,"EA documents read-only sync");

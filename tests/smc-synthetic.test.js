@@ -119,6 +119,30 @@ test("multitimeframe BUY/SELL/WAIT results stay isolated and retain per-frame pl
  assert.ok(plans["1m"].entry!==plans["5m"].entry,"entries should be independently derived");
  assert.notEqual(plans["1m"],plans["5m"],"plans must not share object state");
 });
+
+test("each SMC timeframe plan independently validates SL, TP and minimum 2R",()=>{
+ const buyFrames=["1m","5m","15m","30m","1h"],sellFrames=["1m","5m","15m","30m","1h"];
+ const plans=[];
+ for(const tf of buyFrames){
+  const p=engine.makeEntryPlan(rec("BUY",[101,102]),buyCandles(),2);
+  assert.ok(p&&!p.blocked,tf+" BUY plan blocked: "+JSON.stringify(p));
+  assert.ok(Number.isFinite(p.entry)&&Number.isFinite(p.sl)&&Number.isFinite(p.tp),tf+" BUY levels not numeric");
+  assert.ok(p.sl<p.entry&&p.tp>p.entry,tf+" BUY SL/TP side incorrect");
+  assert.ok(p.risk>0&&p.rr>=2,tf+" BUY risk/RR invalid");
+  plans.push({tf,side:p.side,entry:p.entry,sl:p.sl,tp:p.tp});
+ }
+ for(const tf of sellFrames){
+  const p=engine.makeEntryPlan(rec("SELL",[99,100]),sellCandles(),2);
+  assert.ok(p&&!p.blocked,tf+" SELL plan blocked: "+JSON.stringify(p));
+  assert.ok(Number.isFinite(p.entry)&&Number.isFinite(p.sl)&&Number.isFinite(p.tp),tf+" SELL levels not numeric");
+  assert.ok(p.sl>p.entry&&p.tp<p.entry,tf+" SELL SL/TP side incorrect");
+  assert.ok(p.risk>0&&p.rr>=2,tf+" SELL risk/RR invalid");
+  plans.push({tf,side:p.side,entry:p.entry,sl:p.sl,tp:p.tp});
+ }
+ assert.equal(plans.length,10);
+ assert.notEqual(plans[0],plans[1],"plan state objects must remain separate");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

@@ -199,15 +199,16 @@
       winRate:resolved?100*wins/resolved:0,avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0,
       note:"Candle replay approximation. If one candle hits SL and TP, SL is counted first. No spread/slippage/commission; not proof of profitability."};
   }
-  function evaluate(symbol,timeframe,candles){
+  function evaluate(symbol,timeframe,candles,mode="intraday"){
     if(!FRAMES.includes(timeframe))return null;
     const result=detect(candles),key=symbol+"|"+timeframe;
     const plan=result.ready&&result.confirmed?makeEntryPlan(result,candles,2):null;
     const record=Object.assign({symbol,timeframe,time:Date.now()},result,{tradePlan:plan,tradeReady:!!(result.confirmed&&plan&&!plan.blocked)});
     state.latest.set(key,record);state.zones.set(key,result.zones||[]);
-    // Publish only if signal AND structural plan are valid. Detection alone
-    // is not enough to authorize a trade setup.
-    if(record.tradeReady){const sig=key+"|"+record.side+"|"+record.count+"|"+record.tradePlan.entry+"|"+record.tradePlan.sl+"|"+record.tradePlan.tp;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
+    // H4/D1 can be analysed as context, but only frames enabled for the
+    // active SMC mode may publish a trade-ready signal.
+    const modeAllowsFrame=framesForMode(mode).includes(timeframe);
+    if(record.tradeReady&&modeAllowsFrame){const sig=key+"|"+record.side+"|"+record.count+"|"+record.tradePlan.entry+"|"+record.tradePlan.sl+"|"+record.tradePlan.tp;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
     return record;
   }
   function framesForMode(mode){return (MODE_FRAMES[mode]||MODE_FRAMES.scalping).slice();}

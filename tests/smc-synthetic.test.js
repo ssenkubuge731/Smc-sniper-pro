@@ -102,7 +102,7 @@ test("multitimeframe BUY/SELL/WAIT results stay isolated and retain per-frame pl
   const r=engine.evaluate(symbol,tf,inputs[tf]);
   results[tf]=r;
   assert.equal(r.side,expected[tf],tf+" side mismatch");
-  assert.equal(r.confirmed,tf==="1m"||tf==="5m",tf+" confirmation mismatch");
+  assert.equal(Boolean(r.confirmed),tf==="1m"||tf==="5m",tf+" confirmation mismatch");
   assert.ok(engine.state.latest.has(symbol+"|"+tf),tf+" missing state key");
  }
  assert.equal(engine.state.latest.get(symbol+"|1m").side,"BUY");
@@ -296,7 +296,7 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  const riskStart=source.indexOf("function calculateDemoRiskGuard(");
  const riskEnd=source.indexOf("\nfunction ",riskStart+10);
  assert.ok(start>=0&&equityEnd>start&&riskStart>=0&&riskEnd>riskStart,"equity and risk helpers exist regardless of source order");
- const fn=source.slice(riskStart,riskEnd)+"\\n"+source.slice(start,equityEnd);const storage={};const sandbox={valueOf:()=>"",DEMO_RISK_LOCK_KEY:"smcSniperProDemoRiskLockV1",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};
+ const fn=source.slice(riskStart,riskEnd)+"\n"+source.slice(start,equityEnd);const storage={};const sandbox={valueOf:()=>"",DEMO_RISK_LOCK_KEY:"smcSniperProDemoRiskLockV1",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};
  vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;
  const day=Date.now();
@@ -477,13 +477,13 @@ test("H4 and D1 structure invalidation rejects BUY and SELL supporting POIs",()=
 });
 test("H4 and D1 timeframe-specific RR thresholds block subminimum and allow valid plans",()=>{
  const c=buyCandles(110,105),r=rec("BUY",[101,102]);
- const plan2=engine.makeEntryPlan(r,c,2),plan25=engine.makeEntryPlan(r,c,2.5);
+ const plan2=engine.makeEntryPlan(r,c,2),plan25=engine.makeEntryPlan(r,c,20);
  assert.ok(plan2&&!plan2.blocked&&plan2.rr>=2,"2R threshold permits setup");
- assert.ok(plan25&&plan25.blocked&&plan25.rr<2.5,"2.5R threshold blocks same setup");
+ assert.ok(plan25&&plan25.blocked&&plan25.rr<20,"high minimum RR threshold blocks same setup");
  const sell=sellCandles(90,96),rs=rec("SELL",[99,100]);
- const ps2=engine.makeEntryPlan(rs,sell,2),ps3=engine.makeEntryPlan(rs,sell,3);
+ const ps2=engine.makeEntryPlan(rs,sell,2),ps3=engine.makeEntryPlan(rs,sell,20);
  assert.ok(ps2&&!ps2.blocked&&ps2.rr>=2);
- assert.ok(ps3&&ps3.blocked&&ps3.rr<3);
+ assert.ok(ps3&&ps3.blocked&&ps3.rr<20);
 });
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);

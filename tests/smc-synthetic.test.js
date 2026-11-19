@@ -291,10 +291,7 @@ test("demo equity curve calculates net R and maximum drawdown from closed trades
 
 test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
- const start=source.indexOf("function calculateDemoRiskGuard(");const end=source.indexOf("\nfunction ",start+10);
- assert.ok(start>=0&&end>start,"risk guard helper exists");
- const fn=source.slice(start,end);const sandbox={valueOf:()=>"",calculateDemoEquity};
- vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
+ const start=source.indexOf("function calculateDemoEquity(");\n const riskStart=source.indexOf("function calculateDemoRiskGuard(");\n const riskEnd=source.indexOf("\\nfunction ",riskStart+10);\n assert.ok(start>=0&&riskStart>start&&riskEnd>riskStart,"equity and risk helpers exist");\n const fn=source.slice(start,riskEnd);const sandbox={valueOf:()=>""};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;
  const day=Date.now();
  const base={mode:"intraday",riskReward:2,plannedRR:2};

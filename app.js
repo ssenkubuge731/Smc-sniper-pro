@@ -2269,6 +2269,24 @@ function summarizeDemoLedger(records) {
   return summary;
 }
 
+function calculateDemoRiskGuard(records, settings = {}) {
+ const history=Array.isArray(records)?records:[];
+ const riskPct=Math.max(0.01,Number(settings.riskPercent ?? valueOf("riskPercent"))||0.5);
+ const dailyLimitPct=Math.max(0.01,Number(settings.dailyLossLimit ?? valueOf("dailyLossLimit"))||2);
+ const maxConsecutive=Math.max(1,Number(settings.maxConsecutiveLosses ?? valueOf("maxConsecutiveLosses"))||3);
+ const limitR=dailyLimitPct/riskPct;
+ const dayStart=new Date();dayStart.setHours(0,0,0,0);
+ const daily=history.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")&&Number(r.closedAt||0)>=dayStart.getTime());
+ const dailyNetR=daily.reduce((sum,r)=>sum+(r.status==="TP HIT"?Math.max(0,Number(r.riskReward??r.plannedRR)||0):-1),0);
+ const closed=history.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")).sort((a,b)=>Number(a.closedAt||a.createdAt||0)-Number(b.closedAt||b.createdAt||0));
+ let consecutiveLosses=0;for(let i=closed.length-1;i>=0;i--){if(closed[i].status==="SL HIT")consecutiveLosses++;else break;}
+ const eq=calculateDemoEquity(history);const reasons=[];
+ if(dailyNetR<=-limitR)reasons.push("Daily loss limit reached");
+ if(consecutiveLosses>=maxConsecutive)reasons.push("Consecutive-loss limit reached");
+ if(eq.maxDrawdownR>=limitR)reasons.push("Maximum drawdown limit reached");
+ return {locked:reasons.length>0,lockReasons:reasons,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
+}
+
 function calculateDemoEquity(records) {
   const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && !String(record.status).toUpperCase().startsWith("REVIEW") && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
   closed.sort((a,b) => Number(a.closedAt || a.createdAt || 0) - Number(b.closedAt || b.createdAt || 0));
@@ -2470,7 +2488,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   );
   if (alreadyOpen) return;
 
-  const record = {
+  const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);\n  if (riskGuard.locked) {\n    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");\n    return;\n  }\n\n  const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,

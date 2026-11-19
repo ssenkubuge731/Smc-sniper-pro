@@ -22,7 +22,7 @@ const TIMEFRAMES = {
   swing: ["1h", "4h", "1d"]
 };
 
-const GRANULARITY = {
+const APA_REQUIRED_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];\nconst APA_SETUP_FRAME = { scalping: "5m", intraday: "15m", swing: "1h" };\n\nconst GRANULARITY = {
   "1m": 60,
   "5m": 300,
   "15m": 900,
@@ -187,22 +187,15 @@ function updateMode() {
 
   timeframeSelect.replaceChildren();
 
-  frames.forEach(frame => {
-    const option = document.createElement("option");
+  const entryFrames = frames.includes("1m") ? frames : ["1m", ...frames];\n  entryFrames.forEach(frame => {\n    const option = document.createElement("option");
     option.value = frame;
     option.textContent = frame.toUpperCase();
     timeframeSelect.appendChild(option);
   });
 
-  timeframeSelect.value = frames.includes(previous)
-    ? previous
-    : frames[0];
+  timeframeSelect.value = entryFrames.includes(previous) ? previous : "1m";
 
-  const modeInfo = mode === "intraday"
-    ? "Intraday analysis and entry timeframes: M1, M5, M15, M30 and H1"
-    : mode === "scalping"
-      ? "APA scalping scan and selected-entry logic: M1 / M5"
-      : "Swing timeframe set: H1 / H4 / D1";
+  const modeInfo = mode === "intraday"\n    ? "Top-down APA: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry (setup M15)"\n    : mode === "scalping"\n      ? "Top-down APA: D1 → H4 → H1 → M5 → M1 entry (setup M5)"\n      : "Top-down APA: D1 → H4 → H1 → M1 entry (setup H1)";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
@@ -1580,6 +1573,40 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
 }
 
 
+/* APA TOP-DOWN ENGINE: D1 context -> H4/H1 confirmation -> mode setup -> M1 trigger. */
+function analyseAPATopDown(symbol) {
+  const setupTimeframe = APA_SETUP_FRAME[tradingState.mode] || "5m";
+  const daily = tradingState.candles[candleKey(symbol, "1d")] || [];
+  const h4 = tradingState.candles[candleKey(symbol, "4h")] || [];
+  const h1 = tradingState.candles[candleKey(symbol, "1h")] || [];
+  const m30 = tradingState.candles[candleKey(symbol, "30m")] || [];
+  const setup = tradingState.candles[candleKey(symbol, setupTimeframe)] || [];
+  const m1 = tradingState.candles[candleKey(symbol, "1m")] || [];
+  const closed = candles => Array.isArray(candles) ? candles.slice(0, -1) : [];
+  const d1Trend = getTrend(closed(daily)), h4Trend = getTrend(closed(h4)), h1Trend = getTrend(closed(h1));
+  const m30Trend = tradingState.mode === "intraday" ? getTrend(closed(m30)) : "not required";
+  const enough = closed(daily).length >= 12 && closed(h4).length >= 12 && closed(h1).length >= 12 && closed(setup).length >= 20 && closed(m1).length >= 20;
+  const context = tradingState.mode === "intraday" ? [d1Trend,h4Trend,h1Trend,m30Trend] : [d1Trend,h4Trend,h1Trend];
+  const bullishContext = context.every(t => t === "Bullish"), bearishContext = context.every(t => t === "Bearish");
+  const base = analyseAPA(setup, daily, m1);
+  const direction = /\\bBUY\\b/i.test(base.signal || "") ? "BUY" : /\\bSELL\\b/i.test(base.signal || "") ? "SELL" : "";
+  const m1Closed = closed(m1), m1Structure = getStructure(m1Closed), m1Sweep = getLiquidity(m1Closed), m1Displacement = getDisplacement(m1Closed);
+  const lastM1 = m1Closed[m1Closed.length - 1], m1Bull = Boolean(lastM1 && lastM1.close > lastM1.open), m1Bear = Boolean(lastM1 && lastM1.close < lastM1.open);
+  const m1BuyTrigger = m1Bull && m1Displacement && (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow);
+  const m1SellTrigger = m1Bear && m1Displacement && (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh);
+  const contextAligned = direction === "BUY" ? bullishContext : direction === "SELL" ? bearishContext : false;
+  const trigger = direction === "BUY" ? m1BuyTrigger : direction === "SELL" ? m1SellTrigger : false;
+  const entry = lastM1 ? Number(lastM1.close) : null, sl = direction ? base.sl : null;
+  const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;
+  const tp = risk > 0 ? (direction === "BUY" ? entry + risk * 2 : entry - risk * 2) : null;
+  const valid = Boolean(enough && base.ready && direction && contextAligned && trigger && Number.isFinite(entry) && risk > 0);
+  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + (tradingState.mode === "intraday" ? " / M30 " + m30Trend : "");
+  const waitReason = !enough ? "Waiting for sufficient closed candles across required timeframes" : !direction ? "Setup timeframe has no completed APA sequence" : !contextAligned ? "Higher-timeframe trend alignment is not confirmed" : !trigger ? "Waiting for M1 structure/sweep plus displacement entry trigger" : "APA sequence confirmed";
+  return { ...base, ready: true, strategy: "apa", setupTimeframe, entryTimeframe: "1m", trend: contextText, signal: valid ? "Potential APA " + direction + " — top-down setup and M1 trigger confirmed" : "APA WAIT — " + waitReason, entry: valid ? entry : null, sl: valid ? sl : null, tp: valid ? tp : null, invalidation: valid ? sl : null, riskReward: valid && risk > 0 ? 2 : null,
+    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ...(tradingState.mode === "intraday" ? [["M30 context alignment", m30Trend === (direction === "BUY" ? "Bullish" : "Bearish")]] : []), ["Setup timeframe sweep → BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))], ["M1 directional displacement", Boolean(direction && m1Displacement && (direction === "BUY" ? m1Bull : m1Bear))], ["M1 BOS/MSS/CHoCH or liquidity sweep", Boolean(direction && (direction === "BUY" ? (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow) : (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh)))], ["M1 entry trigger", valid]],
+    reasoning: "Top-down: " + contextText + ". Setup timeframe: " + setupTimeframe.toUpperCase() + ". Final trigger: M1. " + waitReason + ". " + (base.reasoning || ""), m1Structure, m1Sweep, m1Displacement };
+}
+
 /* =========================================================
    NEWS TRADING — SEPARATE FOREX NEWS STRATEGY
 ========================================================= */
@@ -1926,17 +1953,10 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   if (box.textContent.trim() === "No timeframe analysis available.") {
     box.replaceChildren();
   }
-  const analyses = tradingState.strategy === "both"
-    ? [
-        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
-        analyseSMC(candles)
-      ]
+  const analyses = tradingState.strategy === "both"\n    ? [\n        ...(timeframe === "1m" ? [analyseAPATopDown(symbol)] : []),\n        analyseSMC(candles)\n      ]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
-        : tradingState.strategy === "apa"
-          ? (timeframe === selectedEntryTimeframe
-              ? analyseAPA(candles, higherCandles, lowerCandles)
-              : { ready: false, strategy: "apa", trend: "Context timeframe only", structure: "No entry analysis on this timeframe", signal: "Context only — APA entries are restricted to selected " + selectedEntryTimeframe.toUpperCase(), supply: null, demand: null })
+        : tradingState.strategy === "apa"\n          ? (timeframe === "1m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry trigger is evaluated on M1", signal: "APA context loaded — waiting for final M1 entry analysis", supply: null, demand: null })
           : analyseSMC(candles)];
   const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
   const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
@@ -2115,16 +2135,10 @@ function analyseMainSelection(symbol) {
   const higherCandles = tradingState.candles[candleKey(symbol, higherFrame)] || [];
   const lowerCandles = tradingState.candles[candleKey(symbol, lowerFrame)] || [];
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
-  const analysisResults = tradingState.strategy === "both"
-    ? [
-        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
-        analyseSMC(candles)
-      ]
+  const analysisResults = tradingState.strategy === "both"\n    ? [analyseAPATopDown(symbol), analyseSMC(candles)]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
-        : tradingState.strategy === "apa"
-          ? analyseAPA(candles, higherCandles, lowerCandles)
-          : analyseSMC(candles)];
+        : tradingState.strategy === "apa"\n          ? analyseAPATopDown(symbol)\n          : analyseSMC(candles)];
   renderDashboardStrategyResults(symbol, timeframe, analysisResults);
   const readyResults = analysisResults.filter(item => item && item.ready);
   const result = readyResults.find(item => item.strategy === "apa") ||
@@ -2197,8 +2211,7 @@ function analyseMainSelection(symbol) {
     });
   }
   tradingState.lastSignals[symbol] = result;
-  (tradingState.strategy === "both" ? readyResults : [result])
-    .forEach(item => recordCandidateSignal(symbol, timeframe, item, candles));
+  (tradingState.strategy === "both" ? readyResults : [result])\n    .forEach(item => recordCandidateSignal(symbol, item.strategy === "apa" ? "1m" : timeframe, item, item.strategy === "apa" ? (tradingState.candles[candleKey(symbol, "1m")] || []) : candles));
 }
 
 /* =========================================================
@@ -2508,11 +2521,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
   // is allowed to create an entry signal or signal-history record.
-  if (result.strategy === "apa") {
-    const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
-    const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
-    if (timeframe !== selectedEntryTimeframe) return;
-  }
+  if (result.strategy === "apa" && timeframe !== "1m") return;
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";
@@ -2748,9 +2757,7 @@ function scanSelectedMarkets() {
   if (!tradingState.running || !isSocketOpen()) return;
 
   const symbols = [...tradingState.selectedSymbols];
-  const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
-
-  if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
+  const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;\n  const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")\n    ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]\n    : modeFrames;\n\n  if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
 
   tradingState.scanInProgress = true;
   symbols.forEach(symbol => {

@@ -369,36 +369,23 @@ test("repeated scanner evaluation preserves deduplication state",()=>{
  assert.equal(second.tradeReady,first.tradeReady,"identical scan keeps readiness stable");
 });
 
-test("scalping and swing timeframe lists remain independent and retain per-frame records",()=>{
+test("only Scalping and Intraday styles are exposed; APA is intraday-only",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
- assert.match(app,/scalping:\s*\["1m",\s*"5m"\]/,"scalping should use only M1 and M5");
- assert.match(app,/swing:\s*\["1h",\s*"4h",\s*"1d"\]/,"swing should use H1, H4 and D1");
- const symbol="STYLE-INDEPENDENCE-"+Date.now();
- const scalp=engine.evaluate(symbol,"1m",bullPattern());
- const swing=engine.evaluate(symbol,"1h",bearPattern());
- assert.equal(scalp.timeframe,"1m");assert.equal(swing.timeframe,"1h");
- assert.equal(engine.state.latest.get(symbol+"|1m").side,"BUY");
- assert.equal(engine.state.latest.get(symbol+"|1h").side,"SELL");
- assert.notEqual(scalp,swing,"scalping and swing evaluations must not share record objects");
- assert.notEqual(scalp.tradePlan,swing.tradePlan,"entry/SL/TP plan objects must remain independent");
-});
-
-test("SMC engine supports H4 and D1 with isolated state and style-scoped frame lists",()=>{
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
+ assert.match(app,/scalping:\s*\["1m",\s*"5m"\]/);
+ assert.match(app,/intraday:\s*\["1m",\s*"5m",\s*"15m",\s*"30m",\s*"1h"\]/);
+ assert.doesNotMatch(app,/swing:\s*\[/i);
+ assert.doesNotMatch(html,/value="swing"|Swing Trading/i);
+ assert.doesNotMatch(worker,/swing:\s*\[/i);
  assert.deepEqual(Array.from(engine.framesForMode("scalping")),["1m","5m"]);
  assert.deepEqual(Array.from(engine.framesForMode("intraday")),["1m","5m","15m","30m","1h"]);
- assert.deepEqual(Array.from(engine.framesForMode("swing")),["1h","4h","1d"]);
- const symbol="SWING-ISOLATION-"+Date.now();
- const h1=engine.evaluate(symbol,"1h",bullPattern());
- const h4=engine.evaluate(symbol,"4h",bearPattern());
- const d1=engine.evaluate(symbol,"1d",bullPattern());
- assert.equal(h1.timeframe,"1h");assert.equal(h4.timeframe,"4h");assert.equal(d1.timeframe,"1d");
- assert.equal(engine.state.latest.get(symbol+"|1h").side,"BUY");
- assert.equal(engine.state.latest.get(symbol+"|4h").side,"SELL");
- assert.equal(engine.state.latest.get(symbol+"|1d").side,"BUY");
- assert.notEqual(h1,h4);assert.notEqual(h4,d1);assert.notEqual(h1,d1);
- assert.notEqual(h1.tradePlan,h4.tradePlan);assert.notEqual(h4.tradePlan,d1.tradePlan);
- assert.deepEqual(Array.from(engine.framesForMode("swing")).filter(tf=>engine.state.latest.has(symbol+"|"+tf)),["1h","4h","1d"]);
- assert.deepEqual(Array.from(engine.framesForMode("intraday")).filter(tf=>engine.state.latest.has(symbol+"|"+tf)),["1h"]);
+ assert.deepEqual(Array.from(engine.framesForMode("swing")),["1m","5m"],"unsupported mode safely falls back to scalping");
+ const symbol="STYLE-INDEPENDENCE-"+Date.now();
+ const scalp=engine.evaluate(symbol,"1m",bullPattern());
+ const intraday=engine.evaluate(symbol,"1h",bearPattern());
+ assert.equal(scalp.timeframe,"1m");assert.equal(intraday.timeframe,"1h");
+ assert.notEqual(scalp,intraday);
 });
 test("H4 and D1 are accepted by the SMC evaluator but unrelated frames stay rejected",()=>{
  assert.ok(engine.evaluate("TF-ACCEPT-"+Date.now(),"4h",bullPattern()));

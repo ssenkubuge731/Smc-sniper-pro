@@ -129,7 +129,7 @@
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
-  function makeEntryPlan(record, candles, minimumRR=2 {
+  function makeEntryPlan(record, candles, minimumRR=2) {
     if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<20) return null;
     const side=record.side, candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
     if(!candidates.length)return {blocked:true,reason:"Price has not interacted with a valid supporting POI yet"};

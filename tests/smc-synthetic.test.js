@@ -295,7 +295,7 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  const riskStart=source.indexOf("function calculateDemoRiskGuard(");
  const riskEnd=source.indexOf("\nfunction ",riskStart+10);
  assert.ok(start>=0&&riskStart>start&&riskEnd>riskStart,"equity and risk helpers exist");
- const fn=source.slice(start,riskEnd);const sandbox={valueOf:()=>""};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
+ const fn=source.slice(start,riskEnd);const storage={};const sandbox={valueOf:()=>"",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;
  const day=Date.now();
  const base={mode:"intraday",riskReward:2,plannedRR:2};
@@ -320,6 +320,7 @@ test("demo risk lock persistence survives restart and manual reset does not eras
  assert.match(source,/localStorage\.removeItem\(DEMO_RISK_LOCK_KEY\)/,"manual reset clears only lock key");
  assert.match(source,/Reset demo risk lock \(manual\)/,"reset is explicit UI action");
  assert.match(source,/renderSignalHistory\(\);/,"history rerender after reset");
+ assert.match(source,/function startScanner\(resume = false\) \{\\n  const persistedRisk = calculateDemoRiskGuard/,"scanner restart checks risk lock before starting");
 });
 
 test("invalid candles are rejected",()=>{

@@ -129,24 +129,44 @@
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
-  function makeEntryPlan(record, candles, rr=2) {
-    if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<15) return null;
-    const side=record.side, price=Number(record.price);
-    const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
+  function makeEntryPlan(record, candles, minimumRR=1.5) {
+    if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<20) return null;
+    const side=record.side, candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
     if(!candidates.length)return {blocked:true,reason:"Price has not interacted with a valid supporting POI yet"};
-    // Strength-first selection: a fresh, high-quality zone can outrank a nearer weak zone.
     candidates.sort((a,b)=>(b.score||0)-(a.score||0)||a.distance-b.distance);
     const z=candidates[0], entry=(z.low+z.high)/2;
-    const tr=candles.slice(-14); let sum=0;
-    for(let i=1;i<tr.length;i++)sum+=Math.max(Number(tr[i].high)-Number(tr[i].low),Math.abs(Number(tr[i].high)-Number(tr[i-1].close)),Math.abs(Number(tr[i].low)-Number(tr[i-1].close)));
-    const atr=sum/(tr.length-1),buffer=Math.max(atr*.12,(z.high-z.low)*.08);
-    const sl=side==="BUY"?z.low-buffer:z.high+buffer;
-    const risk=Math.abs(entry-sl);
-    if(!Number.isFinite(risk)||risk<=0)return {blocked:true,reason:"Invalid risk distance"};
-    const tp1=side==="BUY"?entry+risk*1.5:entry-risk*1.5;
-    const tp2=side==="BUY"?entry+risk*rr:entry-risk*rr;
-    const tp3=side==="BUY"?entry+risk*3:entry-risk*3;
-    return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp1,tp2,tp3,rr,method:"Zone midpoint entry preview; SL beyond zone + ATR buffer",warning:"Illustrative levels only; spread, tick size, contract rules and chart validation required."};
+    const sample=candles.slice(-80), recent=sample.slice(-8);
+    const ranges=sample.slice(-14).map(x=>Math.max(0,Number(x.high)-Number(x.low))).filter(Number.isFinite);
+    const avgRange=ranges.length?ranges.reduce((sum,x)=>sum+x,0)/ranges.length:0;
+    const buffer=Math.max(avgRange*.10,(z.high-z.low)*.03);
+    const localLow=Math.min(...recent.map(x=>Number(x.low)));
+    const localHigh=Math.max(...recent.map(x=>Number(x.high)));
+    const sl=side==="BUY"?Math.min(z.low,localLow)-buffer:Math.max(z.high,localHigh)+buffer;
+    const risk=side==="BUY"?entry-sl:sl-entry;
+    if(!Number.isFinite(risk)||risk<=0)return {blocked:true,reason:"POI/swing invalidation is on the wrong side of entry"};
+    // Use the nearest confirmed opposing swing beyond entry; otherwise the
+    // nearest valid opposing supply/demand zone. No arbitrary RR TP is created.
+    let target=null,targetSource="";
+    for(let i=2;i<sample.length-2;i++){
+      const x=sample[i];
+      const swingHigh=Number(x.high)>Number(sample[i-1].high)&&Number(x.high)>Number(sample[i-2].high)&&Number(x.high)>=Number(sample[i+1].high)&&Number(x.high)>=Number(sample[i+2].high);
+      const swingLow=Number(x.low)<Number(sample[i-1].low)&&Number(x.low)<Number(sample[i-2].low)&&Number(x.low)<=Number(sample[i+1].low)&&Number(x.low)<=Number(sample[i+2].low);
+      if(side==="BUY"&&swingHigh&&Number(x.high)>entry&&(target===null||Number(x.high)<target)){target=Number(x.high);targetSource="confirmed swing high / buy-side liquidity";}
+      if(side==="SELL"&&swingLow&&Number(x.low)<entry&&(target===null||Number(x.low)>target)){target=Number(x.low);targetSource="confirmed swing low / sell-side liquidity";}
+    }
+    if(target===null){
+      const opposing=(record.zones||[]).filter(q=>q.valid&&q.side!==(side)&&q.status!=="invalidated");
+      opposing.sort((a,b)=>side==="BUY"?a.low-b.low:b.high-a.high);
+      const q=opposing.find(q=>side==="BUY"?q.low>entry:q.high<entry);
+      if(q){target=side==="BUY"?q.low:q.high;targetSource="opposing "+q.type+" zone";}
+    }
+    if(target===null)return {blocked:true,entry,sl,risk,reason:"No confirmed opposing swing/liquidity target beyond entry — WAIT"};
+    const reward=side==="BUY"?target-entry:entry-target;
+    const rr=reward/risk;
+    if(!Number.isFinite(reward)||reward<=0||rr<minimumRR)return {blocked:true,entry,sl,risk,tp:target,rr,reason:"Structural target offers less than "+minimumRR.toFixed(1)+"R — WAIT"};
+    return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp:target,rr,targetSource,
+      method:"Entry at selected POI midpoint; SL beyond POI and recent swing with volatility buffer; TP at nearest opposing structural target",
+      warning:"Signal-only preview. Verify spread, tick size, contract rules and chart levels; no orders are placed."};
   }
   function backtest(candles,opts={}){
     const minBars=Math.max(30,opts.warmup||40),horizon=Math.max(5,opts.horizon||30),rr=Number(opts.rr||2);
@@ -164,10 +184,10 @@
         bars++;
         if(hitSL&&hitTP){outcome="AMBIGUOUS_SL_FIRST";exitPrice=sl;ambiguous++;break;}
         if(hitSL){outcome="SL";exitPrice=sl;break;}
-        if(hitTP){outcome="TP2";exitPrice=tp;break;}
+        if(hitTP){outcome="TP";exitPrice=tp;break;}
       }
       const r=record.side==="BUY"?(exitPrice-entry)/Math.abs(entry-sl):(entry-exitPrice)/Math.abs(entry-sl);
-      if(outcome==="TP2")wins++;else if(outcome==="SL"||outcome==="AMBIGUOUS_SL_FIRST")losses++;
+      if(outcome==="TP")wins++;else if(outcome==="SL"||outcome==="AMBIGUOUS_SL_FIRST")losses++;
       trades.push({index:i,side:record.side,score:record.score,entry,sl,tp,outcome,bars,r:exitPrice===null?null:r});
       i+=Math.max(0,bars-1); // avoid overlapping entries while one setup is being resolved
     }

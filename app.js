@@ -2296,6 +2296,17 @@ function renderSignalHistory() {
   summaryRow.className = "result-item";
   summaryRow.textContent = `Demo ledger | Total ${summary.total} | Open ${summary.open} | Wins ${summary.wins} | Losses ${summary.losses} | Review ${summary.review} | Avg planned RR ${summary.averagePlannedRR == null ? "--" : summary.averagePlannedRR.toFixed(2)}`;
   box.appendChild(summaryRow);
+  const equity = calculateDemoEquity(tradingState.signalHistory);
+  const equityRow = document.createElement("div");
+  equityRow.className = "result-item";
+  equityRow.textContent = `Demo closed-trade curve | ${equity.closedTrades} eligible closes | Net ${equity.netR >= 0 ? "+" : ""}${equity.netR.toFixed(2)}R | Max drawdown ${equity.maxDrawdownR.toFixed(2)}R`;
+  box.appendChild(equityRow);
+  if (equity.points.length) {
+    const curveRow = document.createElement("div");
+    curveRow.className = "result-item";
+    curveRow.textContent = "Equity R sequence: " + equity.points.map(point => `${point.strategy.toUpperCase()} ${point.timeframe.toUpperCase()} ${point.equityR >= 0 ? "+" : ""}${point.equityR.toFixed(2)}R`).join(" → ");
+    box.appendChild(curveRow);
+  }
   Object.values(summary.groups).sort((a,b) => a.strategy.localeCompare(b.strategy) || a.timeframe.localeCompare(b.timeframe)).forEach(group => {
     const groupRow = document.createElement("div");
     groupRow.className = "result-item";

@@ -168,7 +168,7 @@ test("scanner integration requires validated plans and rejects untradeable recor
  assert.match(source,/record\.tradePlan/,"scanner should use engine-attached plan");
  assert.match(source,/!record\.tradeReady/,"scanner should reject records not trade-ready");
  assert.match(source,/NOT TRADE-READY; WAIT/,"scanner should display WAIT on invalid plan");
- assert.match(source,/record\.tradeReady \|\| !record\.tradePlan/,"signal publisher must gate on tradeReady and attached plan");
+ assert.match(source,/!record\.tradeReady \|\| !record\.tradePlan/,"signal publisher must gate on tradeReady and attached plan");
 });
 
 test("invalid candles are rejected",()=>{

@@ -10,8 +10,7 @@ const CONFIG_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SITE_ORIGIN = "https://ssenkubuge731.github.io";
 const FRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["1m", "5m", "15m", "30m", "1h"],
-  swing: ["1h", "4h", "1d"]
+  intraday: ["1m", "5m", "15m", "30m", "1h"]
 };
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {status,headers:{

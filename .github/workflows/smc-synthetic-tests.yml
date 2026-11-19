@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/smc-cross-timeframe-conflict-20261119
+      - upgrade/apa-topdown-m1-entry-20261120
   pull_request:
     branches:
       - main

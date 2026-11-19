@@ -157,7 +157,7 @@
     if(target===null){
       const opposing=(record.zones||[]).filter(q=>q.valid&&q.side!==(side)&&q.status!=="invalidated");
       opposing.sort((a,b)=>side==="BUY"?a.low-b.low:b.high-a.high);
-      const q=opposing.find(q=>side==="BUY"?q.low>entry:q.high<entry);
+      const currentPrice=Number(sample[sample.length-1].close);\n      const q=opposing.find(q=>side==="BUY"?q.low>entry&&q.low>currentPrice:q.high<entry&&q.high<currentPrice);
       if(q){target=side==="BUY"?q.low:q.high;targetSource="opposing "+q.type+" zone";}
     }
     if(target===null)return {blocked:true,entry,sl,risk,reason:"No confirmed opposing swing/liquidity target beyond entry — WAIT"};

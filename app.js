@@ -663,11 +663,11 @@ function renderSMCEntryPlan(symbol) {
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",
-    "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
-    "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
+      "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
+      "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
     lines.join("\n") +
-    "\nEach timeframe uses its own POI/swing invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
-    "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
+      "\nEach timeframe uses its own POI/swing invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
+      "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
 }
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;

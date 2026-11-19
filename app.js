@@ -705,7 +705,8 @@ function renderSMCEntryPlan(symbol) {
   const output = $("smcEntryPlanStatus");
   if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
-  const frames = window.SMCIntradayEngine.framesForMode\n    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;
+  const frames = window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;
   const fmt = value => Number(value).toPrecision(7);
   const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
@@ -2404,7 +2405,8 @@ function renderSignalHistory() {
   const equityRow = document.createElement("div");
   equityRow.className = "result-item";
   equityRow.textContent = `Demo closed-trade curve | ${equity.closedTrades} eligible closes | Net ${equity.netR >= 0 ? "+" : ""}${equity.netR.toFixed(2)}R | Max drawdown ${equity.maxDrawdownR.toFixed(2)}R`;
-  box.appendChild(equityRow);\n  renderDemoRiskStatus();
+  box.appendChild(equityRow);
+  renderDemoRiskStatus();
   if (equity.points.length) {
     const curveRow = document.createElement("div");
     curveRow.className = "result-item";
@@ -2574,7 +2576,8 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   );
   if (alreadyOpen) return;
 
-  const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);\n  if (riskGuard.locked) {\n    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");\n    return;\n  }\n\n  const record = {
+  const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (riskGuard.locked) {\n    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");\n    return;\n  }\n\n  const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,

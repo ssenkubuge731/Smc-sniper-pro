@@ -289,6 +289,25 @@ test("demo equity curve calculates net R and maximum drawdown from closed trades
  assert.equal(result.points[1].drawdownR,1);
 });
 
+test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function calculateDemoRiskGuard(");const end=source.indexOf("\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"risk guard helper exists");
+ const fn=source.slice(start,end);const sandbox={valueOf:()=>"",calculateDemoEquity};
+ vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
+ const guard=sandbox.calculateDemoRiskGuard;
+ const day=Date.now();
+ const base={mode:"intraday",riskReward:2,plannedRR:2};
+ const dailyLoss=[{...base,status:"SL HIT",closedAt:day},{...base,status:"SL HIT",closedAt:day}];
+ assert.equal(guard(dailyLoss,{riskPercent:0.5,dailyLossLimit:1,maxConsecutiveLosses:3}).locked,true,"daily loss 1% blocks");
+ const streak=[{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
+ assert.equal(guard(streak,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,true,"three consecutive losses pause");
+ const draw=[{...base,status:"TP HIT",closedAt:day-4,plannedRR:2},{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
+ assert.equal(guard(draw,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:5}).locked,true,"drawdown limit blocks");
+ const clean=[{...base,status:"TP HIT",closedAt:day,plannedRR:2}];
+ assert.equal(guard(clean,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,false,"healthy ledger stays unlocked");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

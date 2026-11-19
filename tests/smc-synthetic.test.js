@@ -572,4 +572,31 @@ test("website and MT5 bridge keep trading disabled during config sync",()=>{
  assert.match(ea,/read-only/,"EA documents read-only sync");
  for(const forbidden of ["OrderSend(","CTrade(","PositionOpen(",".Buy(",".Sell("])assert.equal(ea.includes(forbidden),false,"bridge agent has no order function "+forbidden);
 });
+
+test("MT5 market-data bridge validates candle batches and returns freshness status",()=>{
+ const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
+ assert.match(worker,/\/mt5\/market-data/,"market-data endpoint exists");
+ assert.match(worker,/MARKET_DATA_TTL_SECONDS/,"market data storage has TTL");
+ assert.match(worker,/bars\.length<30/,"minimum candle history enforced");
+ assert.match(worker,/bars\.length>150/,"maximum candle history enforced");
+ assert.match(worker,/c\.high>=Math\.max\(c\.open,c\.close,c\.low\)/,"OHLC high validation");
+ assert.match(worker,/c\.low<=Math\.min\(c\.open,c\.close,c\.high\)/,"OHLC low validation");
+ assert.match(worker,/c\.epoch>bars\[i-1\]\.epoch/,"candle timestamps must increase");
+ assert.match(worker,/ageSeconds<=90\?"FRESH":"STALE"/,"freshness classification");
+ assert.match(worker,/safeEqual\(bearerToken\(request\),env\.MT5_BRIDGE_TOKEN\)/,"publish endpoint is token-authenticated");
+});
+test("MT5 EA publishes configured candle data and website scanner consumes it",()=>{
+ const ea=fs.readFileSync(path.join(__dirname,"../mt5-bridge/SMC_Sniper_MT5_Bridge.mq5"),"utf8");
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(ea,/CopyRates\(/,"EA reads broker candles");
+ assert.match(ea,/SendMarketData\(/,"EA publishes candle packets");
+ assert.match(ea,/InpMarketDataURL/,"EA targets market-data endpoint");
+ assert.match(ea,/PublishConfiguredMarketData\(/,"EA publishes configured symbol/timeframes");
+ const scanner=app.slice(app.indexOf("async function scanMT5MarketData"),app.indexOf("function startMT5Scanner"));
+ assert.match(scanner,/MT5_MARKET_DATA_URL/,"website polls MT5 candle endpoint");
+ assert.match(scanner,/packet\.status!=="FRESH"\|\|packet\.ageSeconds>90/,"scanner rejects stale feeds");
+ assert.match(scanner,/renderTimeframeAnalysis/,"fresh MT5 candles enter scanner analysis");
+ assert.match(scanner,/SMCIntradayEngine\.evaluate/,"MT5 candle feed enters SMC engine");
+ assert.match(app,/tradingState\.broker === "mt5"\) \{ startMT5Scanner\(\); return; \}/,"scanner switches to MT5 data mode");
+});
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

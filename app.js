@@ -2014,7 +2014,8 @@ function renderTimeframeAnalysis(symbol, timeframe) {
           "Supply " + zoneText(result.supply) + " | Demand " + zoneText(result.demand),
           "Order Block " + zoneText(result.orderBlock) + " | Breaker " + (result.breaker || "not identified"),
           "Confirmations BUY " + (result.bullishConfirmations || 0) + " / SELL " + (result.bearishConfirmations || 0),
-          result.reasoning || ""\n        ].filter(Boolean).join("\n")
+          result.reasoning || ""
+        ].filter(Boolean).join("\n")
       : strategyName === "apa"
         ? [
             "Entry " + priceText(result.entry) + " | SL " + priceText(result.sl) + " | TP " + priceText(result.tp),

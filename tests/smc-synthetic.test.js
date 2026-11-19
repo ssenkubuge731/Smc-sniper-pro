@@ -233,6 +233,18 @@ test("signal-history deduplication preserves strategy and timeframe identity",()
  assert.ok(fn.includes("strategy, timeframe, direction"),"signal ID should encode strategy and timeframe");
 });
 
+test("trade outcome handling flags same-candle SL and TP as review and uses post-entry candles",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function evaluateSignalHistory(");
+ const end=source.indexOf("\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"outcome handler should be located");
+ const fn=source.slice(start,end);
+ assert.match(fn,/if \(hitSL && hitTP\)/,"both levels touched in one candle must be detected");
+ assert.match(fn,/REVIEW — SL and TP touched in the same candle/,"ambiguous candle outcome must not be falsely classified");
+ assert.match(fn,/Number\(candle\.epoch\) > signalEpoch/,"only candles after entry candle should determine outcome");
+ assert.match(fn,/outcomeCandleEpoch/,"outcome candle timestamp must be stored");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

@@ -545,8 +545,13 @@ function handleDerivMessage(data) {
 
   if (data.error) {
     const message = data.error.message || "Unknown API error";
+    const failedContext = data.req_id ? tradingState.requestContexts.get(data.req_id) : null;
+    if (data.req_id) tradingState.requestContexts.delete(data.req_id);
+    const contextLabel = failedContext
+      ? " " + failedContext.symbol + " " + failedContext.timeframe.toUpperCase()
+      : "";
     setConnectionStatus("Deriv API: " + message);
-    addResult(message);
+    addResult("Market-data request failed" + contextLabel + ": " + message);
     return;
   }
 

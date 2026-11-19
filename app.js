@@ -2648,7 +2648,9 @@ async function scanMT5MarketData(){
   if(!tradingState.running||tradingState.broker!=="mt5")return;
   const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
   const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
-  const frames=BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping;
+  const allowed=BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping;
+  const checkedFrames=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+  const frames=checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed;
   if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
   let fresh=0,stale=0,missing=0;
   for(const symbol of symbols.slice(0,10)){

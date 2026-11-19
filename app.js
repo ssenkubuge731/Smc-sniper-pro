@@ -642,7 +642,7 @@ function handleDerivMessage(data) {
     renderTimeframeAnalysis(context.symbol, context.timeframe);
     if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
       const smcRecord = window.SMCIntradayEngine.evaluate(
-        context.symbol, context.timeframe, tradingState.candles[key]
+        context.symbol, context.timeframe, tradingState.candles[key], tradingState.mode
       );
       publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
       renderSMCMultiFrame(context.symbol);
@@ -662,7 +662,7 @@ function handleDerivMessage(data) {
       tradingState.candles[key] = list.slice(-150);
       if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
         const smcRecord = window.SMCIntradayEngine.evaluate(
-          context.symbol, context.timeframe, tradingState.candles[key]
+          context.symbol, context.timeframe, tradingState.candles[key], tradingState.mode
         );
         publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
         renderSMCMultiFrame(context.symbol);
@@ -758,7 +758,13 @@ function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"â
 // Each SMC timeframe can publish its own demo signal independently.
 // This records a signal preview only; it never sends a broker order.
 function publishSMCSignal(symbol, timeframe, record, candles) {
-  if (!record || !record.confirmed || !record.tradeReady || !record.tradePlan || !window.SMCIntradayEngine) return;
+  if (!window.SMCIntradayEngine) return;
+  const allowedFrames = window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
+  // APA may request H4/D1 context candles, but those are never SMC entries.
+  if (!allowedFrames.includes(timeframe)) return;
+  if (!record || !record.confirmed || !record.tradeReady || !record.tradePlan) return;
   const plan = record.tradePlan;
   recordCandidateSignal(symbol, timeframe, {
     strategy: "smc",
@@ -2717,7 +2723,7 @@ async function scanMT5MarketData(){
         fresh++;
         renderTimeframeAnalysis(symbol,timeframe);
         if((tradingState.strategy==="smc"||tradingState.strategy==="both")&&window.SMCIntradayEngine){
-          const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars);
+          const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars,tradingState.mode);
           publishSMCSignal(symbol,timeframe,record,bars);
           renderSMCMultiFrame(symbol);
         }

@@ -393,6 +393,18 @@ test("H4 and D1 are accepted by the SMC evaluator but unrelated frames stay reje
  assert.ok(engine.evaluate("TF-ACCEPT-"+Date.now(),"1d",bearPattern()));
  assert.equal(engine.evaluate("TF-REJECT-"+Date.now(),"2h",bullPattern()),null);
 });
+test("H4 and D1 context frames never publish SMC entry signals in Intraday or Scalping",()=>{
+ const before=emittedEvents.length;
+ const h4=engine.evaluate("CTX-H4-"+Date.now(),"4h",bullPattern(),"intraday");
+ const d1=engine.evaluate("CTX-D1-"+Date.now(),"1d",bearPattern(),"intraday");
+ assert.ok(h4&&d1,"H4/D1 remain analyzable as context");
+ assert.equal(emittedEvents.length,before,"H4/D1 must not emit SMC entry signals in Intraday");
+ const h4Scalp=engine.evaluate("CTX-H4-S-"+Date.now(),"4h",bullPattern(),"scalping");
+ assert.ok(h4Scalp);
+ assert.equal(emittedEvents.length,before,"H4 must not emit SMC entry signals in Scalping");
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(app,/function publishSMCSignal[\\s\\S]*?allowedFrames\\.includes\\(timeframe\\)/);
+});
 test("H4 and D1 structural plans independently calculate BUY and SELL entry SL TP RR",()=>{
  const fixtures=[
   {tf:"4h",side:"BUY",candles:buyCandles(),zone:[101,102]},

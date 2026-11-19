@@ -221,6 +221,18 @@ test("APA, SMC and BOTH routing keeps strategy analyses separate",()=>{
  assert.match(renderer,/strategyName === "apa"/,"APA results must retain their identity");
 });
 
+test("signal-history deduplication preserves strategy and timeframe identity",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function recordCandidateSignal(");
+ const end=source.indexOf("\\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"signal record function should be located");
+ const fn=source.slice(start,end);
+ assert.ok(fn.includes("record.symbol === symbol && record.strategy === strategy"),"dedupe must isolate strategy");
+ assert.ok(fn.includes("record.timeframe === timeframe"),"dedupe must isolate timeframe");
+ assert.ok(fn.includes("symbol, strategy, timeframe, direction, entry, sl, tp"),"stored signal must carry identity fields");
+ assert.ok(fn.includes("strategy, timeframe, direction"),"signal ID should encode strategy and timeframe");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

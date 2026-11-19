@@ -491,3 +491,20 @@ test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));
+
+test("scanner feeds the independent SMC engine in SMC and BOTH modes for candle history and live OHLC",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const guard='if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {';
+ assert.equal(app.split(guard).length-1,2,"both candle history and live OHLC handlers must evaluate SMC in BOTH mode");
+ const history=app.indexOf('if (data.msg_type === "candles" && Array.isArray(data.candles))');
+ const live=app.indexOf('if (data.msg_type === "ohlc" && data.ohlc && context)');
+ const h=app.slice(history,app.indexOf('if (data.msg_type === "ohlc"',history));
+ const l=app.slice(live,app.indexOf('if (data.msg_type === "tick"',live));
+ for(const block of [h,l]){
+  assert.match(block,/SMCIntradayEngine\.evaluate\(\s*context\.symbol,\s*context\.timeframe/,"engine evaluates exact symbol/timeframe candles");
+  assert.match(block,/publishSMCSignal\(/,"SMC signals are routed to demo history");
+  assert.match(block,/renderSMCMultiFrame\(/,"multiframe SMC monitor updates");
+ }
+ assert.match(app,/strategy: "smc"/,"SMC records keep separate strategy identity");
+ assert.match(app,/resultKey = symbol \+ "\|" \+ timeframe \+ "\|" \+ strategyName/,"renderer keys each strategy separately");
+});

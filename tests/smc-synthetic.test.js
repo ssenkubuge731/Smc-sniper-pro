@@ -526,5 +526,12 @@ test("live candle scanner requests subscribed OHLC streams, retains contexts and
  assert.match(stop,/sendRequest\(\{ forget: subscriptionId \}\)/,"scanner stop forgets candle subscriptions");
  assert.match(stop,/candleSubscriptions\.clear\(\)/,"scanner stop clears stream context map");
 });
+test("market data request errors clear request context and identify failed symbol timeframe",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const handler=app.slice(app.indexOf("function handleDerivMessage("),app.indexOf("function renderSMCFormationMonitor("));
+ assert.match(handler,/failedContext = data\.req_id \? tradingState\.requestContexts\.get\(data\.req_id\) : null/,"error response retrieves its request context");
+ assert.match(handler,/if \(data\.req_id\) tradingState\.requestContexts\.delete\(data\.req_id\)/,"failed requests remove stale context");
+ assert.match(handler,/failedContext\.symbol \+ " " \+ failedContext\.timeframe\.toUpperCase\(\)/,"error message identifies symbol/timeframe");
+});
 
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

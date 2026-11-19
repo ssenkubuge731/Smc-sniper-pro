@@ -2015,14 +2015,12 @@ function renderTimeframeAnalysis(symbol, timeframe) {
           "Order Block " + zoneText(result.orderBlock) + " | Breaker " + (result.breaker || "not identified"),
           "Confirmations BUY " + (result.bullishConfirmations || 0) + " / SELL " + (result.bearishConfirmations || 0),
           result.reasoning || ""
-        ].filter(Boolean).join("
-")
+        ].filter(Boolean).join("\n")
       : strategyName === "apa"
         ? [
             "Entry " + priceText(result.entry) + " | SL " + priceText(result.sl) + " | TP " + priceText(result.tp),
             "Supply " + zoneText(result.supply) + " | Demand " + zoneText(result.demand) + " | POI " + zoneText(result.orderBlock)
-          ].join("
-")
+          ].join("\n")
         : (result.reasoning || "News analysis");
     item.textContent = symbol + " " + timeframe.toUpperCase() + " — " + strategyName.toUpperCase() +
       "

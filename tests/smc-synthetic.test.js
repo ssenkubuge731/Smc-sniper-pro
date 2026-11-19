@@ -649,7 +649,7 @@ test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",(
  assert.match(fn,/mode: isScalp \? "scalping" : "intraday"/,"SMC scalp records retain scalp mode");
  assert.match(fn,/all-positions-positive-basket/,"basket exit policy is explicit");
 });
-console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));
+
 
 test("APA top-down requires D1/H4/H1/M30/M15/M5/M1 and uses M5 refinement",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
@@ -657,8 +657,9 @@ test("APA top-down requires D1/H4/H1/M30/M15/M5/M1 and uses M5 refinement",()=>{
  const end=source.indexOf("\n/* =========================================================",start);
  assert.ok(start>=0&&end>start,"APA top-down function must exist");
  const fn=source.slice(start,end);
- for(const tf of ["1d","4h","1h","30m","15m","5m","1m"])
+ for(const tf of ["1d","4h","1h","30m","5m","1m"])
    assert.ok(fn.includes('candleKey(symbol, "'+tf+'")'),"APA missing "+tf+" feed");
+ assert.match(fn,/const setupTimeframe = APA_SETUP_FRAME\.intraday/,"M15 must remain the APA setup timeframe");
  assert.match(fn,/m5Trend/,"M5 must be evaluated as refinement timeframe");
  assert.match(fn,/M5 refinement alignment/,"M5 alignment must gate APA");
 });
@@ -676,3 +677,5 @@ test("MT5 scanner feeds latest M1 quote into SMC scalp basket simulation",()=>{
  const fn=source.slice(start,end);
  assert.match(fn,/timeframe==="1m"\) manageScalpingBasketSimulation\(symbol,bars\[bars.length-1\]\.close\)/);
 });
+
+console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

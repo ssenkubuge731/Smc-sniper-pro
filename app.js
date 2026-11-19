@@ -286,6 +286,15 @@ const BRIDGE_ALLOWED_FRAMES = {
   scalping: ["1m","5m"],
   intraday: ["1m","5m","15m","30m","1h"]
 };
+function getScanSymbolsForMode(symbols, mode, strategy) {
+  const clean = [...new Set((Array.isArray(symbols) ? symbols : [])
+    .map(symbol => String(symbol || "").trim()).filter(Boolean))];
+  // SMC Scalping is strictly one user-selected pair; never silently pick one.
+  if (mode === "scalping" && (strategy === "smc" || strategy === "both")) {
+    return clean.length === 1 ? clean : [];
+  }
+  return clean.slice(0, 10);
+}
 function getBridgeFrames(mode,strategy){
   if(mode==="scalping") return [...BRIDGE_ALLOWED_FRAMES.scalping];
   if(strategy==="apa"||strategy==="both") return [...APA_REQUIRED_FRAMES];
@@ -2709,9 +2718,14 @@ function manageScalpingBasketSimulation(symbol, quote) {
 
 async function scanMT5MarketData(){
   if(!tradingState.running||tradingState.broker!=="mt5")return;
-  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
   const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
   const strategy=valueOf("bridgeStrategy")||tradingState.strategy||"apa";
+  const rawSymbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const symbols=getScanSymbolsForMode(rawSymbols,mode,strategy);
+  if(mode==="scalping"&&(strategy==="smc"||strategy==="both")&&symbols.length!==1){
+    setText("scannerStatus","SMC Scalping requires exactly one user-selected MT5 pair. Enter one symbol only.");
+    return;
+  }
   const allowed=getBridgeFrames(mode,strategy);
   const checkedFrames=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
   const required=(mode==="intraday"&&(strategy==="apa"||strategy==="both"))?APA_REQUIRED_FRAMES:[];
@@ -2747,12 +2761,20 @@ async function scanMT5MarketData(){
   setText("derivConnectionStatus","Scanner data source: MT5 broker candles (read-only).");
 }
 function startMT5Scanner(){
-  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
-  if(!symbols.length){addResult("MT5 scanner requires symbols in the bridge settings, e.g. XAUUSD,EURUSD.");setText("scannerStatus","Enter MT5 symbols in bridge settings.");return;}
+  const mode=valueOf("bridgeMode")||"scalping";
+  const strategy=valueOf("bridgeStrategy")||"apa";
+  const rawSymbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const symbols=getScanSymbolsForMode(rawSymbols,mode,strategy);
+  if(!symbols.length){
+    const message=mode==="scalping"&&(strategy==="smc"||strategy==="both")
+      ?"SMC Scalping requires exactly one user-selected MT5 pair. Enter one symbol only."
+      :"MT5 scanner requires at least one symbol in bridge settings.";
+    addResult(message);setText("scannerStatus",message);return;
+  }
   stopScanner(false);
   tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
-  tradingState.mode=valueOf("bridgeMode")||"scalping";
-  tradingState.strategy=valueOf("bridgeStrategy")||"apa";
+  tradingState.mode=mode;
+  tradingState.strategy=strategy;
   tradingState.selectedSymbols=new Set(symbols);
   setText("scannerResults","MT5 market-data scanner started. Waiting for fresh candles.");
   setText("scannerStatus","MT5 data scanner starting — read-only.");
@@ -2780,6 +2802,13 @@ function startScanner(resume = false) {
     addResult("Select at least one market first.");
     return;
   }
+  if (tradingState.mode === "scalping" &&
+      (tradingState.strategy === "smc" || tradingState.strategy === "both") &&
+      tradingState.selectedSymbols.size !== 1) {
+    addResult("SMC Scalping requires exactly one user-selected pair. Clear other pairs and select one.");
+    setText("scannerStatus", "SMC Scalping paused — select exactly one pair.");
+    return;
+  }
 
   stopScanner(false);
 
@@ -2801,7 +2830,15 @@ function startScanner(resume = false) {
 function scanSelectedMarkets() {
   if (!tradingState.running || !isSocketOpen()) return;
 
-  const symbols = [...tradingState.selectedSymbols];
+  const selected = [...tradingState.selectedSymbols];
+  if (tradingState.mode === "scalping" &&
+      (tradingState.strategy === "smc" || tradingState.strategy === "both") &&
+      selected.length !== 1) {
+    tradingState.running = false;
+    setText("scannerStatus", "SMC Scalping paused — exactly one user-selected pair is required.");
+    return;
+  }
+  const symbols = selected;
   const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
   const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")
     ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]

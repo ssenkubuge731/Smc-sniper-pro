@@ -292,10 +292,11 @@ test("demo equity curve calculates net R and maximum drawdown from closed trades
 test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function calculateDemoEquity(");
+ const equityEnd=source.indexOf("\nfunction ",start+10);
  const riskStart=source.indexOf("function calculateDemoRiskGuard(");
  const riskEnd=source.indexOf("\nfunction ",riskStart+10);
- assert.ok(start>=0&&riskStart>start&&riskEnd>riskStart,"equity and risk helpers exist");
- const fn=source.slice(start,riskEnd);const storage={};const sandbox={valueOf:()=>"",DEMO_RISK_LOCK_KEY:"smcSniperProDemoRiskLockV1",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};
+ assert.ok(start>=0&&equityEnd>start&&riskStart>=0&&riskEnd>riskStart,"equity and risk helpers exist regardless of source order");
+ const fn=source.slice(riskStart,riskEnd)+"\\n"+source.slice(start,equityEnd);const storage={};const sandbox={valueOf:()=>"",DEMO_RISK_LOCK_KEY:"smcSniperProDemoRiskLockV1",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};
  vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;
  const day=Date.now();
@@ -306,9 +307,10 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  const streak=[{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
  delete storage["smcSniperProDemoRiskLockV1"];
  assert.equal(guard(streak,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,true,"three consecutive losses pause");
- const draw=[{...base,status:"TP HIT",closedAt:day-4,plannedRR:2},{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
+ const yesterday=day-86400000;
+ const draw=[{...base,status:"TP HIT",closedAt:yesterday-4,plannedRR:4},{...base,status:"SL HIT",closedAt:yesterday-3},{...base,status:"SL HIT",closedAt:yesterday-2},{...base,status:"SL HIT",closedAt:yesterday-1},{...base,status:"SL HIT",closedAt:yesterday}];
  delete storage["smcSniperProDemoRiskLockV1"];
- assert.equal(guard(draw,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:5}).locked,true,"drawdown limit blocks");
+ assert.equal(guard(draw,{riskPercent:0.5,dailyLossLimit:2,maxConsecutiveLosses:5}).locked,true,"4R historical peak-to-trough drawdown locks while daily loss and streak limits remain clear");
  const clean=[{...base,status:"TP HIT",closedAt:day,plannedRR:2}];
  delete storage["smcSniperProDemoRiskLockV1"];
  assert.equal(guard(clean,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,false,"healthy ledger stays unlocked");

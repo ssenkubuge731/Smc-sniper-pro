@@ -403,7 +403,7 @@ test("H4 and D1 context frames never publish SMC entry signals in Intraday or Sc
  assert.ok(h4Scalp);
  assert.equal(emittedEvents.length,before,"H4 must not emit SMC entry signals in Scalping");
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
- assert.match(app,/function publishSMCSignal[\\s\\S]*?allowedFrames\\.includes\\(timeframe\\)/);
+ assert.ok(app.includes("if (!allowedFrames.includes(timeframe)) return;"),"publisher must block SMC entries on frames not allowed by active mode");
 });
 test("H4 and D1 structural plans independently calculate BUY and SELL entry SL TP RR",()=>{
  const fixtures=[

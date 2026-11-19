@@ -543,7 +543,8 @@ test("MT5 bridge config sync stays authenticated, bounded and demo/live locked",
  assert.match(worker,/liveLocked!==true/,"configuration requires live lock true");
  assert.match(worker,/riskPercent<0\.01\|\|body\.riskPercent>5/,"risk is bounded");
  assert.match(worker,/maxOpenTrades>10/,"max simultaneous trades bounded");
- assert.match(worker,/body\.timeframes\.every\(tf=>FRAMES\[body\.mode\]\.includes\(tf\)\)/,"timeframes are checked against mode");
+ assert.match(worker,/body\.timeframes\.every\(tf=>ALL_MARKET_FRAMES\.includes\(tf\)\)/,"all supported context/entry frames are validated");
+ assert.match(worker,/expected\.some\(tf=>!body\.timeframes\.includes\(tf\)\)/,"required strategy frames cannot be omitted");
  assert.match(worker,/MAX_BODY_BYTES = 32768/,"request body size bounded");
  assert.doesNotMatch(worker,/OrderSend|trade-command|\/mt5\/order/,"worker exposes no order execution route");
  assert.match(worker,/public-config/,"public config endpoint is metadata-only");

@@ -2700,11 +2700,7 @@ function startScanner(resume = false) {
     addResult("Scanner start blocked by persisted demo risk lock: " + persistedRisk.lockReasons.join("; "), "scannerResults");
     return;
   }
-  if (tradingState.broker === "mt5") {
-    addResult("MT5 scanning is not active yet. Use Deriv API for market scanning until the Windows VPS and secure MT5 bridge are installed.");
-    setText("scannerStatus", "MT5 bridge not installed — use Deriv API for now");
-    return;
-  }
+  if (tradingState.broker === "mt5") { startMT5Scanner(); return; }
 
   if (!tradingState.derivConnected || !isSocketOpen()) {
     addResult("Connect Deriv first.");

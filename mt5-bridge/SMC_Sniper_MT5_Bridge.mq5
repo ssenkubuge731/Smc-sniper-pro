@@ -71,14 +71,15 @@ bool SendHeartbeat()
 
 string GetJsonString(const string json,const string key)
 {
-   string needle="\\""+key+"\\":";
+   string quote=CharToString(34);
+   string needle=quote+key+quote+":";
    int pos=StringFind(json,needle);
    if(pos<0)return "";
    pos+=StringLen(needle);
    while(pos<StringLen(json)&&StringGetCharacter(json,pos)==' ')pos++;
-   if(pos>=StringLen(json)||StringGetCharacter(json,pos)!='"')return "";
+   if(pos>=StringLen(json)||StringGetCharacter(json,pos)!=34)return "";
    pos++;
-   int end=StringFind(json,"\\"",pos);
+   int end=StringFind(json,quote,pos);
    if(end<0)return "";
    return StringSubstr(json,pos,end-pos);
 }

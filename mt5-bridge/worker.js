@@ -115,7 +115,7 @@ export default {
   if(url.pathname==="/mt5/market-data"){
     const symbol=body?.symbol,timeframe=body?.timeframe,bars=body?.candles;
     if(!validText(symbol,32)||!/^[A-Za-z0-9._/ -]+$/.test(symbol)||
-      !Object.values(FRAMES).flat().includes(timeframe)||!Array.isArray(bars)||bars.length<30||bars.length>150||
+      !ALL_MARKET_FRAMES.includes(timeframe)||!Array.isArray(bars)||bars.length<30||bars.length>150||
       !bars.every((c,i)=>c&&Number.isInteger(c.epoch)&&c.epoch>0&&
         Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&
         c.high>=Math.max(c.open,c.close,c.low)&&c.low<=Math.min(c.open,c.close,c.high)&&

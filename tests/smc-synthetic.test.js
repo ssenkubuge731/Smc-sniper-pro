@@ -143,6 +143,23 @@ test("each SMC timeframe plan independently validates SL, TP and minimum 2R",()=
  assert.notEqual(plans[0],plans[1],"plan state objects must remain separate");
 });
 
+
+test("evaluate attaches isolated structural plans and blocks untradeable signals",()=>{
+ const sym="PLAN-ISOLATION-"+Date.now();
+ const b=engine.evaluate(sym,"1m",bullPattern());
+ const s=engine.evaluate(sym,"5m",bearPattern());
+ assert.ok(b.tradePlan,"BUY frame must retain its own plan");
+ assert.ok(s.tradePlan,"SELL frame must retain its own plan");
+ assert.equal(b.tradePlan.side,"BUY");assert.equal(s.tradePlan.side,"SELL");
+ assert.ok(b.tradePlan.sl<b.tradePlan.entry&&b.tradePlan.tp>b.tradePlan.entry);
+ assert.ok(s.tradePlan.sl>s.tradePlan.entry&&s.tradePlan.tp<s.tradePlan.entry);
+ assert.ok(b.tradePlan.rr>=2&&s.tradePlan.rr>=2);
+ assert.notEqual(b.tradePlan,s.tradePlan,"plans cannot share object state");
+ assert.equal(engine.best(sym),b.tradeReady?b:(s.tradeReady?s:null));
+ const wait=engine.evaluate(sym,"15m",bars(100));
+ assert.equal(wait.tradePlan,null);assert.equal(wait.tradeReady,false);
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

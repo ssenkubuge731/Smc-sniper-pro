@@ -346,12 +346,12 @@ test("POI invalidation marks a broken demand/order-block zone invalid",()=>{
 
 test("extreme candle wicks cannot move structural SL inside invalidation boundary",()=>{
  const buy=buyCandles();buy[29]={open:104,high:108,low:95,close:105,time:29};
- const pb=engine.makeEntryPlan(rec("BUY",[101,102]),buy);
+ const pb=engine.makeEntryPlan(rec("BUY",[101,102]),buy,0);
  assert.ok(pb&&!pb.blocked,JSON.stringify(pb));
  assert.ok(pb.sl<101,"BUY stop must remain below POI low");
  assert.ok(pb.sl<Math.min(...buy.slice(-8).map(x=>x.low)),"BUY stop must remain beyond extreme local low");
  const sell=sellCandles();sell[29]={open:96,high:106,low:90,close:95,time:29};
- const ps=engine.makeEntryPlan(rec("SELL",[99,100]),sell);
+ const ps=engine.makeEntryPlan(rec("SELL",[99,100]),sell,0);
  assert.ok(ps&&!ps.blocked,JSON.stringify(ps));
  assert.ok(ps.sl>100,"SELL stop must remain above POI high");
  assert.ok(ps.sl>Math.max(...sell.slice(-8).map(x=>x.high)),"SELL stop must remain beyond extreme local high");

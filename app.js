@@ -2275,6 +2275,17 @@ function renderSignalHistory() {
   const box = $("tradeHistory");
   if (!box) return;
   box.replaceChildren();
+  const summary = summarizeDemoLedger(tradingState.signalHistory);
+  const summaryRow = document.createElement("div");
+  summaryRow.className = "result-item";
+  summaryRow.textContent = `Demo ledger | Total ${summary.total} | Open ${summary.open} | Wins ${summary.wins} | Losses ${summary.losses} | Review ${summary.review} | Avg planned RR ${summary.averagePlannedRR == null ? "--" : summary.averagePlannedRR.toFixed(2)}`;
+  box.appendChild(summaryRow);
+  Object.values(summary.groups).sort((a,b) => a.strategy.localeCompare(b.strategy) || a.timeframe.localeCompare(b.timeframe)).forEach(group => {
+    const groupRow = document.createElement("div");
+    groupRow.className = "result-item";
+    groupRow.textContent = `${group.strategy.toUpperCase()} ${group.timeframe.toUpperCase()} | Total ${group.total} | Open ${group.open} | Wins ${group.wins} | Losses ${group.losses} | Review ${group.review} | Avg planned RR ${group.averagePlannedRR == null ? "--" : group.averagePlannedRR.toFixed(2)}`;
+    box.appendChild(groupRow);
+  });
   if (!tradingState.signalHistory.length) {
     box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
     return;

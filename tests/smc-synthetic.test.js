@@ -403,6 +403,43 @@ test("H4 and D1 are accepted by the SMC evaluator but unrelated frames stay reje
  assert.ok(engine.evaluate("TF-ACCEPT-"+Date.now(),"1d",bearPattern()));
  assert.equal(engine.evaluate("TF-REJECT-"+Date.now(),"2h",bullPattern()),null);
 });
+test("H4 and D1 structural plans independently calculate BUY and SELL entry SL TP RR",()=>{
+ const fixtures=[
+  {tf:"4h",side:"BUY",candles:buyCandles(),zone:[101,102]},
+  {tf:"4h",side:"SELL",candles:sellCandles(),zone:[99,100]},
+  {tf:"1d",side:"BUY",candles:buyCandles(),zone:[101,102]},
+  {tf:"1d",side:"SELL",candles:sellCandles(),zone:[99,100]}
+ ];
+ const symbol="STRUCTURAL-SWING-"+Date.now();
+ for(const f of fixtures){
+  const record=rec(f.side,f.zone);
+  record.timeframe=f.tf;
+  const plan=engine.makeEntryPlan(record,f.candles,2);
+  assert.ok(plan&&!plan.blocked,f.tf+" "+f.side+" plan: "+JSON.stringify(plan));
+  if(f.side==="BUY"){assert.ok(plan.sl<plan.entry,"BUY SL below entry");assert.ok(plan.tp>plan.entry,"BUY TP above entry");}
+  else {assert.ok(plan.sl>plan.entry,"SELL SL above entry");assert.ok(plan.tp<plan.entry,"SELL TP below entry");}
+  assert.ok(Number.isFinite(plan.rr)&&plan.rr>=2,"minimum RR enforced");
+  const key=symbol+"|"+f.tf+"|"+f.side;
+  const saved={symbol,timeframe:f.tf,side:f.side,tradePlan:plan};
+  engine.state.latest.set(key,saved);
+  assert.equal(engine.state.latest.get(key).tradePlan,plan,"plan stored independently per frame/direction");
+ }
+ assert.notEqual(engine.state.latest.get(symbol+"|4h|BUY").tradePlan,engine.state.latest.get(symbol+"|1d|BUY").tradePlan);
+ assert.notEqual(engine.state.latest.get(symbol+"|4h|SELL").tradePlan,engine.state.latest.get(symbol+"|1d|SELL").tradePlan);
+});
+test("H4 and D1 invalid structural target and sub-2R cases remain WAIT",()=>{
+ for(const tf of ["4h","1d"]){
+  const noTarget=engine.makeEntryPlan(rec("BUY",[101,102]),bars(105),2);
+  assert.ok(noTarget&&noTarget.blocked,tf+" must WAIT when no target");
+  const short=bars(102);short[22]={open:102,high:103,low:101,close:102.5,time:22};
+  short[23]={open:102,high:102.5,low:101.5,close:102,time:23};
+  short[24]={open:102,high:102.5,low:101.5,close:102,time:24};
+  short[28]={open:102,high:102.8,low:100.5,close:102.5,time:28};
+  short[29]={open:102.5,high:102.8,low:100.5,close:102.5,time:29};
+  const under=engine.makeEntryPlan(rec("BUY",[101,102]),short,2);
+  assert.ok(under&&under.blocked&&under.rr<2,tf+" must WAIT below 2R");
+ }
+});
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

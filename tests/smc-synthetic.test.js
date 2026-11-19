@@ -650,3 +650,29 @@ test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",(
  assert.match(fn,/all-positions-positive-basket/,"basket exit policy is explicit");
 });
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));
+
+test("APA top-down requires D1/H4/H1/M30/M15/M5/M1 and uses M5 refinement",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function analyseAPATopDown(");
+ const end=source.indexOf("\n/* =========================================================",start);
+ assert.ok(start>=0&&end>start,"APA top-down function must exist");
+ const fn=source.slice(start,end);
+ for(const tf of ["1d","4h","1h","30m","15m","5m","1m"])
+   assert.ok(fn.includes('candleKey(symbol, "'+tf+'")'),"APA missing "+tf+" feed");
+ assert.match(fn,/m5Trend/,"M5 must be evaluated as refinement timeframe");
+ assert.match(fn,/M5 refinement alignment/,"M5 alignment must gate APA");
+});
+test("MT5 APA bridge requires complete D1-to-M1 timeframe set",()=>{
+ const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
+ assert.match(worker,/const APA_FRAMES = \["1d", "4h", "1h", "30m", "15m", "5m", "1m"\]/);
+ assert.match(worker,/Required strategy timeframes are missing/);
+ assert.match(worker,/strategy === "apa" \|\| strategy === "both"/);
+});
+test("MT5 scanner feeds latest M1 quote into SMC scalp basket simulation",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("async function scanMT5MarketData(");
+ const end=source.indexOf("\nfunction startMT5Scanner",start);
+ assert.ok(start>=0&&end>start,"MT5 scanner must exist");
+ const fn=source.slice(start,end);
+ assert.match(fn,/timeframe==="1m"\) manageScalpingBasketSimulation\(symbol,bars\[bars.length-1\]\.close\)/);
+});

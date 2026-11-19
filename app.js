@@ -2259,7 +2259,7 @@ function summarizeDemoLedger(records) {
     else if (status.startsWith("REVIEW")) group.review++;
     else group.otherClosed++;
     const rr = Number(record.riskReward ?? record.plannedRR);
-    if (Number.isFinite(rr) && rr > 0 && record.mode !== "scalping") {
+    if (Number.isFinite(rr) && rr > 0 && record.mode !== "scalping" && status !== "OPEN") {
       group.plannedRRTotal += rr; group.plannedRRCount++;
       summary.plannedRRTotal += rr; summary.plannedRRCount++;
     }

@@ -18,12 +18,14 @@ const DEMO_RISK_LOCK_KEY = "smcSniperProDemoRiskLockV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["1m", "5m", "15m", "30m", "1h"],
-  swing: ["1h", "4h", "1d"]
+  intraday: ["1m", "5m", "15m", "30m", "1h"]
 };
 
+// APA is intraday-only. D1/H4 are context frames, not Swing trading sessions.
 const APA_REQUIRED_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];
-const APA_SETUP_FRAME = { scalping: "5m", intraday: "15m", swing: "1h" };\n\nconst GRANULARITY = {
+const APA_SETUP_FRAME = { intraday: "15m" };
+
+const GRANULARITY = {
   "1m": 60,
   "5m": 300,
   "15m": 900,
@@ -199,10 +201,8 @@ function updateMode() {
   timeframeSelect.value = entryFrames.includes(previous) ? previous : "1m";
 
   const modeInfo = mode === "intraday"
-    ? "Top-down APA: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry (setup M15)"
-    : mode === "scalping"
-      ? "Top-down APA: D1 → H4 → H1 → M5 → M1 entry (setup M5)"
-      : "Top-down APA: D1 → H4 → H1 → M1 entry (setup H1)";
+    ? "APA + SMC Intraday: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry"
+    : "SMC Scalping: M5 setup analysis + M1 entry confirmation";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
@@ -284,8 +284,7 @@ const MT5_CONFIG_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.
 const MT5_MARKET_DATA_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/market-data";
 const BRIDGE_ALLOWED_FRAMES = {
   scalping: ["1m","5m"],
-  intraday: ["1m","5m","15m","30m","1h"],
-  swing: ["1h","4h","1d"]
+  intraday: ["1m","5m","15m","30m","1h"]
 };
 function renderBridgeTimeframes(){
   const mode=valueOf("bridgeMode")||"scalping",box=$("bridgeTimeframes");
@@ -1582,7 +1581,10 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
 
 /* APA TOP-DOWN ENGINE: D1 context -> H4/H1 confirmation -> mode setup -> M1 trigger. */
 function analyseAPATopDown(symbol) {
-  const setupTimeframe = APA_SETUP_FRAME[tradingState.mode] || "5m";
+  if (tradingState.mode !== "intraday") {
+    return { ready: false, strategy: "apa", signal: "APA is Intraday-only — select Intraday to analyse APA", entry: null, sl: null, tp: null, reasoning: "APA does not generate Scalping or Swing signals." };
+  }
+  const setupTimeframe = APA_SETUP_FRAME.intraday;
   const daily = tradingState.candles[candleKey(symbol, "1d")] || [];
   const h4 = tradingState.candles[candleKey(symbol, "4h")] || [];
   const h1 = tradingState.candles[candleKey(symbol, "1h")] || [];
@@ -1596,7 +1598,7 @@ function analyseAPATopDown(symbol) {
   const context = tradingState.mode === "intraday" ? [d1Trend,h4Trend,h1Trend,m30Trend] : [d1Trend,h4Trend,h1Trend];
   const bullishContext = context.every(t => t === "Bullish"), bearishContext = context.every(t => t === "Bearish");
   const base = analyseAPA(setup, daily, m1);
-  const direction = /\\bBUY\\b/i.test(base.signal || "") ? "BUY" : /\\bSELL\\b/i.test(base.signal || "") ? "SELL" : "";
+  const direction = /\bBUY\b/i.test(base.signal || "") ? "BUY" : /\bSELL\b/i.test(base.signal || "") ? "SELL" : "";
   const m1Closed = closed(m1), m1Structure = getStructure(m1Closed), m1Sweep = getLiquidity(m1Closed), m1Displacement = getDisplacement(m1Closed);
   const lastM1 = m1Closed[m1Closed.length - 1], m1Bull = Boolean(lastM1 && lastM1.close > lastM1.open), m1Bear = Boolean(lastM1 && lastM1.close < lastM1.open);
   const m1BuyTrigger = m1Bull && m1Displacement && (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow);
@@ -2580,7 +2582,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     return;
   }
   if (!isScalp && (![sl, tp].every(Number.isFinite) || sl <= 0 || tp <= 0)) {
-    console.warn("Signal not saved: valid SL and TP are required for Intraday/Swing.", { symbol, timeframe, signal: signalText, entry, sl, tp });
+    console.warn("Signal not saved: valid SL and TP are required for Intraday.", { symbol, timeframe, signal: signalText, entry, sl, tp });
     return;
   }
 

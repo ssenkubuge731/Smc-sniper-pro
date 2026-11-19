@@ -322,7 +322,7 @@ test("demo risk lock persistence survives restart and manual reset does not eras
  assert.match(fn,/localStorage\.getItem\(DEMO_RISK_LOCK_KEY/,"reads persisted lock");
  assert.match(fn,/localStorage\.setItem\(DEMO_RISK_LOCK_KEY/,"persists when breached");
  assert.match(fn,/persisted\?\.locked/,"reuses lock after page reload");
- assert.match(source,/localStorage\.removeItem\(DEMO_RISK_LOCK_KEY\)/,"manual reset clears only lock key");
+ assert.match(source,/localStorage\.setItem\(DEMO_RISK_LOCK_KEY,JSON\.stringify\(\{locked:false,resetAt:Date\.now\(\),source:"manual-reset"\}\)\)/,"manual reset starts a new monitoring baseline");
  assert.match(source,/Reset demo risk lock \(manual\)/,"reset is explicit UI action");
  assert.match(source,/renderSignalHistory\(\);/,"history rerender after reset");
  assert.match(source,/function startScanner\(resume = false\) \{\n  const persistedRisk = calculateDemoRiskGuard/,"scanner restart checks risk lock before starting");

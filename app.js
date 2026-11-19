@@ -2573,6 +2573,14 @@ function manageScalpingBasketSimulation(symbol, quote) {
 ========================================================= */
 
 function startScanner(resume = false) {
+  const persistedRisk = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (persistedRisk.locked) {
+    tradingState.scannerDesired = false;
+    tradingState.running = false;
+    setText("scannerStatus", "DEMO RISK PAUSED — " + persistedRisk.lockReasons.join("; "));
+    addResult("Scanner start blocked by persisted demo risk lock: " + persistedRisk.lockReasons.join("; "), "scannerResults");
+    return;
+  }
   if (tradingState.broker === "mt5") {
     addResult("MT5 scanning is not active yet. Use Deriv API for market scanning until the Windows VPS and secure MT5 bridge are installed.");
     setText("scannerStatus", "MT5 bridge not installed — use Deriv API for now");

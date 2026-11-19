@@ -197,6 +197,16 @@ test("engine only dispatches SMC signal events for trade-ready records",()=>{
  assert.equal(emittedEvents.length,records.filter(r=>r.tradeReady).length,"dispatch count must match ready records");
 });
 
+test("SMC signal publisher maps structural TP from plan.tp, not legacy tp2",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function publishSMCSignal(");
+ const end=source.indexOf("\n/* =========================================================",start);
+ assert.ok(start>=0&&end>start,"publisher function should be found");
+ const publisher=source.slice(start,end);
+ assert.match(publisher,/tp:\\s*plan\\.tp\\s*,/,"published TP must use structural plan.tp");
+ assert.doesNotMatch(publisher,/plan\\.tp2/,"legacy tp2 property must not be used");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

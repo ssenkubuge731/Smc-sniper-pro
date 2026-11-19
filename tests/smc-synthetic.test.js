@@ -330,6 +330,57 @@ test("demo risk lock persistence survives restart and manual reset does not eras
  assert.match(source,/function startScanner\(resume = false\) \{\n  const persistedRisk = calculateDemoRiskGuard/,"scanner restart checks risk lock before starting");
 });
 
+test("POI invalidation marks a broken demand/order-block zone invalid",()=>{
+ const c=bars(100);
+ c[25]={open:101,high:102,low:99,close:100,time:25};
+ c[26]={open:100,high:104,low:99.8,close:103.8,time:26};
+ c[27]={open:103.8,high:104,low:103,close:103.5,time:27};
+ c[28]={open:103.5,high:103.8,low:102.5,close:103,time:28};
+ c[29]={open:99.5,high:100,low:98.5,close:98.8,time:29};
+ const r=engine.detect(c);
+ const broken=r.zones.find(z=>z.side==="BUY"&&z.type==="Order Block"&&z.origin===25);
+ assert.ok(broken,"fixture should create the bearish-origin BUY order block");
+ assert.equal(broken.status,"invalidated");
+ assert.equal(broken.valid,false,"close below demand zone must invalidate it");
+});
+
+test("extreme candle wicks cannot move structural SL inside invalidation boundary",()=>{
+ const buy=buyCandles();buy[29]={open:104,high:108,low:95,close:105,time:29};
+ const pb=engine.makeEntryPlan(rec("BUY",[101,102]),buy);
+ assert.ok(pb&&!pb.blocked,JSON.stringify(pb));
+ assert.ok(pb.sl<101,"BUY stop must remain below POI low");
+ assert.ok(pb.sl<Math.min(...buy.slice(-8).map(x=>x.low)),"BUY stop must remain beyond extreme local low");
+ const sell=sellCandles();sell[29]={open:96,high:106,low:90,close:95,time:29};
+ const ps=engine.makeEntryPlan(rec("SELL",[99,100]),sell);
+ assert.ok(ps&&!ps.blocked,JSON.stringify(ps));
+ assert.ok(ps.sl>100,"SELL stop must remain above POI high");
+ assert.ok(ps.sl>Math.max(...sell.slice(-8).map(x=>x.high)),"SELL stop must remain beyond extreme local high");
+});
+
+test("repeated scanner evaluation does not publish duplicate signal events",()=>{
+ const sym="DUPLICATE-GUARD-"+Date.now();emittedEvents.length=0;
+ const first=engine.evaluate(sym,"1m",bullPattern());
+ const n=emittedEvents.length;
+ engine.evaluate(sym,"1m",bullPattern());
+ assert.ok(n>0,"fixture must emit an initial trade-ready signal");
+ assert.equal(emittedEvents.length,n,"same symbol/frame/direction and identical plan should publish once");
+ assert.ok(first.tradeReady);
+});
+
+test("scalping and swing timeframe lists remain independent and retain per-frame records",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(app,/scalping:\s*\["1m",\s*"5m"\]/,"scalping should use only M1 and M5");
+ assert.match(app,/swing:\s*\["1h",\s*"4h",\s*"1d"\]/,"swing should use H1, H4 and D1");
+ const symbol="STYLE-INDEPENDENCE-"+Date.now();
+ const scalp=engine.evaluate(symbol,"1m",bullPattern());
+ const swing=engine.evaluate(symbol,"1h",bearPattern());
+ assert.equal(scalp.timeframe,"1m");assert.equal(swing.timeframe,"1h");
+ assert.equal(engine.state.latest.get(symbol+"|1m").side,"BUY");
+ assert.equal(engine.state.latest.get(symbol+"|1h").side,"SELL");
+ assert.notEqual(scalp,swing,"scalping and swing evaluations must not share record objects");
+ assert.notEqual(scalp.tradePlan,swing.tradePlan,"entry/SL/TP plan objects must remain independent");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

@@ -3,6 +3,7 @@
 #property description "SMC Sniper Pro MT5 read-only connectivity agent"
 
 input string InpBridgeURL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/heartbeat";
+input string InpConfigURL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/config";
 input string InpBridgeToken = ""; // Enter locally in MT5; never commit a real token.
 input int    InpHeartbeatSeconds = 30;
 input int    InpRequestTimeoutMs = 8000;
@@ -68,6 +69,39 @@ bool SendHeartbeat()
    return true;
 }
 
+string GetJsonString(const string json,const string key)
+{
+   string needle="\\""+key+"\\":";
+   int pos=StringFind(json,needle);
+   if(pos<0)return "";
+   pos+=StringLen(needle);
+   while(pos<StringLen(json)&&(StringGetCharacter(json,pos)==' '||StringGetCharacter(json,pos)=='\\t'))pos++;
+   if(pos>=StringLen(json)||StringGetCharacter(json,pos)!='"')return "";
+   pos++;
+   int end=StringFind(json,"\\\"",pos);
+   if(end<0)return "";
+   return StringSubstr(json,pos,end-pos);
+}
+bool FetchConfiguration()
+{
+   if(StringLen(InpBridgeToken)<24)return false;
+   char data[],result[];
+   string resultHeaders;
+   string headers="Authorization: Bearer "+InpBridgeToken+"\\r\\n";
+   ResetLastError();
+   int status=WebRequest("GET",InpConfigURL,headers,InpRequestTimeoutMs,data,result,resultHeaders);
+   if(status==-1){Print("SMC bridge config fetch failed. WebRequest error ",GetLastError());return false;}
+   string response=CharArrayToString(result,0,-1,CP_UTF8);
+   if(status<200||status>=300){Print("SMC bridge config returned HTTP ",status);return false;}
+   string mode=GetJsonString(response,"mode");
+   string strategy=GetJsonString(response,"strategy");
+   string updated=GetJsonString(response,"updatedAt");
+   if(mode==""){Print("SMC bridge config: no saved configuration yet.");return true;}
+   Print("SMC bridge config received (read-only): mode=",mode,", strategy=",strategy,
+         ", updatedAt=",updated,", demoOnly=true, liveLocked=true. Config is not applied to trade execution.");
+   Print("SMC bridge config response: ",response);
+   return true;
+}
 int OnInit()
 {
    if(InpHeartbeatSeconds < 10)
@@ -79,12 +113,14 @@ int OnInit()
    EventSetTimer(InpHeartbeatSeconds);
    Print("SMC Sniper Pro MT5 agent started in READ-ONLY mode. No order functions are included.");
    SendHeartbeat();
+   FetchConfiguration();
    return INIT_SUCCEEDED;
 }
 
 void OnTimer()
 {
    SendHeartbeat();
+   FetchConfiguration();
 }
 
 void OnDeinit(const int reason)

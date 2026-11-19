@@ -50,3 +50,13 @@ The bridge communicates with the MT5 terminal, not with a broker-specific tradin
 - Worker source changes must be redeployed to the separate Cloudflare Worker before the new endpoints work. Existing Worker deployment is not automatically changed by GitHub commits.
 - The EA must be compiled and tested in MetaEditor/MT5 before claiming runtime validation.
 - This remains configuration synchronization only. No signal relay, trade command, or order execution is included.
+
+## Phase 2 — MT5 broker candle feed into website scanner
+- EA reads broker candles using `CopyRates` for configured symbols/timeframes and posts authenticated packets to `POST /mt5/market-data`.
+- Worker validates OHLC, ordered candle epochs, 30–150 candle limits, symbol/timeframe, and stores packets for 180 seconds.
+- Website scanner polls `GET /mt5/market-data?symbol=...&timeframe=...` and only analyses packets marked fresh (≤90 seconds old).
+- Fresh packets feed the existing APA display and SMC Intraday Engine. Scanner status reports fresh/stale/missing feeds.
+- Symbols/timeframes are taken from the website bridge configuration; EA publishes up to 10 symbols per polling cycle.
+- MT5 terminal must allow the Worker HTTPS origin under Tools > Options > Expert Advisors > WebRequest.
+- Worker deployment, EA compilation, and actual live MT5 candle delivery still require verification. This source upgrade is not a live validated connection.
+- This phase is market-data publishing/analysis only. No trading order execution.

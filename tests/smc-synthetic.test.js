@@ -596,4 +596,45 @@ test("MT5 candle feed data source is visible and scanner rejects nonfresh data",
  assert.match(html,/MT5 broker/,"MT5 broker source selector exists");
  assert.match(html,/bridgeSymbols/,"scanner feed uses configured MT5 symbols");
 });
+
+test("SMC Scalping follows user-selected pair and closes only when every basket position is individually profitable",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function manageScalpingBasketSimulation(");
+ const end=app.indexOf("\\n/* =========================================================\\n   SCANNER",start);
+ assert.ok(start>=0&&end>start,"basket manager must exist");
+ const storage={signalHistory:[]},messages=[];
+ const sandbox={tradingState:storage,saveSignalHistory(){storage.saved=true;},addResult(message){messages.push(message);},Date,Number};
+ vm.runInNewContext(app.slice(start,end)+";manageScalpingBasketSimulation",sandbox);
+ const manage=sandbox.manageScalpingBasketSimulation;
+ const p1={symbol:"EURUSD",strategy:"smc",mode:"scalping",direction:"BUY",entry:1.1,status:"OPEN"};
+ const p2={symbol:"EURUSD",strategy:"smc",mode:"scalping",direction:"BUY",entry:1.2,status:"OPEN"};
+ const other={symbol:"GBPUSD",strategy:"smc",mode:"scalping",direction:"BUY",entry:1.3,status:"OPEN"};
+ const apa={symbol:"EURUSD",strategy:"apa",mode:"scalping",direction:"BUY",entry:1.1,status:"OPEN"};
+ storage.signalHistory=[p1,p2,other,apa];
+ manage("EURUSD",1.15);
+ assert.equal(p1.status,"OPEN","first position profit alone cannot close basket");
+ assert.equal(p2.status,"OPEN","losing second position keeps basket open");
+ assert.equal(other.status,"OPEN","other pair must not be included");
+ assert.equal(apa.status,"OPEN","APA must not be included");
+ manage("EURUSD",1.25);
+ assert.match(p1.status,/ALL POSITIONS PROFITABLE/);
+ assert.match(p2.status,/ALL POSITIONS PROFITABLE/);
+ assert.equal(p1.closedAt,p2.closedAt,"basket positions close together");
+ assert.equal(p1.exitPrice,1.25);assert.equal(p2.exitPrice,1.25);
+ assert.equal(other.status,"OPEN");assert.equal(apa.status,"OPEN");
+ assert.equal(messages.length,1);
+});
+test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function recordCandidateSignal(");
+ const end=app.indexOf("\\nfunction ",start+10);
+ assert.ok(start>=0&&end>start);
+ const fn=app.slice(start,end);
+ assert.match(fn,/activeStrategy === "apa"\) return/,"APA must not create scalp entries");
+ assert.match(fn,/activeStrategy === "smc" && tradingState\.mode === "scalping"/,"only SMC uses scalp mode");
+ assert.match(fn,/tradingState\.selectedSymbols\.has\(symbol\)/,"scalp pair must be explicitly selected by user");
+ assert.match(fn,/record\.strategy === "smc" && record\.mode === "scalping" && record\.symbol !== symbol/,"second pair blocked until active basket closes");
+ assert.match(fn,/mode: isScalp \? "scalping" : "intraday"/,"SMC scalp records retain scalp mode");
+ assert.match(fn,/all-positions-positive-basket/,"basket exit policy is explicit");
+});
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

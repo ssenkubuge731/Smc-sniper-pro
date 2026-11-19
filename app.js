@@ -1847,6 +1847,9 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
   const box = $("timeframeResults");
   if (!box) return;
+  if (box.textContent.trim() === "No timeframe analysis available.") {
+    box.replaceChildren();
+  }
   const analyses = tradingState.strategy === "both"
     ? [
         ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
@@ -2371,6 +2374,13 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
   const strategy = activeStrategy;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
+
+  // SMC entries must not oppose an already-open SMC entry on the same symbol.
+  // This guard spans timeframes and applies to demo signal records only.
+  if (strategy === "smc" && openEntries.some(record =>
+    record.symbol === symbol && record.strategy === "smc" && record.direction !== direction
+  )) return;
+
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
   if (!checked("multipleEntries") && openEntries.length > 0) return;

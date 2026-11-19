@@ -59,7 +59,6 @@
     
       <option value="scalping">Scalping</option>
       <option value="intraday">Intraday / Day Trading</option>
-      <option value="swing">Swing Trading</option>
     </select>
 
     <label for="timeframe">Analysis timeframe</label>
@@ -241,12 +240,12 @@
     <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
     <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
     <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
-    <p class="muted">Scalping uses the fast basket style for APA and News only. SMC always uses its own timeframe-specific structural Entry, SL and TP, even when the style selector is set to Scalping. Intraday and Swing keep their individual TP/SL rules. Demo simulation only; no broker order is sent. MT5 order execution still requires the VPS bridge.</p>
+    <p class="muted">Scalping uses the fast basket style for APA and News only. SMC always uses its own timeframe-specific structural Entry, SL and TP, even when the style selector is set to Scalping. Intraday keeps its individual TP/SL rules. Demo simulation only; no broker order is sent. MT5 order execution still requires the VPS bridge.</p>
   </div>
 
   <div class="panel">
     <h3>Open demo entries</h3>
-    <p class="muted">The bot selects BUY or SELL from confirmed analysis. APA and News use the fast basket exit when Scalping is selected. SMC always uses its own timeframe-specific Entry, SL and TP. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
+    <p class="muted">The bot selects BUY or SELL from confirmed analysis. APA and News use the fast basket exit when Scalping is selected. SMC always uses its own timeframe-specific Entry, SL and TP. Intraday retains its individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
     <div id="positionsList">No open demo entries.</div>
   </div>
 
@@ -313,7 +312,7 @@
     <label for="bridgeToken">Private bridge token (same as Worker secret and EA input)</label>
     <input id="bridgeToken" type="password" autocomplete="off" placeholder="Paste token locally; never save it in GitHub">
     <label for="bridgeMode">Trading style</label>
-    <select id="bridgeMode"><option value="scalping">Scalping</option><option value="intraday">Intraday / Day Trading</option><option value="swing">Swing Trading</option></select>
+    <select id="bridgeMode"><option value="scalping">Scalping</option><option value="intraday">Intraday / Day Trading</option></select>
     <label for="bridgeStrategy">Strategy engine</label>
     <select id="bridgeStrategy"><option value="apa">APA</option><option value="smc">SMC</option><option value="both">BOTH (separate)</option></select>
     <label for="bridgeSymbols">Symbols (comma separated, exact MT5 Market Watch names)</label>

@@ -600,7 +600,7 @@ test("MT5 candle feed data source is visible and scanner rejects nonfresh data",
 test("SMC Scalping follows user-selected pair and closes only when every basket position is individually profitable",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function manageScalpingBasketSimulation(");
- const end=app.indexOf("\\n/* =========================================================\\n   SCANNER",start);
+ const end=app.indexOf("\n/* =========================================================\n   SCANNER",start);
  assert.ok(start>=0&&end>start,"basket manager must exist");
  const storage={signalHistory:[]},messages=[];
  const sandbox={tradingState:storage,saveSignalHistory(){storage.saved=true;},addResult(message){messages.push(message);},Date,Number};
@@ -627,7 +627,7 @@ test("SMC Scalping follows user-selected pair and closes only when every basket 
 test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function recordCandidateSignal(");
- const end=app.indexOf("\\nfunction ",start+10);
+ const end=app.indexOf("\nfunction ",start+10);
  assert.ok(start>=0&&end>start);
  const fn=app.slice(start,end);
  assert.match(fn,/activeStrategy === "apa"\) return/,"APA must not create scalp entries");

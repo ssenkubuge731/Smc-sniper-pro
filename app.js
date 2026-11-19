@@ -14,6 +14,7 @@ const DERIV_PUBLIC_WS =
 
 const STORAGE_KEY = "smcSniperProSettingsV2";
 const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
+const DEMO_RISK_LOCK_KEY = "smcSniperProDemoRiskLockV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
@@ -2284,7 +2285,10 @@ function calculateDemoRiskGuard(records, settings = {}) {
  if(dailyNetR<=-limitR)reasons.push("Daily loss limit reached");
  if(consecutiveLosses>=maxConsecutive)reasons.push("Consecutive-loss limit reached");
  if(eq.maxDrawdownR>=limitR)reasons.push("Maximum drawdown limit reached");
- return {locked:reasons.length>0,lockReasons:reasons,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
+ let persisted=null;try{persisted=JSON.parse(localStorage.getItem(DEMO_RISK_LOCK_KEY)||"null");}catch{}
+ if(reasons.length){const lock={locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now(),source:"risk-calculation"};try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify(lock));}catch{}}
+ const activeLock=reasons.length?{locked:true,lockReasons:reasons,lockedAt:Date.now()}:persisted?.locked?persisted:null;
+ return {locked:Boolean(activeLock),lockReasons:activeLock?.lockReasons||[],lockedAt:activeLock?.lockedAt||null,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
 }
 
 function calculateDemoEquity(records) {
@@ -2307,8 +2311,10 @@ function renderDemoRiskStatus() {
  const target=$("tradeHistory");if(!target)return;
  const guard=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);
  const row=document.createElement("div");row.className="result-item";
- row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; "):"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
+ row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; ")+" | Locked since "+new Date(guard.lockedAt||Date.now()).toLocaleString():"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
  target.appendChild(row);
+ const reset=document.createElement("button");reset.type="button";reset.textContent="Reset demo risk lock (manual)";reset.disabled=!guard.locked;reset.addEventListener("click",()=>{try{localStorage.removeItem(DEMO_RISK_LOCK_KEY);}catch{}const current=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);addResult(current.locked?"Risk lock reset attempted, but current limits are still breached: "+current.lockReasons.join("; "):"Demo risk lock manually reset. Historical trades remain unchanged.","tradeHistory");renderSignalHistory();});
+ target.appendChild(reset);
 }
 
 function renderSignalHistory() {

@@ -679,4 +679,21 @@ test("MT5 scanner feeds latest M1 quote into SMC scalp basket simulation",()=>{
  assert.match(fn,/timeframe==="1m"\) manageScalpingBasketSimulation\(symbol,bars\[bars.length-1\]\.close\)/);
 });
 
+test("SMC Scalping scanner refuses multiple or missing pairs for both MT5 and Deriv",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function getScanSymbolsForMode(");
+ const end=source.indexOf("\nfunction getBridgeFrames",start);
+ assert.ok(start>=0&&end>start,"single-pair scan selector must exist");
+ const sandbox={};vm.runInNewContext(source.slice(start,end)+";getScanSymbolsForMode",sandbox);
+ const select=sandbox.getScanSymbolsForMode;
+ assert.deepEqual(Array.from(select(["EURUSD"],"scalping","smc")),["EURUSD"]);
+ assert.deepEqual(Array.from(select(["EURUSD","GBPUSD"],"scalping","smc")),[]);
+ assert.deepEqual(Array.from(select([],"scalping","smc")),[]);
+ assert.deepEqual(Array.from(select(["EURUSD","GBPUSD"],"intraday","smc")),["EURUSD","GBPUSD"]);
+ const mt5Start=source.slice(source.indexOf("function startMT5Scanner("),source.indexOf("\nfunction startScanner",source.indexOf("function startMT5Scanner(")));
+ assert.match(mt5Start,/getScanSymbolsForMode\(rawSymbols,mode,strategy\)/);
+ const derivStart=source.slice(source.indexOf("function startScanner("),source.indexOf("\nfunction scanSelectedMarkets",source.indexOf("function startScanner(")));
+ assert.match(derivStart,/tradingState\.selectedSymbols\.size !== 1/);
+});
+
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

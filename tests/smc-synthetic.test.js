@@ -295,18 +295,18 @@ test("demo risk guard pauses at daily loss, consecutive loss and drawdown limits
  const riskStart=source.indexOf("function calculateDemoRiskGuard(");
  const riskEnd=source.indexOf("\nfunction ",riskStart+10);
  assert.ok(start>=0&&riskStart>start&&riskEnd>riskStart,"equity and risk helpers exist");
- const fn=source.slice(start,riskEnd);const storage={};const sandbox={valueOf:()=>"",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
+ const fn=source.slice(start,riskEnd);const storage={};const sandbox={valueOf:()=>"",DEMO_RISK_LOCK_KEY:"smcSniperProDemoRiskLockV1",localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v}};\n vm.runInNewContext(fn+";calculateDemoRiskGuard",sandbox);
  const guard=sandbox.calculateDemoRiskGuard;
  const day=Date.now();
  const base={mode:"intraday",riskReward:2,plannedRR:2};
  const dailyLoss=[{...base,status:"SL HIT",closedAt:day},{...base,status:"SL HIT",closedAt:day}];
- assert.equal(guard(dailyLoss,{riskPercent:0.5,dailyLossLimit:1,maxConsecutiveLosses:3}).locked,true,"daily loss 1% blocks");
+ delete storage["smcSniperProDemoRiskLockV1"];\n assert.equal(guard(dailyLoss,{riskPercent:0.5,dailyLossLimit:1,maxConsecutiveLosses:3}).locked,true,"daily loss 1% blocks");
  const streak=[{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
- assert.equal(guard(streak,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,true,"three consecutive losses pause");
+ delete storage["smcSniperProDemoRiskLockV1"];\n assert.equal(guard(streak,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,true,"three consecutive losses pause");
  const draw=[{...base,status:"TP HIT",closedAt:day-4,plannedRR:2},{...base,status:"SL HIT",closedAt:day-3},{...base,status:"SL HIT",closedAt:day-2},{...base,status:"SL HIT",closedAt:day-1}];
- assert.equal(guard(draw,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:5}).locked,true,"drawdown limit blocks");
+ delete storage["smcSniperProDemoRiskLockV1"];\n assert.equal(guard(draw,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:5}).locked,true,"drawdown limit blocks");
  const clean=[{...base,status:"TP HIT",closedAt:day,plannedRR:2}];
- assert.equal(guard(clean,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,false,"healthy ledger stays unlocked");
+ delete storage["smcSniperProDemoRiskLockV1"];\n assert.equal(guard(clean,{riskPercent:0.5,dailyLossLimit:5,maxConsecutiveLosses:3}).locked,false,"healthy ledger stays unlocked");
 });
 
 test("demo risk lock persistence survives restart and manual reset does not erase history",()=>{

@@ -267,6 +267,28 @@ test("demo ledger summary groups wins, losses, reviews and RR by strategy/timefr
  assert.ok(Math.abs(result.groups["smc|m15"].averagePlannedRR-2.65)<1e-9,"exclude open record RR from closed ledger average");
 });
 
+test("demo equity curve calculates net R and maximum drawdown from closed trades",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function calculateDemoEquity(");
+ const end=source.indexOf("\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"equity calculation should exist");
+ const fn=source.slice(start,end);
+ const sandbox={};vm.runInNewContext(fn+";calculateDemoEquity",sandbox);
+ const calc=sandbox.calculateDemoEquity;
+ const records=[
+  {id:"a",strategy:"apa",timeframe:"m5",status:"TP HIT",plannedRR:2,createdAt:1,closedAt:2},
+  {id:"b",strategy:"smc",timeframe:"m15",status:"SL HIT",plannedRR:2,createdAt:3,closedAt:4},
+  {id:"c",strategy:"smc",timeframe:"m15",status:"TP HIT",plannedRR:3,createdAt:5,closedAt:6},
+  {id:"d",strategy:"apa",timeframe:"m1",status:"OPEN",plannedRR:2,createdAt:7},
+  {id:"e",strategy:"apa",timeframe:"m1",status:"REVIEW — SL and TP touched in the same candle",plannedRR:2,createdAt:8,closedAt:9},
+  {id:"f",strategy:"apa",timeframe:"m1",status:"TP HIT",plannedRR:2,mode:"scalping",createdAt:10,closedAt:11}
+ ];
+ const result=calc(records);
+ assert.equal(result.closedTrades,3);assert.equal(result.netR,4);assert.equal(result.maxDrawdownR,1);
+ assert.deepEqual(Array.from(result.points.map(p=>p.id)),["a","b","c"]);
+ assert.equal(result.points[1].drawdownR,2);
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

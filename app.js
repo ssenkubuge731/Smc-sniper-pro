@@ -652,14 +652,16 @@ function renderSMCEntryPlan(symbol) {
     const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
     if (!plan) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — plan needs more candle data";
     if (plan.blocked) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — SL/TP held: " + plan.reason;
-    return timeframe.toUpperCase() + " " + plan.side +
-      " | Entry " + fmt(plan.entry) +
-      " | SL " + fmt(plan.sl) +
-      " | TP (structure) " + fmt(plan.tp) +
-      " | R:R " + plan.rr.toFixed(2) + "R" +
-      " | Target " + plan.targetSource +
-      " | Lot " + lot +
-      " | POI " + plan.zone + " (" + plan.zoneStatus + ")";
+    return [
+      timeframe.toUpperCase() + " " + plan.side,
+      "Entry " + fmt(plan.entry),
+      "SL " + fmt(plan.sl),
+      "TP (structure) " + fmt(plan.tp),
+      "R:R " + plan.rr.toFixed(2) + "R",
+      "Target " + plan.targetSource,
+      "Lot " + lot,
+      "POI " + plan.zone + " (" + plan.zoneStatus + ")"
+    ].join(" | ");
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",

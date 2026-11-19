@@ -133,7 +133,7 @@
   function hasConflict(buyModels,sellModels){return Array.isArray(buyModels)&&Array.isArray(sellModels)&&buyModels.length>0&&sellModels.length>0;}
   function makeEntryPlan(record, candles, minimumRR=2) {
     if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<20) return null;
-    const side=record.side, candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
+    const side=record.side,maxPoiAge=40,currentClose=N(candles.at(-1).close), candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status)&&(!Number.isFinite(N(z.age))||N(z.age)<=maxPoiAge)&&(side==="BUY"?currentClose>=N(z.low):currentClose<=N(z.high)));
     if(!candidates.length)return {blocked:true,reason:"Price has not interacted with a valid supporting POI yet"};
     candidates.sort((a,b)=>(b.score||0)-(a.score||0)||a.distance-b.distance);
     const z=candidates[0], entry=(z.low+z.high)/2;

@@ -286,7 +286,7 @@ test("demo equity curve calculates net R and maximum drawdown from closed trades
  const result=calc(records);
  assert.equal(result.closedTrades,3);assert.equal(result.netR,4);assert.equal(result.maxDrawdownR,1);
  assert.deepEqual(Array.from(result.points.map(p=>p.id)),["a","b","c"]);
- assert.equal(result.points[1].drawdownR,2);
+ assert.equal(result.points[1].drawdownR,1);
 });
 
 test("invalid candles are rejected",()=>{

@@ -2270,7 +2270,7 @@ function summarizeDemoLedger(records) {
 }
 
 function calculateDemoEquity(records) {
-  const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && record.status !== "REVIEW — SL and TP touched in the same candle" && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
+  const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && !String(record.status).toUpperCase().startsWith("REVIEW") && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
   closed.sort((a,b) => Number(a.closedAt || a.createdAt || 0) - Number(b.closedAt || b.createdAt || 0));
   let equityR = 0, peakR = 0, maxDrawdownR = 0;
   const points = [];

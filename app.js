@@ -14,6 +14,7 @@ const DERIV_PUBLIC_WS =
 
 const STORAGE_KEY = "smcSniperProSettingsV2";
 const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
+const DEMO_RISK_LOCK_KEY = "smcSniperProDemoRiskLockV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
@@ -48,10 +49,12 @@ const tradingState = {
   lastPrices: {},
   candles: {},
   requestContexts: new Map(),
+  candleSubscriptions: new Map(),
   tickSubscriptions: new Map(),
 
   requestId: 1,
   scanTimer: null,
+  mt5ScannerTimer: null,
   scanGeneration: 0,
   scanQueue: [],
   scanQueueTimer: null,
@@ -277,6 +280,57 @@ function updateBrokerPanels(sourceId = "brokerType") {
 }
 
 const MT5_PUBLIC_STATUS_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
+const MT5_CONFIG_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/config";
+const MT5_MARKET_DATA_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/market-data";
+const BRIDGE_ALLOWED_FRAMES = {
+  scalping: ["1m","5m"],
+  intraday: ["1m","5m","15m","30m","1h"],
+  swing: ["1h","4h","1d"]
+};
+function renderBridgeTimeframes(){
+  const mode=valueOf("bridgeMode")||"scalping",box=$("bridgeTimeframes");
+  if(!box)return;
+  box.replaceChildren();
+  (BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping).forEach(tf=>{
+    const label=document.createElement("label");label.className="check";
+    const input=document.createElement("input");input.type="checkbox";input.value=tf;input.checked=true;input.dataset.bridgeTf="1";
+    label.appendChild(input);label.appendChild(document.createTextNode(tf.toUpperCase()));
+    box.appendChild(label);
+  });
+}
+async function syncMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim(),mode=valueOf("bridgeMode"),strategy=valueOf("bridgeStrategy");
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const timeframes=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private bridge token (minimum 24 characters) locally.");return;}
+  if(!symbols.length){setText("bridgeConfigStatus","Enter at least one MT5 symbol name.");return;}
+  if(!timeframes.length){setText("bridgeConfigStatus","Select at least one allowed timeframe.");return;}
+  const payload={version:1,mode,strategy,symbols,timeframes,
+    riskPercent:Number(valueOf("bridgeRisk")),maxOpenTrades:Number(valueOf("bridgeMaxTrades")),
+    dailyLossLimitPercent:Number(valueOf("bridgeDailyLoss")),maxConsecutiveLosses:Number(valueOf("bridgeLossStreak")),
+    demoOnly:true,liveLocked:true};
+  setText("bridgeConfigStatus","Sending configuration to the protected cloud bridge…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config rejected (HTTP "+response.status+"): "+(data.error||"unknown error"));return;}
+    setText("bridgeConfigStatus","Synchronized at "+(data.configuration?.updatedAt||"time unavailable")+". Demo-only; live locked. No trade commands were sent.");
+  }catch(error){setText("bridgeConfigStatus","Sync failed: "+(error?.message||"network error")+" — check Worker deployment/CORS.");}
+}
+async function refreshMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim();
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private token locally to check protected configuration.");return;}
+  setText("bridgeConfigStatus","Checking cloud configuration…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"GET",headers:{"Authorization":"Bearer "+token},cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config status check failed (HTTP "+response.status+").");return;}
+    if(!data.configuration){setText("bridgeConfigStatus","Cloud bridge is reachable; no configuration has been saved.");return;}
+    const c=data.configuration;
+    setText("bridgeConfigStatus","Saved "+(c.updatedAt||"")+" | "+c.mode+" | "+c.strategy.toUpperCase()+" | "+c.symbols.join(", ")+" | "+c.timeframes.map(x=>x.toUpperCase()).join(", ")+" | demo-only / live-locked.");
+  }catch(error){setText("bridgeConfigStatus","Config check failed: "+(error?.message||"network error"));}
+}
+"https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
 
 async function refreshMT5BridgeStatus() {
   setText("mt5BridgeStatus", "Checking cloud bridge…");
@@ -431,6 +485,7 @@ function connectDeriv() {
     tradingState.derivConnected = false;
     tradingState.derivSocket = null;
     tradingState.requestContexts.clear();
+    tradingState.candleSubscriptions.clear();
     tradingState.tickSubscriptions.clear();
 
     if (tradingState.pingTimer) {
@@ -542,8 +597,13 @@ function handleDerivMessage(data) {
 
   if (data.error) {
     const message = data.error.message || "Unknown API error";
+    const failedContext = data.req_id ? tradingState.requestContexts.get(data.req_id) : null;
+    if (data.req_id) tradingState.requestContexts.delete(data.req_id);
+    const contextLabel = failedContext
+      ? " " + failedContext.symbol + " " + failedContext.timeframe.toUpperCase()
+      : "";
     setConnectionStatus("Deriv API: " + message);
-    addResult(message);
+    addResult("Market-data request failed" + contextLabel + ": " + message);
     return;
   }
 
@@ -560,12 +620,14 @@ function handleDerivMessage(data) {
     return;
   }
 
-  const context = data.req_id
-    ? tradingState.requestContexts.get(data.req_id)
-    : null;
+  const context = (data.req_id ? tradingState.requestContexts.get(data.req_id) : null) ||
+    (data.subscription?.id ? tradingState.candleSubscriptions.get(data.subscription.id) : null);
 
-  if (data.req_id) {
+  if (data.req_id && !data.subscription?.id) {
     tradingState.requestContexts.delete(data.req_id);
+  }
+  if (data.subscription?.id && context && (data.msg_type === "candles" || data.msg_type === "ohlc")) {
+    tradingState.candleSubscriptions.set(data.subscription.id, context);
   }
 
   if (data.msg_type === "candles" && Array.isArray(data.candles)) {
@@ -579,7 +641,7 @@ function handleDerivMessage(data) {
       .slice(-150);
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
-    if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+    if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
       const smcRecord = window.SMCIntradayEngine.evaluate(
         context.symbol, context.timeframe, tradingState.candles[key]
       );
@@ -595,9 +657,11 @@ function handleDerivMessage(data) {
     const candle = normalizeCandle(data.ohlc);
 
     if (isValidCandle(candle)) {
-      list.push(candle);
+      const existing = list.findIndex(item => item.epoch === candle.epoch);
+      if (existing >= 0) list[existing] = candle;
+      else list.push(candle);
       tradingState.candles[key] = list.slice(-150);
-      if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+      if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
         const smcRecord = window.SMCIntradayEngine.evaluate(
           context.symbol, context.timeframe, tradingState.candles[key]
         );
@@ -641,44 +705,51 @@ function renderSMCEntryPlan(symbol) {
   const output = $("smcEntryPlanStatus");
   if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
-  const frames = window.SMCIntradayEngine.frames;
+  const frames = window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
   const fmt = value => Number(value).toPrecision(7);
   const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
     if (!record) return timeframe.toUpperCase() + " — waiting for candle analysis";
     if (!record.ready) return timeframe.toUpperCase() + " — " + (record.status || "waiting for enough candles");
     if (!record.confirmed) return timeframe.toUpperCase() + " — scanning; no confirmed entry yet";
-    const candles = tradingState.candles[symbol + "|" + timeframe] || [];
-    const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-    if (!plan) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — plan needs more candle data";
-    if (plan.blocked) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — SL/TP held: " + plan.reason;
-    return timeframe.toUpperCase() + " " + plan.side +
-      " | Entry " + fmt(plan.entry) +
-      " | SL " + fmt(plan.sl) +
-      " | TP1 " + fmt(plan.tp1) +
-      " | TP2 " + fmt(plan.tp2) +
-      " | TP3 " + fmt(plan.tp3) +
-      " | Lot " + lot +
-      " | POI " + plan.zone + " (" + plan.zoneStatus + ")";
+    const plan = record.tradePlan;
+    if (!plan) return timeframe.toUpperCase() + " " + record.side + " — trade plan unavailable; WAIT";
+    if (plan.blocked || !record.tradeReady) return timeframe.toUpperCase() + " " + record.side + " — NOT TRADE-READY; WAIT: " + (plan.reason || "plan validation failed");
+    return [
+      timeframe.toUpperCase() + " " + plan.side,
+      "Entry " + fmt(plan.entry),
+      "SL " + fmt(plan.sl),
+      "TP (structure) " + fmt(plan.tp),
+      "R:R " + plan.rr.toFixed(2) + "R",
+      "Target " + plan.targetSource,
+      "Lot " + lot,
+      "POI " + plan.zone + " (" + plan.zoneStatus + ")"
+    ].join(" | ");
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",
-    "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
+    "SMC " + tradingState.mode.toUpperCase() + " — " + symbol + " — each timeframe is calculated independently.\n" +
     "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
     lines.join("\n") +
-    "\nSL is based on that timeframe's POI/structure + ATR buffer; TP1/TP2/TP3 = 1.5R/2R/3R. " +
+    "\nEach timeframe uses its own POI/swing invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
     "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
 }
+
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
-  const rows=window.SMCIntradayEngine.frames.map(tf=>{
+  const frames=window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
+  const rows=frames.map(tf=>{
     const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
     return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
   });
   setText("smcFormationStatus","SMC timeframes — "+symbol+": "+rows.join(" | "));
-  const best=window.SMCIntradayEngine.best(symbol);
+  const best=window.SMCIntradayEngine.best(symbol,frames);
   setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
-  const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const all=frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
   setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
   renderSMCEntryPlan(symbol);
@@ -688,15 +759,14 @@ function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"�
 // Each SMC timeframe can publish its own demo signal independently.
 // This records a signal preview only; it never sends a broker order.
 function publishSMCSignal(symbol, timeframe, record, candles) {
-  if (!record || !record.confirmed || !window.SMCIntradayEngine) return;
-  const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-  if (!plan || plan.blocked) return;
+  if (!record || !record.confirmed || !record.tradeReady || !record.tradePlan || !window.SMCIntradayEngine) return;
+  const plan = record.tradePlan;
   recordCandidateSignal(symbol, timeframe, {
     strategy: "smc",
     signal: plan.side + " — SMC " + timeframe.toUpperCase() + " confirmed",
     entry: plan.entry,
     sl: plan.sl,
-    tp: plan.tp2,
+    tp: plan.tp,
     trend: plan.side,
     reasoning: record.entryModels.join(" | ")
   }, candles);
@@ -866,6 +936,11 @@ function isValidCandle(candle) {
 function requestCandles(symbol, timeframe) {
   const granularity = GRANULARITY[timeframe];
   if (!granularity) return;
+  const subscribed = [...tradingState.candleSubscriptions.values()].some(
+    context => context.symbol === symbol && context.timeframe === timeframe
+  );
+  const queued = tradingState.scanQueue.some(job => job.symbol === symbol && job.timeframe === timeframe);
+  if (subscribed || queued) return;
 
   tradingState.scanQueue.push({ symbol, timeframe, granularity });
   processScanQueue();
@@ -903,7 +978,8 @@ function processScanQueue() {
       count: 100,
       end: "latest",
       style: "candles",
-      granularity: job.granularity
+      granularity: job.granularity,
+      subscribe: 1
     }, { symbol: job.symbol, timeframe: job.timeframe });
   }, 500);
 }
@@ -1847,6 +1923,9 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
   const box = $("timeframeResults");
   if (!box) return;
+  if (box.textContent.trim() === "No timeframe analysis available.") {
+    box.replaceChildren();
+  }
   const analyses = tradingState.strategy === "both"
     ? [
         ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
@@ -2232,12 +2311,118 @@ function renderScalpActivity() {
   }
 }
 
+function summarizeDemoLedger(records) {
+  const summary = { total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0, groups: {} };
+  (Array.isArray(records) ? records : []).forEach(record => {
+    if (!record || !record.status) return;
+    summary.total++;
+    const status = String(record.status).toUpperCase();
+    if (status === "OPEN") summary.open++;
+    else if (status === "TP HIT") summary.wins++;
+    else if (status === "SL HIT") summary.losses++;
+    else if (status.startsWith("REVIEW")) summary.review++;
+    else summary.otherClosed++;
+    const strategy = String(record.strategy || "APA").toLowerCase();
+    const timeframe = String(record.timeframe || "unknown").toLowerCase();
+    const key = strategy + "|" + timeframe;
+    if (!summary.groups[key]) summary.groups[key] = { strategy, timeframe, total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0 };
+    const group = summary.groups[key];
+    group.total++;
+    if (status === "OPEN") group.open++;
+    else if (status === "TP HIT") group.wins++;
+    else if (status === "SL HIT") group.losses++;
+    else if (status.startsWith("REVIEW")) group.review++;
+    else group.otherClosed++;
+    const rr = Number(record.riskReward ?? record.plannedRR);
+    if (Number.isFinite(rr) && rr > 0 && record.mode !== "scalping" && status !== "OPEN") {
+      group.plannedRRTotal += rr; group.plannedRRCount++;
+      summary.plannedRRTotal += rr; summary.plannedRRCount++;
+    }
+  });
+  summary.averagePlannedRR = summary.plannedRRCount ? summary.plannedRRTotal / summary.plannedRRCount : null;
+  Object.values(summary.groups).forEach(group => { group.averagePlannedRR = group.plannedRRCount ? group.plannedRRTotal / group.plannedRRCount : null; });
+  return summary;
+}
+
+function calculateDemoRiskGuard(records, settings = {}) {
+ const history=Array.isArray(records)?records:[];
+ const riskPct=Math.max(0.01,Number(settings.riskPercent ?? valueOf("riskPercent"))||0.5);
+ const dailyLimitPct=Math.max(0.01,Number(settings.dailyLossLimit ?? valueOf("dailyLossLimit"))||2);
+ const maxConsecutive=Math.max(1,Number(settings.maxConsecutiveLosses ?? valueOf("maxConsecutiveLosses"))||3);
+ const limitR=dailyLimitPct/riskPct;
+ let persisted=null;try{persisted=JSON.parse(localStorage.getItem(DEMO_RISK_LOCK_KEY)||"null");}catch{}
+ const resetAt=persisted&&!persisted.locked?Number(persisted.resetAt||0):0;
+ const sessionHistory=resetAt?history.filter(r=>Number(r.closedAt||r.createdAt||0)>resetAt):history;
+ const dayStart=new Date();dayStart.setHours(0,0,0,0);
+ const daily=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")&&Number(r.closedAt||0)>=Math.max(dayStart.getTime(),resetAt));
+ const dailyNetR=daily.reduce((sum,r)=>sum+(r.status==="TP HIT"?Math.max(0,Number(r.riskReward??r.plannedRR)||0):-1),0);
+ const closed=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")).sort((a,b)=>Number(a.closedAt||a.createdAt||0)-Number(b.closedAt||b.createdAt||0));
+ let consecutiveLosses=0;for(let i=closed.length-1;i>=0;i--){if(closed[i].status==="SL HIT")consecutiveLosses++;else break;}
+ const eq=calculateDemoEquity(sessionHistory);const reasons=[];
+ if(dailyNetR<=-limitR)reasons.push("Daily loss limit reached");
+ if(consecutiveLosses>=maxConsecutive)reasons.push("Consecutive-loss limit reached");
+ if(eq.maxDrawdownR>=limitR)reasons.push("Maximum drawdown limit reached");
+ if(reasons.length){const lock={locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now(),source:"risk-calculation"};try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify(lock));}catch{}}
+ const activeLock=reasons.length?{locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now()}:persisted?.locked?persisted:null;
+ return {locked:Boolean(activeLock),lockReasons:activeLock?.lockReasons||[],lockedAt:activeLock?.lockedAt||null,resetAt,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
+}
+
+
+function calculateDemoEquity(records) {
+  const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && !String(record.status).toUpperCase().startsWith("REVIEW") && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
+  closed.sort((a,b) => Number(a.closedAt || a.createdAt || 0) - Number(b.closedAt || b.createdAt || 0));
+  let equityR = 0, peakR = 0, maxDrawdownR = 0;
+  const points = [];
+  closed.forEach(record => {
+    const planned = Number(record.riskReward ?? record.plannedRR);
+    const outcomeR = record.status === "TP HIT" && Number.isFinite(planned) && planned > 0 ? planned : -1;
+    equityR += outcomeR;
+    peakR = Math.max(peakR, equityR);
+    maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
+    points.push({ id: record.id || String(record.closedAt || record.createdAt || points.length), strategy: String(record.strategy || "APA"), timeframe: String(record.timeframe || "unknown"), status: record.status, outcomeR, equityR, drawdownR: peakR-equityR });
+  });
+  return { closedTrades: closed.length, netR: equityR, maxDrawdownR, points };
+}
+
+function renderDemoRiskStatus() {
+ const target=$("tradeHistory");if(!target)return;
+ const guard=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);
+ const row=document.createElement("div");row.className="result-item";
+ row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; ")+" | Locked since "+new Date(guard.lockedAt||Date.now()).toLocaleString():"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
+ target.appendChild(row);
+ const reset=document.createElement("button");reset.type="button";reset.textContent="Reset demo risk lock (manual)";reset.disabled=!guard.locked;reset.addEventListener("click",()=>{try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify({locked:false,resetAt:Date.now(),source:"manual-reset"}));}catch{}const current=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);addResult(current.locked?"Risk lock reset attempted, but current limits are still breached: "+current.lockReasons.join("; "):"Demo risk lock manually reset. Historical trades remain unchanged.","tradeHistory");renderSignalHistory();});
+ target.appendChild(reset);
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
   renderScalpActivity();
   const box = $("tradeHistory");
   if (!box) return;
   box.replaceChildren();
+  const summary = summarizeDemoLedger(tradingState.signalHistory);
+  const summaryRow = document.createElement("div");
+  summaryRow.className = "result-item";
+  summaryRow.textContent = `Demo ledger | Total ${summary.total} | Open ${summary.open} | Wins ${summary.wins} | Losses ${summary.losses} | Review ${summary.review} | Avg planned RR ${summary.averagePlannedRR == null ? "--" : summary.averagePlannedRR.toFixed(2)}`;
+  box.appendChild(summaryRow);
+  const equity = calculateDemoEquity(tradingState.signalHistory);
+  const equityRow = document.createElement("div");
+  equityRow.className = "result-item";
+  equityRow.textContent = `Demo closed-trade curve | ${equity.closedTrades} eligible closes | Net ${equity.netR >= 0 ? "+" : ""}${equity.netR.toFixed(2)}R | Max drawdown ${equity.maxDrawdownR.toFixed(2)}R`;
+  box.appendChild(equityRow);
+  renderDemoRiskStatus();
+  if (equity.points.length) {
+    const curveRow = document.createElement("div");
+    curveRow.className = "result-item";
+    curveRow.textContent = "Equity R sequence: " + equity.points.map(point => `${point.strategy.toUpperCase()} ${point.timeframe.toUpperCase()} ${point.equityR >= 0 ? "+" : ""}${point.equityR.toFixed(2)}R`).join(" → ");
+    box.appendChild(curveRow);
+  }
+  Object.values(summary.groups).sort((a,b) => a.strategy.localeCompare(b.strategy) || a.timeframe.localeCompare(b.timeframe)).forEach(group => {
+    const groupRow = document.createElement("div");
+    groupRow.className = "result-item";
+    groupRow.textContent = `${group.strategy.toUpperCase()} ${group.timeframe.toUpperCase()} | Total ${group.total} | Open ${group.open} | Wins ${group.wins} | Losses ${group.losses} | Review ${group.review} | Avg planned RR ${group.averagePlannedRR == null ? "--" : group.averagePlannedRR.toFixed(2)}`;
+    box.appendChild(groupRow);
+  });
   if (!tradingState.signalHistory.length) {
     box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
     return;
@@ -2371,6 +2556,13 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
   const strategy = activeStrategy;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
+
+  // SMC entries must not oppose an already-open SMC entry on the same symbol.
+  // This guard spans timeframes and applies to demo signal records only.
+  if (strategy === "smc" && openEntries.some(record =>
+    record.symbol === symbol && record.strategy === "smc" && record.direction !== direction
+  )) return;
+
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
   if (!checked("multipleEntries") && openEntries.length > 0) return;
@@ -2387,6 +2579,12 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     (!isScalp || Number(record.signalCandleEpoch) === candleEpoch)
   );
   if (alreadyOpen) return;
+
+  const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (riskGuard.locked) {
+    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");
+    return;
+  }
 
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
@@ -2458,12 +2656,65 @@ function manageScalpingBasketSimulation(symbol, quote) {
    SCANNER
 ========================================================= */
 
+async function scanMT5MarketData(){
+  if(!tradingState.running||tradingState.broker!=="mt5")return;
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
+  const allowed=BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping;
+  const checkedFrames=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+  const frames=checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed;
+  if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
+  let fresh=0,stale=0,missing=0;
+  for(const symbol of symbols.slice(0,10)){
+    for(const timeframe of frames){
+      try{
+        const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
+        const response=await fetch(url,{cache:"no-store"});
+        if(!response.ok){missing++;continue;}
+        const packet=await response.json();
+        if(packet.status!=="FRESH"||packet.ageSeconds>90){stale++;continue;}
+        const bars=(packet.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(isValidCandle).slice(-150);
+        if(bars.length<30){missing++;continue;}
+        const key=candleKey(symbol,timeframe);
+        tradingState.candles[key]=bars;
+        fresh++;
+        renderTimeframeAnalysis(symbol,timeframe);
+        if((tradingState.strategy==="smc"||tradingState.strategy==="both")&&window.SMCIntradayEngine){
+          const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars);
+          publishSMCSignal(symbol,timeframe,record,bars);
+          renderSMCMultiFrame(symbol);
+        }
+        analyseMainSelection(symbol);
+        addResult("MT5 DATA "+symbol+" "+timeframe.toUpperCase()+" • "+bars.length+" candles • received "+packet.receivedAt,"scannerResults");
+      }catch(error){missing++;}
+    }
+  }
+  setText("scannerStatus","MT5 scanner: "+fresh+" fresh feeds • "+stale+" stale • "+missing+" missing. Demo-only analysis.");
+  setText("derivConnectionStatus","Scanner data source: MT5 broker candles (read-only).");
+}
+function startMT5Scanner(){
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  if(!symbols.length){addResult("MT5 scanner requires symbols in the bridge settings, e.g. XAUUSD,EURUSD.");setText("scannerStatus","Enter MT5 symbols in bridge settings.");return;}
+  stopScanner(false);
+  tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
+  tradingState.mode=valueOf("bridgeMode")||"scalping";
+  tradingState.strategy=valueOf("bridgeStrategy")||"apa";
+  tradingState.selectedSymbols=new Set(symbols);
+  setText("scannerResults","MT5 market-data scanner started. Waiting for fresh candles.");
+  setText("scannerStatus","MT5 data scanner starting — read-only.");
+  scanMT5MarketData();
+  tradingState.mt5ScannerTimer=setInterval(scanMT5MarketData,15000);
+}
 function startScanner(resume = false) {
-  if (tradingState.broker === "mt5") {
-    addResult("MT5 scanning is not active yet. Use Deriv API for market scanning until the Windows VPS and secure MT5 bridge are installed.");
-    setText("scannerStatus", "MT5 bridge not installed — use Deriv API for now");
+  const persistedRisk = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (persistedRisk.locked) {
+    tradingState.scannerDesired = false;
+    tradingState.running = false;
+    setText("scannerStatus", "DEMO RISK PAUSED — " + persistedRisk.lockReasons.join("; "));
+    addResult("Scanner start blocked by persisted demo risk lock: " + persistedRisk.lockReasons.join("; "), "scannerResults");
     return;
   }
+  if (tradingState.broker === "mt5") { startMT5Scanner(); return; }
 
   if (!tradingState.derivConnected || !isSocketOpen()) {
     addResult("Connect Deriv first.");
@@ -2517,7 +2768,12 @@ function scanSelectedMarkets() {
 function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
+  if(tradingState.mt5ScannerTimer){clearInterval(tradingState.mt5ScannerTimer);tradingState.mt5ScannerTimer=null;}
   clearScanQueue();
+  for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
+    if (isSocketOpen()) sendRequest({ forget: subscriptionId });
+  }
+  tradingState.candleSubscriptions.clear();
 
   if (tradingState.scanTimer) {
     clearInterval(tradingState.scanTimer);
@@ -2675,6 +2931,9 @@ function initApp() {
   $("scannerBroker")?.addEventListener("change", () => updateBrokerPanels("scannerBroker"));
   $("connectMT5")?.addEventListener("click", prepareMT5Connection);
   $("refreshMT5Bridge")?.addEventListener("click", refreshMT5BridgeStatus);
+  $("bridgeMode")?.addEventListener("change", renderBridgeTimeframes);
+  $("syncBridgeConfig")?.addEventListener("click", syncMT5BridgeConfig);
+  $("refreshBridgeConfig")?.addEventListener("click", refreshMT5BridgeConfig);
   $("mt5Broker")?.addEventListener("change", () => {
     setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
   });
@@ -2705,6 +2964,7 @@ function initApp() {
   updateBrokerPanels("brokerType");
   updatePairCount();
 
+  renderBridgeTimeframes();
   refreshMT5BridgeStatus();
   setConnectionStatus("Not connected");
   setText("scannerStatus", "Scanner stopped");

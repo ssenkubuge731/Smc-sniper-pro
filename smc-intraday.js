@@ -151,8 +151,8 @@
       const x=sample[i];
       const swingHigh=Number(x.high)>Number(sample[i-1].high)&&Number(x.high)>Number(sample[i-2].high)&&Number(x.high)>=Number(sample[i+1].high)&&Number(x.high)>=Number(sample[i+2].high);
       const swingLow=Number(x.low)<Number(sample[i-1].low)&&Number(x.low)<Number(sample[i-2].low)&&Number(x.low)<=Number(sample[i+1].low)&&Number(x.low)<=Number(sample[i+2].low);
-      if(side==="BUY"&&swingHigh&&Number(x.high)>entry&&(target===null||Number(x.high)<target)){target=Number(x.high);targetSource="confirmed swing high / buy-side liquidity";}
-      if(side==="SELL"&&swingLow&&Number(x.low)<entry&&(target===null||Number(x.low)>target)){target=Number(x.low);targetSource="confirmed swing low / sell-side liquidity";}
+      if(side==="BUY"&&swingHigh&&Number(x.high)>entry&&Number(x.high)>Number(sample[sample.length-1].close)&&(target===null||Number(x.high)<target)){target=Number(x.high);targetSource="confirmed swing high / buy-side liquidity";}
+      if(side==="SELL"&&swingLow&&Number(x.low)<entry&&Number(x.low)<Number(sample[sample.length-1].close)&&(target===null||Number(x.low)>target)){target=Number(x.low);targetSource="confirmed swing low / sell-side liquidity";}
     }
     if(target===null){
       const opposing=(record.zones||[]).filter(q=>q.valid&&q.side!==(side)&&q.status!=="invalidated");

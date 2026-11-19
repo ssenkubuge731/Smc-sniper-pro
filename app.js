@@ -697,7 +697,7 @@ function publishSMCSignal(symbol, timeframe, record, candles) {
     signal: plan.side + " — SMC " + timeframe.toUpperCase() + " confirmed",
     entry: plan.entry,
     sl: plan.sl,
-    tp: plan.tp2,
+    tp: plan.tp,
     trend: plan.side,
     reasoning: record.entryModels.join(" | ")
   }, candles);

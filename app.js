@@ -2303,6 +2303,14 @@ function calculateDemoEquity(records) {
   return { closedTrades: closed.length, netR: equityR, maxDrawdownR, points };
 }
 
+function renderDemoRiskStatus() {
+ const target=$("tradeHistory");if(!target)return;
+ const guard=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);
+ const row=document.createElement("div");row.className="result-item";
+ row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; "):"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
+ target.appendChild(row);
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
   renderScalpActivity();
@@ -2318,7 +2326,7 @@ function renderSignalHistory() {
   const equityRow = document.createElement("div");
   equityRow.className = "result-item";
   equityRow.textContent = `Demo closed-trade curve | ${equity.closedTrades} eligible closes | Net ${equity.netR >= 0 ? "+" : ""}${equity.netR.toFixed(2)}R | Max drawdown ${equity.maxDrawdownR.toFixed(2)}R`;
-  box.appendChild(equityRow);
+  box.appendChild(equityRow);\n  renderDemoRiskStatus();
   if (equity.points.length) {
     const curveRow = document.createElement("div");
     curveRow.className = "result-item";

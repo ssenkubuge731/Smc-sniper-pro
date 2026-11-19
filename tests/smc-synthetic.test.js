@@ -490,7 +490,7 @@ test("H4 and D1 timeframe-specific RR thresholds block subminimum and allow vali
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });
-console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));
+
 
 test("scanner feeds the independent SMC engine in SMC and BOTH modes for candle history and live OHLC",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
@@ -508,3 +508,4 @@ test("scanner feeds the independent SMC engine in SMC and BOTH modes for candle 
  assert.match(app,/strategy: "smc"/,"SMC records keep separate strategy identity");
  assert.match(app,/resultKey = symbol \+ "\|" \+ timeframe \+ "\|" \+ strategyName/,"renderer keys each strategy separately");
 });
+console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

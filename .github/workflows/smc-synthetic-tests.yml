@@ -16,5 +16,6 @@ jobs:
         with:
           node-version: 22
       - run: node --check app.js
+      - run: node --check smc-intraday.js
       - run: node --input-type=module --check < mt5-bridge/worker.js
       - run: node tests/smc-synthetic.test.js

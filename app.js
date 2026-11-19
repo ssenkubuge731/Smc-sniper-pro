@@ -2547,7 +2547,11 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   // Keep a live scan trace even when analysis says WAIT. A WAIT is
   // an observation, never an opened or simulated trade.
   const activeStrategy = result.strategy || tradingState.strategy;
-  const isScalp = activeStrategy !== "smc" && tradingState.mode === "scalping";
+  // APA is Intraday-only. SMC alone owns the Scalping mode.
+  if (tradingState.mode === "scalping" && activeStrategy === "apa") return;
+  const isScalp = activeStrategy === "smc" && tradingState.mode === "scalping";
+  // A scalp candidate must belong to a pair explicitly selected by the user.
+  if (isScalp && (!tradingState.selectedSymbols || !tradingState.selectedSymbols.has(symbol))) return;
 
   if (isScalp) {
     const observation = {
@@ -2590,6 +2594,11 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     record.symbol === symbol && record.strategy === "smc" && record.direction !== direction
   )) return;
 
+  // SMC Scalping is locked to the user's active pair until its basket closes.
+  if (isScalp && openEntries.some(record =>
+    record.strategy === "smc" && record.mode === "scalping" && record.symbol !== symbol
+  )) return;
+
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
   if (!checked("multipleEntries") && openEntries.length > 0) return;
@@ -2617,8 +2626,8 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,
-    mode: strategy === "smc" ? "intraday" : tradingState.mode,
-    exitPolicy: isScalp ? "basket-first-positive" : "individual-tp-sl",
+    mode: isScalp ? "scalping" : "intraday",
+    exitPolicy: isScalp ? "all-positions-positive-basket" : "individual-tp-sl",
     createdAt: Date.now(),
     signalCandleEpoch: candleEpoch,
     lastCheckedCandleEpoch: candleEpoch,
@@ -2646,37 +2655,38 @@ function updateMarketPrice(symbol, quote) {
 }
 
 function manageScalpingBasketSimulation(symbol, quote) {
-  const open = tradingState.signalHistory.filter(record =>
-    record.status === "OPEN" && record.mode === "scalping" && record.symbol === symbol
-  );
-  if (!open.length) return;
+  const price = Number(quote);
+  if (!Number.isFinite(price) || price <= 0) return;
 
-  // Separate basket per strategy and direction. Fixed SL/TP are not used in
-  // Scalping for now; each basket exits on its first positive price movement.
-  let changed = false;
-  const strategies = [...new Set(open.map(record => record.strategy))];
-  strategies.forEach(strategy => {
-    const entries = open.filter(record => record.strategy === strategy);
-    const directions = [...new Set(entries.map(record => record.direction))];
-    directions.forEach(direction => {
-      const basket = entries.filter(record => record.direction === direction);
-      const netMove = basket.reduce((sum, record) => sum + (
-        direction === "BUY" ? Number(quote) - Number(record.entry)
-                            : Number(record.entry) - Number(quote)
-      ), 0);
-      if (netMove > 0) {
-        const closedAt = Date.now();
-        basket.forEach(record => {
-          record.status = "SCALP BASKET CLOSED — FIRST POSITIVE MOVE";
-          record.closedAt = closedAt;
-          record.exitPrice = Number(quote);
-        });
-        changed = true;
-        addResult(`Scalp ${strategy.toUpperCase()} basket simulation closed at first positive price move: ${symbol} ${direction}. Fixed SL/TP not used.`, "tradeHistory");
-      }
-    });
+  // Only SMC scalp positions on this exact symbol belong to this basket.
+  const basket = tradingState.signalHistory.filter(record =>
+    record.status === "OPEN" &&
+    record.strategy === "smc" &&
+    record.mode === "scalping" &&
+    record.symbol === symbol
+  );
+  if (!basket.length) return;
+
+  // Every position must be individually profitable at this same quote.
+  const allIndividuallyProfitable = basket.every(record => {
+    const entry = Number(record.entry);
+    if (!Number.isFinite(entry) || entry <= 0) return false;
+    return record.direction === "BUY" ? price > entry :
+      record.direction === "SELL" ? price < entry : false;
   });
-  if (changed) saveSignalHistory();
+  if (!allIndividuallyProfitable) return;
+
+  const closedAt = Date.now();
+  basket.forEach(record => {
+    record.status = "SCALP BASKET CLOSED — ALL POSITIONS PROFITABLE";
+    record.closedAt = closedAt;
+    record.exitPrice = price;
+  });
+  saveSignalHistory();
+  addResult(
+    `SMC scalp basket simulation closed: every position on user-selected pair ${symbol} was individually profitable at the same quote. Fixed SL/TP not used.`,
+    "tradeHistory"
+  );
 }
 
 /* =========================================================

@@ -508,4 +508,23 @@ test("scanner feeds the independent SMC engine in SMC and BOTH modes for candle 
  assert.match(app,/strategy: "smc"/,"SMC records keep separate strategy identity");
  assert.match(app,/resultKey = symbol \+ "\|" \+ timeframe \+ "\|" \+ strategyName/,"renderer keys each strategy separately");
 });
+test("live candle scanner requests subscribed OHLC streams, retains contexts and deduplicates same candle updates",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const request=app.slice(app.indexOf("function requestCandles("),app.indexOf("function clearScanQueue("));
+ assert.match(request,/candleSubscriptions\.values\(\)/,"avoid duplicate timeframe stream requests");
+ assert.match(request,/scanQueue\.some\(job => job\.symbol === symbol && job\.timeframe === timeframe\)/,"avoid duplicate queued requests");
+ const queue=app.slice(app.indexOf("function processScanQueue("),app.indexOf("function findStructureZones("));
+ assert.match(queue,/ticks_history:\s*job\.symbol/,"history request uses symbol");
+ assert.match(queue,/style:\s*"candles"/,"requests candle data");
+ assert.match(queue,/subscribe:\s*1/,"requests a candle stream after history");
+ const handler=app.slice(app.indexOf("function handleDerivMessage("),app.indexOf("function renderSMCFormationMonitor("));
+ assert.match(handler,/data\.subscription\?\.id\s*\?\s*tradingState\.candleSubscriptions\.get/,"subscription response maps back to symbol/timeframe");
+ assert.match(handler,/candleSubscriptions\.set\(data\.subscription\.id, context\)/,"retains context for stream updates");
+ assert.match(handler,/const existing = list\.findIndex\(item => item\.epoch === candle\.epoch\)/,"updates same epoch candle rather than appending duplicates");
+ assert.match(handler,/if \(existing >= 0\) list\[existing\] = candle;\s*else list\.push\(candle\)/,"upsert candle update");
+ const stop=app.slice(app.indexOf("function stopScanner("),app.indexOf("function collectSettings("));
+ assert.match(stop,/sendRequest\(\{ forget: subscriptionId \}\)/,"scanner stop forgets candle subscriptions");
+ assert.match(stop,/candleSubscriptions\.clear\(\)/,"scanner stop clears stream context map");
+});
+
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

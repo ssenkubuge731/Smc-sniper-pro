@@ -21,20 +21,20 @@ function sellCandles(target=90,current=96){
  c[28]={open:96,high:100.5,low:95.5,close:96,time:28};c[29]={open:96,high:100.5,low:95.5,close:current,time:29};return c;
 }
 function bullPattern(){
- const c=bars(101); for(let i=0;i<c.length;i++)c[i]={open:100.5,high:102,low:99.5,close:100.2,time:i};
- c[25]={open:100.4,high:102,low:99.5,close:100.1,time:25};
+ const c=bars(101); for(let i=0;i<c.length;i++)c[i]={open:100.5,high:101,low:99.5,close:100.2,time:i};
+ c[25]={open:100.4,high:101,low:99.5,close:100.1,time:25};
  c[26]={open:100.8,high:101,low:98.5,close:100.1,time:26};
- c[27]={open:100.2,high:101.5,low:99.5,close:100.8,time:27};
- c[28]={open:103.8,high:104.5,low:103.5,close:104.2,time:28};
- c[29]={open:100,high:108.5,low:98,close:108,time:29};return c;
+ c[27]={open:100.2,high:102,low:99.5,close:101.8,time:27};
+ c[28]={open:101.8,high:102.5,low:101.5,close:102,time:28};
+ c[29]={open:100,high:104.8,low:97.5,close:104.5,time:29};return c;
 }
 function bearPattern(){
- const c=bars(100);for(let i=0;i<c.length;i++)c[i]={open:100.5,high:102,low:99.5,close:100.2,time:i};
- c[25]={open:100.5,high:102,low:99.5,close:100.1,time:25};
- c[26]={open:102,high:103,low:100.5,close:101,time:26};
- c[27]={open:100.5,high:101.5,low:99.5,close:100,time:27};
- c[28]={open:99,high:99.5,low:98.5,close:98.8,time:28};
- c[29]={open:101,high:104,low:92,close:92.5,time:29};return c;
+ const c=bars(100);for(let i=0;i<c.length;i++)c[i]={open:100.5,high:101,low:99.5,close:100.2,time:i};
+ c[25]={open:100.5,high:101,low:99.5,close:100.1,time:25};
+ c[26]={open:100.8,high:102,low:100.5,close:101.5,time:26};
+ c[27]={open:101.2,high:101.5,low:99.5,close:100,time:27};
+ c[28]={open:100,high:100.2,low:99.4,close:99.6,time:28};
+ c[29]={open:100,high:104,low:92,close:92.5,time:29};return c;
 }
 function rec(side,z,opposing=[]){return {confirmed:true,side,zones:[{type:"Demand/Supply",side,low:z[0],high:z[1],valid:true,status:"reacting",score:90,distance:0},...opposing]};}
 test("Detector recognizes synthetic bullish sweep, BOS/MSS, displacement, FVG and confirmed BUY",()=>{

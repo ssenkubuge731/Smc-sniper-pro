@@ -73,7 +73,7 @@ export default {
   if(url.pathname==="/mt5/public-config"&&request.method==="GET"){
     if(!env.MT5_HEARTBEATS)return json({error:"Bridge storage is not configured"},503);
     const config=await env.MT5_HEARTBEATS.get("configuration","json");
-    return json({status:config?"CONFIGURED":"NO_CONFIGURATION",configuration:config||null});
+    return json({status:config?"CONFIGURED":"NO_CONFIGURATION",updatedAt:config?.updatedAt||null,mode:config?.mode||null,strategy:config?.strategy||null});
   }
   const protectedPaths=["/mt5/heartbeat","/mt5/status","/mt5/config"];
   if(!protectedPaths.includes(url.pathname))return json({error:"Not found"},404);

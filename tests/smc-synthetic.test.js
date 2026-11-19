@@ -34,8 +34,11 @@ test("WAIT if there is no structural target",()=>{
  assert.ok(p&&p.blocked);assert.match(p.reason,/No confirmed opposing swing/i);
 });
 test("WAIT if structural target offers less than 2R",()=>{
- const c=buyCandles(102.7,102.2);const p=engine.makeEntryPlan(rec("BUY",[101,102]),c);
- assert.ok(p&&p.blocked);assert.ok(p.rr<2);assert.match(p.reason,/less than 2.0R/i);
+ const c=bars(102);c[22]={open:102,high:103,low:101,close:102.5,time:22};
+ c[23]={open:102,high:102.5,low:101.5,close:102,time:23};c[24]={open:102,high:102.5,low:101.5,close:102,time:24};
+ c[28]={open:102,high:102.8,low:100.5,close:102.5,time:28};c[29]={open:102.5,high:102.8,low:100.5,close:102.5,time:29};
+ const p=engine.makeEntryPlan(rec("BUY",[101,102]),c);
+ assert.ok(p&&p.blocked,JSON.stringify(p));assert.ok(p.rr<2);assert.match(p.reason,/less than 2.0R/i);
 });
 test("unconfirmed record cannot produce a plan",()=>{
  const p=engine.makeEntryPlan({...rec("BUY",[101,102]),confirmed:false},buyCandles());assert.equal(p,null);

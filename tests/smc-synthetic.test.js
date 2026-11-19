@@ -224,7 +224,7 @@ test("APA, SMC and BOTH routing keeps strategy analyses separate",()=>{
 test("signal-history deduplication preserves strategy and timeframe identity",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function recordCandidateSignal(");
- const end=source.indexOf("\\nfunction ",start+10);
+ const end=source.indexOf("\nfunction ",start+10);
  assert.ok(start>=0&&end>start,"signal record function should be located");
  const fn=source.slice(start,end);
  assert.ok(fn.includes("record.symbol === symbol && record.strategy === strategy"),"dedupe must isolate strategy");

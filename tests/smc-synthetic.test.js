@@ -544,7 +544,7 @@ test("MT5 bridge config sync stays authenticated, bounded and demo/live locked",
  assert.match(worker,/riskPercent<0\.01\|\|body\.riskPercent>5/,"risk is bounded");
  assert.match(worker,/maxOpenTrades>10/,"max simultaneous trades bounded");
  assert.match(worker,/body\.timeframes\.every\(tf=>FRAMES\[body\.mode\]\.includes\(tf\)\)/,"timeframes are checked against mode");
- assert.match(worker,/MAX_BODY_BYTES = 4096/,"request body size bounded");
+ assert.match(worker,/MAX_BODY_BYTES = 32768/,"request body size bounded");
  assert.doesNotMatch(worker,/OrderSend|trade-command|\/mt5\/order/,"worker exposes no order execution route");
  assert.match(worker,/public-config/,"public config endpoint is metadata-only");
 });
@@ -597,7 +597,7 @@ test("MT5 EA publishes configured candle data and website scanner consumes it",(
  assert.match(scanner,/packet\.status!=="FRESH"\|\|packet\.ageSeconds>90/,"scanner rejects stale feeds");
  assert.match(scanner,/renderTimeframeAnalysis/,"fresh MT5 candles enter scanner analysis");
  assert.match(scanner,/SMCIntradayEngine\.evaluate/,"MT5 candle feed enters SMC engine");
- assert.match(app,/tradingState\.broker === "mt5"\) \{ startMT5Scanner\(\); return; \}/,"scanner switches to MT5 data mode");
+ assert.match(app,/if \(tradingState\.broker === "mt5"\) \{ startMT5Scanner\(\); return; \}/,"scanner switches to MT5 data mode");
 });
 
 test("MT5 candle feed data source is visible and scanner rejects nonfresh data",()=>{

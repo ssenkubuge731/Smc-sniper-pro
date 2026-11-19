@@ -200,7 +200,9 @@ function updateMode() {
 
   timeframeSelect.value = entryFrames.includes(previous) ? previous : "1m";
 
-  const modeInfo = mode === "intraday"\n    ? "APA + SMC Intraday: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry"\n    : "SMC Scalping: M5 setup analysis + M1 entry confirmation";
+  const modeInfo = mode === "intraday"
+    ? "APA + SMC Intraday: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry"
+    : "SMC Scalping: M5 setup analysis + M1 entry confirmation";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
@@ -229,7 +231,13 @@ function syncStrategy(value) {
   $("apaSettings")?.classList.toggle("hidden", !["apa", "both"].includes(value));
   $("smcSettings")?.classList.toggle("hidden", !["smc", "both"].includes(value));
   setText("strategyInfo",
-    value === "apa"\n      ? "APA Advanced Price Action selected — original APA sequence."\n      : value === "smc"\n        ? "SMC selected — independent Smart Money Concepts confirmation engine."\n        : value === "both"\n          ? "BOTH selected — APA and SMC analyse independently; signals and outcomes stay separately labelled."\n          : "News Trading selected — independent Forex economic-news and price-reaction engine.");
+    value === "apa"
+      ? "APA Advanced Price Action selected — original APA sequence."
+      : value === "smc"
+        ? "SMC selected — independent Smart Money Concepts confirmation engine."
+        : value === "both"
+          ? "BOTH selected — APA and SMC analyse independently; signals and outcomes stay separately labelled."
+          : "News Trading selected — independent Forex economic-news and price-reaction engine.");
 
   if (value === "news") {
     loadNewsCalendar(true);
@@ -266,7 +274,8 @@ function updateBrokerPanels(sourceId = "brokerType") {
       "MT5 selected. Setup details can be saved now; actual connection waits for the VPS bridge.");
   } else {
     setText("brokerStatus", tradingState.derivConnected
-      ? "Broker: Deriv market data connected"\n      : "Broker: Deriv selected — not connected");
+      ? "Broker: Deriv market data connected"
+      : "Broker: Deriv selected — not connected");
   }
 }
 
@@ -362,7 +371,8 @@ function prepareMT5Connection() {
     icmarkets: "IC Markets",
     pepperstone: "Pepperstone",
     xm: "XM",
-    other: "Other MT5 broker"\n  }[broker] || "Selected MT5 broker";
+    other: "Other MT5 broker"
+  }[broker] || "Selected MT5 broker";
 
   // Only non-secret setup details are saved. Never collect or store
   // account passwords, investor passwords, or trading tokens here.
@@ -376,7 +386,8 @@ function prepareMT5Connection() {
   }
 
   const serverText = server
-    ? " Server: " + server + "."\n    : " Server name is still missing; copy it exactly from your broker's MT5 login screen.";
+    ? " Server: " + server + "."
+    : " Server name is still missing; copy it exactly from your broker's MT5 login screen.";
   setText("mt5ConnectionStatus",
     brokerName + " selection saved on this device." + serverText +
     " Status: NOT CONNECTED. This only saves setup details; the website-to-EA command channel is not implemented yet.");
@@ -713,7 +724,8 @@ function renderSMCEntryPlan(symbol) {
       "R:R " + plan.rr.toFixed(2) + "R",
       "Target " + plan.targetSource,
       "Lot " + lot,
-      "POI " + plan.zone + " (" + plan.zoneStatus + ")"\n    ].join(" | ");
+      "POI " + plan.zone + " (" + plan.zoneStatus + ")"
+    ].join(" | ");
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",
@@ -1375,7 +1387,8 @@ function analyseSMC(candles) {
         bullConfirmations.length + " confirmations"
       : sellReady
         ? (bearConfirmations.length >= 3 ? "Stronger SELL candidate — " : "Potential SELL — ") +
-          bearConfirmations.length + " confirmations"\n        : "Waiting — need 2 compatible confirmations";
+          bearConfirmations.length + " confirmations"
+        : "Waiting — need 2 compatible confirmations";
 
   const activeSide = conflicting ? "conflicting" : buyReady ? "buy" : sellReady ? "sell" : "wait";
   const levels = activeSide === "buy" || activeSide === "sell"
@@ -1388,8 +1401,11 @@ function analyseSMC(candles) {
   const activeConfirmations = activeSide === "buy" ? bullConfirmations : activeSide === "sell" ? bearConfirmations : [];
   const opposingConfirmations = activeSide === "buy" ? bearConfirmations : activeSide === "sell" ? bullConfirmations : [];
   const reasoning = conflicting
-    ? "WAIT: bullish and bearish setups are both present. The evidence conflicts, so no direction is selected."\n    : activeSide === "buy"\n      ? `BUY candidate: ${activeConfirmations.length} compatible confirmations support the bullish direction: ${activeConfirmations.join(", ")}. The latest candle is bullish. This is a candidate, not an executed trade.`
-      : activeSide === "sell"\n        ? `SELL candidate: ${activeConfirmations.length} compatible confirmations support the bearish direction: ${activeConfirmations.join(", ")}. The latest candle is bearish. This is a candidate, not an executed trade.`
+    ? "WAIT: bullish and bearish setups are both present. The evidence conflicts, so no direction is selected."
+    : activeSide === "buy"
+      ? `BUY candidate: ${activeConfirmations.length} compatible confirmations support the bullish direction: ${activeConfirmations.join(", ")}. The latest candle is bullish. This is a candidate, not an executed trade.`
+      : activeSide === "sell"
+        ? `SELL candidate: ${activeConfirmations.length} compatible confirmations support the bearish direction: ${activeConfirmations.join(", ")}. The latest candle is bearish. This is a candidate, not an executed trade.`
         : `WAIT: ${blockedDirectionReason || "neither side has the required 2 compatible confirmations plus a matching candle."} Bullish evidence: ${bullConfirmations.join(", ") || "none"}. Bearish evidence: ${bearConfirmations.join(", ") || "none"}.`;
   const checks = [
     ["Trend direction" + (useTrend ? "" : " (disabled)"), useTrend && trend !== "Sideways" && trend !== "Unknown"],
@@ -1865,7 +1881,8 @@ function analyseNews(symbol, candles) {
   const reactionMomentum = reactionLast.close > reactionFirst.open && reactionBullish >= 3
     ? "bullish"
     : reactionLast.close < reactionFirst.open && reactionBearish >= 3
-      ? "bearish"\n      : "mixed";
+      ? "bearish"
+      : "mixed";
 
   if (event.status === "tentative" || sourceConfidence === "sources_disagree") {
     return {
@@ -1952,7 +1969,8 @@ function renderTimeframeAnalysis(symbol, timeframe) {
       ]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
-        : tradingState.strategy === "apa"\n          ? (timeframe === "1m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry trigger is evaluated on M1", signal: "APA context loaded — waiting for final M1 entry analysis", supply: null, demand: null })
+        : tradingState.strategy === "apa"
+          ? (timeframe === "1m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry trigger is evaluated on M1", signal: "APA context loaded — waiting for final M1 entry analysis", supply: null, demand: null })
           : analyseSMC(candles)];
   const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
   const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
@@ -2160,7 +2178,8 @@ function analyseMainSelection(symbol) {
   setText("apaSweepStatus", result.sweepStatus ? `${result.sweepStatus} — ${result.sweepDirection}` : "APA sweep status not available");
   setText("apaSweepPrice", result.sweepPrice == null ? "--" : formatPrice(result.sweepPrice));
   setText("apaSweepLevel", result.sweepLevel == null ? "--" : formatPrice(result.sweepLevel));
-  setText("entrySignal", tradingState.strategy === "both"\n    ? readyResults.map(item => item.strategy.toUpperCase() + ": " + item.signal).join(" | ")
+  setText("entrySignal", tradingState.strategy === "both"
+    ? readyResults.map(item => item.strategy.toUpperCase() + ": " + item.signal).join(" | ")
     : result.signal);
   setText("tradeReasoning", tradingState.strategy === "both"
     ? (readyResults.length
@@ -2281,7 +2300,8 @@ function renderScalpActivity() {
   const observations = tradingState.scalpObservations || [];
   if (!records.length && !observations.length) {
     box.textContent = tradingState.running
-      ? "Scanner is running. Waiting for the first completed market analysis..."\n      : "No scalp activity yet. Start the scanner in Scalping mode.";
+      ? "Scanner is running. Waiting for the first completed market analysis..."
+      : "No scalp activity yet. Start the scanner in Scalping mode.";
     return;
   }
   if (records.length) {
@@ -2297,7 +2317,8 @@ function renderScalpActivity() {
     const move = Number.isFinite(current)
       ? (record.direction === "BUY" ? current - Number(record.entry) : Number(record.entry) - current)
       : null;
-    const status = record.status === "OPEN"\n      ? (move == null ? "OPEN — waiting for live quote" : `OPEN — price move ${move >= 0 ? "+" : ""}${formatPrice(Math.abs(move))}`)
+    const status = record.status === "OPEN"
+      ? (move == null ? "OPEN — waiting for live quote" : `OPEN — price move ${move >= 0 ? "+" : ""}${formatPrice(Math.abs(move))}`)
       : `${record.status}${record.exitPrice != null ? " | Exit " + formatPrice(record.exitPrice) : ""}`;
     row.textContent =
       `${index + 1}. ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} | ${String(record.timeframe || "").toUpperCase()}\\n` +
@@ -2445,7 +2466,8 @@ function renderSignalHistory() {
     const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
     const outcome = record.status === "OPEN"
       ? (legacySmcScalp
-          ? "LEGACY OPEN — saved under old SMC scalp rules; no SL/TP was stored"\n          : record.mode === "scalping" ? "WAIT — first positive basket price move (no SL/TP)" : "WAIT — TP/SL not reached yet")
+          ? "LEGACY OPEN — saved under old SMC scalp rules; no SL/TP was stored"
+          : record.mode === "scalping" ? "WAIT — first positive basket price move (no SL/TP)" : "WAIT — TP/SL not reached yet")
       : record.status;
     const details = legacySmcScalp
       ? `Entry ${formatPrice(record.entry)} | SL/TP not recorded\nResult: ${outcome}`

@@ -162,6 +162,15 @@ test("evaluate attaches per-frame plans and only marks valid plans trade-ready",
  const chosen=engine.best(sym);
  assert.ok(chosen===null||chosen.tradeReady,"best() must only return trade-ready records");
 });
+
+test("scanner integration requires validated plans and rejects untradeable record",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(source,/record\.tradePlan/,"scanner should use engine-attached plan");
+ assert.match(source,/!record\.tradeReady/,"scanner should reject records not trade-ready");
+ assert.match(source,/NOT TRADE-READY; WAIT/,"scanner should display WAIT on invalid plan");
+ assert.match(source,/record\.tradeReady \|\| !record\.tradePlan/,"signal publisher must gate on tradeReady and attached plan");
+});
+
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

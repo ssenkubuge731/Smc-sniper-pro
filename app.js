@@ -2269,6 +2269,22 @@ function summarizeDemoLedger(records) {
   return summary;
 }
 
+function calculateDemoEquity(records) {
+  const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && record.status !== "REVIEW — SL and TP touched in the same candle" && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
+  closed.sort((a,b) => Number(a.closedAt || a.createdAt || 0) - Number(b.closedAt || b.createdAt || 0));
+  let equityR = 0, peakR = 0, maxDrawdownR = 0;
+  const points = [];
+  closed.forEach(record => {
+    const planned = Number(record.riskReward ?? record.plannedRR);
+    const outcomeR = record.status === "TP HIT" && Number.isFinite(planned) && planned > 0 ? planned : -1;
+    equityR += outcomeR;
+    peakR = Math.max(peakR, equityR);
+    maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
+    points.push({ id: record.id || String(record.closedAt || record.createdAt || points.length), strategy: String(record.strategy || "APA"), timeframe: String(record.timeframe || "unknown"), status: record.status, outcomeR, equityR, drawdownR: peakR-equityR });
+  });
+  return { closedTrades: closed.length, netR: equityR, maxDrawdownR, points };
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
   renderScalpActivity();

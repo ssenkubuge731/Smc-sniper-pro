@@ -49,6 +49,7 @@ const tradingState = {
   lastPrices: {},
   candles: {},
   requestContexts: new Map(),
+  candleSubscriptions: new Map(),
   tickSubscriptions: new Map(),
 
   requestId: 1,
@@ -432,6 +433,7 @@ function connectDeriv() {
     tradingState.derivConnected = false;
     tradingState.derivSocket = null;
     tradingState.requestContexts.clear();
+    tradingState.candleSubscriptions.clear();
     tradingState.tickSubscriptions.clear();
 
     if (tradingState.pingTimer) {
@@ -561,12 +563,14 @@ function handleDerivMessage(data) {
     return;
   }
 
-  const context = data.req_id
-    ? tradingState.requestContexts.get(data.req_id)
-    : null;
+  const context = (data.req_id ? tradingState.requestContexts.get(data.req_id) : null) ||
+    (data.subscription?.id ? tradingState.candleSubscriptions.get(data.subscription.id) : null);
 
-  if (data.req_id) {
+  if (data.req_id && !data.subscription?.id) {
     tradingState.requestContexts.delete(data.req_id);
+  }
+  if (data.subscription?.id && context && (data.msg_type === "candles" || data.msg_type === "ohlc")) {
+    tradingState.candleSubscriptions.set(data.subscription.id, context);
   }
 
   if (data.msg_type === "candles" && Array.isArray(data.candles)) {
@@ -596,7 +600,9 @@ function handleDerivMessage(data) {
     const candle = normalizeCandle(data.ohlc);
 
     if (isValidCandle(candle)) {
-      list.push(candle);
+      const existing = list.findIndex(item => item.epoch === candle.epoch);
+      if (existing >= 0) list[existing] = candle;
+      else list.push(candle);
       tradingState.candles[key] = list.slice(-150);
       if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
         const smcRecord = window.SMCIntradayEngine.evaluate(
@@ -868,6 +874,11 @@ function isValidCandle(candle) {
 function requestCandles(symbol, timeframe) {
   const granularity = GRANULARITY[timeframe];
   if (!granularity) return;
+  const subscribed = [...tradingState.candleSubscriptions.values()].some(
+    context => context.symbol === symbol && context.timeframe === timeframe
+  );
+  const queued = tradingState.scanQueue.some(job => job.symbol === symbol && job.timeframe === timeframe);
+  if (subscribed || queued) return;
 
   tradingState.scanQueue.push({ symbol, timeframe, granularity });
   processScanQueue();
@@ -905,7 +916,8 @@ function processScanQueue() {
       count: 100,
       end: "latest",
       style: "candles",
-      granularity: job.granularity
+      granularity: job.granularity,
+      subscribe: 1
     }, { symbol: job.symbol, timeframe: job.timeframe });
   }, 500);
 }
@@ -2643,6 +2655,10 @@ function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
   clearScanQueue();
+  for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
+    if (isSocketOpen()) sendRequest({ forget: subscriptionId });
+  }
+  tradingState.candleSubscriptions.clear();
 
   if (tradingState.scanTimer) {
     clearInterval(tradingState.scanTimer);

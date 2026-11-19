@@ -92,8 +92,8 @@
       if(pivotHigh)addZone("Supply",{low:Math.max(N(x.open),N(x.close)),high:N(x.high)},"SELL",i,downDeparture);
     }
     // Current sweep-reclaim candidates remain separately visible.
-    if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1,true);
-    if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1,true);
+    if(bullSweep)addZone("Sweep reclaim",{low:N(c.low),high:pl},"BUY",cs.length-1,true);
+    if(bearSweep)addZone("Sweep reclaim",{low:ph,high:N(c.high)},"SELL",cs.length-1,true);
     // Rank valid candidates by freshness, origin impulse, mitigation and distance.
     for(const z of zones){const overlaps=zones.filter(q=>q!==z&&q.side===z.side&&q.low<=z.high&&q.high>=z.low).length;z.confluence=overlaps;z.score=Math.min(100,z.score+Math.min(15,overlaps*5));}
     zones.sort((a,b)=>b.score-a.score);

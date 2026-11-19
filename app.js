@@ -279,6 +279,56 @@ function updateBrokerPanels(sourceId = "brokerType") {
 }
 
 const MT5_PUBLIC_STATUS_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
+const MT5_CONFIG_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/config";
+const BRIDGE_ALLOWED_FRAMES = {
+  scalping: ["1m","5m"],
+  intraday: ["1m","5m","15m","30m","1h"],
+  swing: ["1h","4h","1d"]
+};
+function renderBridgeTimeframes(){
+  const mode=valueOf("bridgeMode")||"scalping",box=$("bridgeTimeframes");
+  if(!box)return;
+  box.replaceChildren();
+  (BRIDGE_ALLOWED_FRAMES[mode]||BRIDGE_ALLOWED_FRAMES.scalping).forEach(tf=>{
+    const label=document.createElement("label");label.className="check";
+    const input=document.createElement("input");input.type="checkbox";input.value=tf;input.checked=true;input.dataset.bridgeTf="1";
+    label.appendChild(input);label.appendChild(document.createTextNode(tf.toUpperCase()));
+    box.appendChild(label);
+  });
+}
+async function syncMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim(),mode=valueOf("bridgeMode"),strategy=valueOf("bridgeStrategy");
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const timeframes=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private bridge token (minimum 24 characters) locally.");return;}
+  if(!symbols.length){setText("bridgeConfigStatus","Enter at least one MT5 symbol name.");return;}
+  if(!timeframes.length){setText("bridgeConfigStatus","Select at least one allowed timeframe.");return;}
+  const payload={version:1,mode,strategy,symbols,timeframes,
+    riskPercent:Number(valueOf("bridgeRisk")),maxOpenTrades:Number(valueOf("bridgeMaxTrades")),
+    dailyLossLimitPercent:Number(valueOf("bridgeDailyLoss")),maxConsecutiveLosses:Number(valueOf("bridgeLossStreak")),
+    demoOnly:true,liveLocked:true};
+  setText("bridgeConfigStatus","Sending configuration to the protected cloud bridge…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config rejected (HTTP "+response.status+"): "+(data.error||"unknown error"));return;}
+    setText("bridgeConfigStatus","Synchronized at "+(data.configuration?.updatedAt||"time unavailable")+". Demo-only; live locked. No trade commands were sent.");
+  }catch(error){setText("bridgeConfigStatus","Sync failed: "+(error?.message||"network error")+" — check Worker deployment/CORS.");}
+}
+async function refreshMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim();
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private token locally to check protected configuration.");return;}
+  setText("bridgeConfigStatus","Checking cloud configuration…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"GET",headers:{"Authorization":"Bearer "+token},cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config status check failed (HTTP "+response.status+").");return;}
+    if(!data.configuration){setText("bridgeConfigStatus","Cloud bridge is reachable; no configuration has been saved.");return;}
+    const c=data.configuration;
+    setText("bridgeConfigStatus","Saved "+(c.updatedAt||"")+" | "+c.mode+" | "+c.strategy.toUpperCase()+" | "+c.symbols.join(", ")+" | "+c.timeframes.map(x=>x.toUpperCase()).join(", ")+" | demo-only / live-locked.");
+  }catch(error){setText("bridgeConfigStatus","Config check failed: "+(error?.message||"network error"));}
+}
+"https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
 
 async function refreshMT5BridgeStatus() {
   setText("mt5BridgeStatus", "Checking cloud bridge…");
@@ -2821,6 +2871,9 @@ function initApp() {
   $("scannerBroker")?.addEventListener("change", () => updateBrokerPanels("scannerBroker"));
   $("connectMT5")?.addEventListener("click", prepareMT5Connection);
   $("refreshMT5Bridge")?.addEventListener("click", refreshMT5BridgeStatus);
+  $("bridgeMode")?.addEventListener("change", renderBridgeTimeframes);
+  $("syncBridgeConfig")?.addEventListener("click", syncMT5BridgeConfig);
+  $("refreshBridgeConfig")?.addEventListener("click", refreshMT5BridgeConfig);
   $("mt5Broker")?.addEventListener("change", () => {
     setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
   });
@@ -2851,6 +2904,7 @@ function initApp() {
   updateBrokerPanels("brokerType");
   updatePairCount();
 
+  renderBridgeTimeframes();
   refreshMT5BridgeStatus();
   setConnectionStatus("Not connected");
   setText("scannerStatus", "Scanner stopped");

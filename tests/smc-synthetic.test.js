@@ -20,7 +20,42 @@ function sellCandles(target=90,current=96){
  c[23]={open:96,high:97,low:95,close:96,time:23};c[24]={open:96,high:97,low:95,close:96,time:24};
  c[28]={open:96,high:100.5,low:95.5,close:96,time:28};c[29]={open:96,high:100.5,low:95.5,close:current,time:29};return c;
 }
+function bullPattern(){
+ const c=bars(101); for(let i=0;i<c.length;i++)c[i]={open:100.5,high:102,low:99.5,close:100.2,time:i};
+ c[25]={open:100.4,high:102,low:99.5,close:100.1,time:25};
+ c[26]={open:100.8,high:101,low:98.5,close:100.1,time:26};
+ c[27]={open:100.2,high:101.5,low:99.5,close:100.8,time:27};
+ c[28]={open:103.8,high:104.5,low:103.5,close:104.2,time:28};
+ c[29]={open:100,high:108.5,low:98,close:108,time:29};return c;
+}
+function bearPattern(){
+ const c=bars(100);for(let i=0;i<c.length;i++)c[i]={open:100.5,high:102,low:99.5,close:100.2,time:i};
+ c[25]={open:100.5,high:102,low:99.5,close:100.1,time:25};
+ c[26]={open:102,high:103,low:100.5,close:101,time:26};
+ c[27]={open:100.5,high:101.5,low:99.5,close:100,time:27};
+ c[28]={open:99,high:99.5,low:98.5,close:98.8,time:28};
+ c[29]={open:101,high:104,low:92,close:92.5,time:29};return c;
+}
 function rec(side,z,opposing=[]){return {confirmed:true,side,zones:[{type:"Demand/Supply",side,low:z[0],high:z[1],valid:true,status:"reacting",score:90,distance:0},...opposing]};}
+test("Detector recognizes synthetic bullish sweep, BOS/MSS, displacement, FVG and confirmed BUY",()=>{
+ const r=engine.detect(bullPattern());
+ assert.equal(r.ready,true);assert.equal(r.side,"BUY",JSON.stringify(r.formations));
+ assert.equal(r.confirmed,true, r.note);assert.equal(r.conflict,false);
+ assert.equal(r.formations.liquiditySweep,true);assert.equal(r.formations.BOS,true);
+ assert.equal(r.formations.MSS,true);assert.equal(r.formations.displacement,true);
+ assert.equal(r.formations.FVG,true);assert.ok(r.zones.some(z=>z.side==="BUY"&&["reacting","touching"].includes(z.status)));
+});
+test("Detector recognizes synthetic bearish sweep, BOS/MSS, displacement, FVG and confirmed SELL",()=>{
+ const r=engine.detect(bearPattern());
+ assert.equal(r.ready,true);assert.equal(r.side,"SELL",JSON.stringify(r.formations));
+ assert.equal(r.confirmed,true,r.note);assert.equal(r.conflict,false);
+ assert.equal(r.formations.liquiditySweep,true);assert.equal(r.formations.BOS,true);
+ assert.equal(r.formations.MSS,true);assert.equal(r.formations.displacement,true);
+ assert.equal(r.formations.FVG,true);assert.ok(r.zones.some(z=>z.side==="SELL"&&["reacting","touching"].includes(z.status)));
+});
+test("Neutral candles do not generate confirmed signal",()=>{
+ const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
+});
 test("BUY plan: SL below entry, TP above, RR >=2",()=>{
  const c=buyCandles();const p=engine.makeEntryPlan(rec("BUY",[101,102]),c);
  assert.ok(p&&!p.blocked,JSON.stringify(p));assert.ok(p.sl<p.entry);assert.ok(p.tp>p.entry);assert.ok(p.rr>=2);assert.equal(p.side,"BUY");

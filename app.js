@@ -22,7 +22,8 @@ const TIMEFRAMES = {
   swing: ["1h", "4h", "1d"]
 };
 
-const APA_REQUIRED_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];\nconst APA_SETUP_FRAME = { scalping: "5m", intraday: "15m", swing: "1h" };\n\nconst GRANULARITY = {
+const APA_REQUIRED_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];
+const APA_SETUP_FRAME = { scalping: "5m", intraday: "15m", swing: "1h" };\n\nconst GRANULARITY = {
   "1m": 60,
   "5m": 300,
   "15m": 900,

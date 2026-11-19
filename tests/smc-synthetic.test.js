@@ -1,5 +1,6 @@
 // Synthetic tests for the actual SMC Intraday Engine (signal-only).
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const source = fs.readFileSync("smc-intraday.js", "utf8");

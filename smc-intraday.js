@@ -1,7 +1,8 @@
 /* SMC INTRADAY ENGINE — independent from APA; signal-only */
 (function () {
   "use strict";
-  const FRAMES = ["1m","5m","15m","30m","1h","4h","1d"];\n  const MODE_FRAMES = {scalping:["1m","5m"],intraday:["1m","5m","15m","30m","1h"],swing:["1h","4h","1d"]};
+  const FRAMES = ["1m","5m","15m","30m","1h","4h","1d"];
+  const MODE_FRAMES = {scalping:["1m","5m"],intraday:["1m","5m","15m","30m","1h"],swing:["1h","4h","1d"]};
   const state = { latest:new Map(), zones:new Map(), lastPublished:new Map() };
   const N = (x)=>Number(x);
   const valid = c=>c && Number.isFinite(N(c.open)) && Number.isFinite(N(c.high)) && Number.isFinite(N(c.low)) && Number.isFinite(N(c.close));

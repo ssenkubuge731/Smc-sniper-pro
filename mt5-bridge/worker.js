@@ -12,6 +12,12 @@ const FRAMES = {
   scalping: ["1m", "5m"],
   intraday: ["1m", "5m", "15m", "30m", "1h"]
 };
+const APA_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];
+const ALL_MARKET_FRAMES = [...new Set([...Object.values(FRAMES).flat(), ...APA_FRAMES])];
+function allowedConfigFrames(mode, strategy) {
+  if (mode === "scalping") return FRAMES.scalping;
+  return strategy === "apa" || strategy === "both" ? APA_FRAMES : FRAMES.intraday;
+}
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {status,headers:{
     "Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",
@@ -34,11 +40,11 @@ async function terminalKey(company,server){
 }
 function validateConfig(body){
   if(!body||body.version!==1||!FRAMES[body.mode]||
-    !["apa","smc","both"].includes(body.strategy)||!Array.isArray(body.symbols)||
+    !["apa","smc","both"].includes(body.strategy)||(body.strategy==="apa"&&body.mode!=="intraday")||!Array.isArray(body.symbols)||
     body.symbols.length<1||body.symbols.length>50||
     !body.symbols.every(s=>validText(s,32)&&/^[A-Za-z0-9._/ -]+$/.test(s))||
     !Array.isArray(body.timeframes)||body.timeframes.length<1||
-    !body.timeframes.every(tf=>FRAMES[body.mode].includes(tf))||
+    !body.timeframes.every(tf=>ALL_MARKET_FRAMES.includes(tf))||
     !Number.isFinite(body.riskPercent)||body.riskPercent<0.01||body.riskPercent>5||
     !Number.isInteger(body.maxOpenTrades)||body.maxOpenTrades<1||body.maxOpenTrades>10||
     !Number.isFinite(body.dailyLossLimitPercent)||body.dailyLossLimitPercent<0.1||body.dailyLossLimitPercent>10||
@@ -46,8 +52,9 @@ function validateConfig(body){
     body.demoOnly!==true||body.liveLocked!==true){
     return {ok:false,error:"Invalid or unsafe configuration. Demo-only/live-lock and valid style settings are required."};
   }
-  const expected=FRAMES[body.mode];
+  const expected=allowedConfigFrames(body.mode,body.strategy);
   if(body.timeframes.some(tf=>!expected.includes(tf)))return {ok:false,error:"Timeframe is not permitted for the selected style."};
+  if(expected.some(tf=>!body.timeframes.includes(tf)))return {ok:false,error:"Required strategy timeframes are missing from the MT5 feed configuration."};
   return {ok:true,value:{
     version:1,mode:body.mode,strategy:body.strategy,symbols:Array.from(new Set(body.symbols)),
     timeframes:Array.from(new Set(body.timeframes)),riskPercent:body.riskPercent,
@@ -78,7 +85,7 @@ export default {
   if(url.pathname==="/mt5/market-data"&&request.method==="GET"){
     if(!env.MT5_HEARTBEATS)return json({error:"Bridge storage is not configured"},503);
     const symbol=url.searchParams.get("symbol")||"",timeframe=url.searchParams.get("timeframe")||"";
-    if(!validText(symbol,32)||!/^[A-Za-z0-9._/ -]+$/.test(symbol)||!Object.values(FRAMES).flat().includes(timeframe))
+    if(!validText(symbol,32)||!/^[A-Za-z0-9._/ -]+$/.test(symbol)||!ALL_MARKET_FRAMES.includes(timeframe))
       return json({error:"Invalid symbol or timeframe"},400);
     const key="market:"+encodeURIComponent(symbol)+"|"+timeframe;
     const packet=await env.MT5_HEARTBEATS.get(key,"json");

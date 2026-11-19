@@ -381,6 +381,28 @@ test("scalping and swing timeframe lists remain independent and retain per-frame
  assert.notEqual(scalp.tradePlan,swing.tradePlan,"entry/SL/TP plan objects must remain independent");
 });
 
+test("SMC engine supports H4 and D1 with isolated state and style-scoped frame lists",()=>{
+ assert.deepEqual(Array.from(engine.framesForMode("scalping")),["1m","5m"]);
+ assert.deepEqual(Array.from(engine.framesForMode("intraday")),["1m","5m","15m","30m","1h"]);
+ assert.deepEqual(Array.from(engine.framesForMode("swing")),["1h","4h","1d"]);
+ const symbol="SWING-ISOLATION-"+Date.now();
+ const h1=engine.evaluate(symbol,"1h",bullPattern());
+ const h4=engine.evaluate(symbol,"4h",bearPattern());
+ const d1=engine.evaluate(symbol,"1d",bullPattern());
+ assert.equal(h1.timeframe,"1h");assert.equal(h4.timeframe,"4h");assert.equal(d1.timeframe,"1d");
+ assert.equal(engine.state.latest.get(symbol+"|1h").side,"BUY");
+ assert.equal(engine.state.latest.get(symbol+"|4h").side,"SELL");
+ assert.equal(engine.state.latest.get(symbol+"|1d").side,"BUY");
+ assert.notEqual(h1,h4);assert.notEqual(h4,d1);assert.notEqual(h1,d1);
+ assert.notEqual(h1.tradePlan,h4.tradePlan);assert.notEqual(h4.tradePlan,d1.tradePlan);
+ assert.deepEqual(Array.from(engine.framesForMode("swing")).filter(tf=>engine.state.latest.has(symbol+"|"+tf)),["1h","4h","1d"]);
+ assert.deepEqual(Array.from(engine.framesForMode("intraday")).filter(tf=>engine.state.latest.has(symbol+"|"+tf)),["1h"]);
+});
+test("H4 and D1 are accepted by the SMC evaluator but unrelated frames stay rejected",()=>{
+ assert.ok(engine.evaluate("TF-ACCEPT-"+Date.now(),"4h",bullPattern()));
+ assert.ok(engine.evaluate("TF-ACCEPT-"+Date.now(),"1d",bearPattern()));
+ assert.equal(engine.evaluate("TF-REJECT-"+Date.now(),"2h",bullPattern()),null);
+});
 test("invalid candles are rejected",()=>{
  const c=bars();c[0].high=NaN;const r=engine.detect(c);assert.equal(r.ready,false);
 });

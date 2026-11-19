@@ -2184,9 +2184,7 @@ function analyseMainSelection(symbol) {
     : result.signal);
   setText("tradeReasoning", tradingState.strategy === "both"
     ? (readyResults.length
-        ? readyResults.map(item => item.strategy.toUpperCase() + ": " + (item.reasoning || item.signal)).join("
-
-")
+        ? readyResults.map(item => item.strategy.toUpperCase() + ": " + (item.reasoning || item.signal)).join("\n\n")
         : "APA and SMC are waiting for separate confirmations.")
     : (result.reasoning || "Reasoning is not available for this analysis."));
   setText("supplyZone", formatZone(result.supply));

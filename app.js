@@ -642,7 +642,7 @@ function renderSMCEntryPlan(symbol) {
   const output = $("smcEntryPlanStatus");
   if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
-  const frames = window.SMCIntradayEngine.frames;
+  const frames = window.SMCIntradayEngine.framesForMode\n    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;
   const fmt = value => Number(value).toPrecision(7);
   const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
@@ -665,7 +665,7 @@ function renderSMCEntryPlan(symbol) {
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",
-    "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
+    "SMC " + tradingState.mode.toUpperCase() + " — " + symbol + " — each timeframe is calculated independently.\n" +
     "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
     lines.join("\n") +
     "\nEach timeframe uses its own POI/swing invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
@@ -674,14 +674,14 @@ function renderSMCEntryPlan(symbol) {
 
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
-  const rows=window.SMCIntradayEngine.frames.map(tf=>{
+  const frames=window.SMCIntradayEngine.framesForMode\n    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)\n    : window.SMCIntradayEngine.frames;\n  const rows=frames.map(tf=>{
     const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
     return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
   });
   setText("smcFormationStatus","SMC timeframes — "+symbol+": "+rows.join(" | "));
-  const best=window.SMCIntradayEngine.best(symbol);
+  const best=window.SMCIntradayEngine.best(symbol,frames);
   setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
-  const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const all=frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
   setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
   renderSMCEntryPlan(symbol);

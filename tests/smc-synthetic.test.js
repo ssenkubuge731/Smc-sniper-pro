@@ -325,7 +325,7 @@ test("demo risk lock persistence survives restart and manual reset does not eras
  assert.match(source,/localStorage\.removeItem\(DEMO_RISK_LOCK_KEY\)/,"manual reset clears only lock key");
  assert.match(source,/Reset demo risk lock \(manual\)/,"reset is explicit UI action");
  assert.match(source,/renderSignalHistory\(\);/,"history rerender after reset");
- assert.match(source,/function startScanner\(resume = false\) \{\\n  const persistedRisk = calculateDemoRiskGuard/,"scanner restart checks risk lock before starting");
+ assert.match(source,/function startScanner\(resume = false\) \{\n  const persistedRisk = calculateDemoRiskGuard/,"scanner restart checks risk lock before starting");
 });
 
 test("invalid candles are rejected",()=>{

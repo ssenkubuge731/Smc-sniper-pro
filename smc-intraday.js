@@ -209,11 +209,11 @@
     if(record.tradeReady){const sig=key+"|"+record.side+"|"+record.count+"|"+record.tradePlan.entry+"|"+record.tradePlan.sl+"|"+record.tradePlan.tp;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
     return record;
   }
-  function best(symbol){
-    const list=FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.tradeReady);
-    // Prefer higher evidence; on tie prefer context frames (15m/30m/1h) over noisy 1m.
-    const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5 };
+  function framesForMode(mode){return (MODE_FRAMES[mode]||MODE_FRAMES.scalping).slice();}
+  function best(symbol,allowedFrames=FRAMES){
+    const list=allowedFrames.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.tradeReady);
+    const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5,"4h":6,"1d":7 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  window.SMCIntradayEngine={frames:FRAMES.slice(),detect,hasConflict,evaluate,best,makeEntryPlan,backtest,state};
+  window.SMCIntradayEngine={frames:FRAMES.slice(),modeFrames:MODE_FRAMES,framesForMode,detect,hasConflict,evaluate,best,makeEntryPlan,backtest,state};
 })();

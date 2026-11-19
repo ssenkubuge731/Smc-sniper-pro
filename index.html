@@ -308,6 +308,26 @@
     <p id="mt5BridgeStatus">Checking cloud bridge…</p>
     <p id="mt5LastHeartbeat">No heartbeat received yet.</p>
     <button id="refreshMT5Bridge" type="button">Refresh bridge status</button>
+    <hr>
+    <h4>Website → EA configuration sync (demo-only)</h4>
+    <label for="bridgeToken">Private bridge token (same as Worker secret and EA input)</label>
+    <input id="bridgeToken" type="password" autocomplete="off" placeholder="Paste token locally; never save it in GitHub">
+    <label for="bridgeMode">Trading style</label>
+    <select id="bridgeMode"><option value="scalping">Scalping</option><option value="intraday">Intraday / Day Trading</option><option value="swing">Swing Trading</option></select>
+    <label for="bridgeStrategy">Strategy engine</label>
+    <select id="bridgeStrategy"><option value="apa">APA</option><option value="smc">SMC</option><option value="both">BOTH (separate)</option></select>
+    <label for="bridgeSymbols">Symbols (comma separated, exact MT5 Market Watch names)</label>
+    <input id="bridgeSymbols" type="text" placeholder="e.g. XAUUSD, EURUSD">
+    <label>Timeframes allowed by style</label>
+    <div id="bridgeTimeframes" class="result-item">Choose style to display allowed frames.</div>
+    <label for="bridgeRisk">Risk per trade (%)</label><input id="bridgeRisk" type="number" min="0.01" max="5" step="0.01" value="0.5">
+    <label for="bridgeMaxTrades">Max open trades</label><input id="bridgeMaxTrades" type="number" min="1" max="10" step="1" value="2">
+    <label for="bridgeDailyLoss">Daily loss limit (%)</label><input id="bridgeDailyLoss" type="number" min="0.1" max="10" step="0.1" value="2">
+    <label for="bridgeLossStreak">Pause after consecutive losses</label><input id="bridgeLossStreak" type="number" min="1" max="10" step="1" value="3">
+    <p class="warning">Settings are synced only as configuration. This bridge does not send trading orders. Demo-only and live-lock flags are enforced.</p>
+    <button id="syncBridgeConfig" class="primary" type="button">Send settings to cloud bridge</button>
+    <p id="bridgeConfigStatus">Not synchronized yet.</p>
+    <button id="refreshBridgeConfig" type="button">Check saved cloud settings</button>
   </div>
 
   <div class="panel">

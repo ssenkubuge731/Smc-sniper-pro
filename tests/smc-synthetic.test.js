@@ -534,4 +534,42 @@ test("market data request errors clear request context and identify failed symbo
  assert.match(handler,/failedContext\.symbol \+ " " \+ failedContext\.timeframe\.toUpperCase\(\)/,"error message identifies symbol/timeframe");
 });
 
+
+test("MT5 bridge config sync stays authenticated, bounded and demo/live locked",()=>{
+ const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
+ assert.match(worker,/\/mt5\/config/,"config endpoint exists");
+ assert.match(worker,/safeEqual\(bearerToken\(request\),env\.MT5_BRIDGE_TOKEN\)/,"protected routes verify bearer token");
+ assert.match(worker,/demoOnly!==true/,"configuration requires demo-only true");
+ assert.match(worker,/liveLocked!==true/,"configuration requires live lock true");
+ assert.match(worker,/riskPercent<0\.01\|\|body\.riskPercent>5/,"risk is bounded");
+ assert.match(worker,/maxOpenTrades>10/,"max simultaneous trades bounded");
+ assert.match(worker,/body\.timeframes\.every\(tf=>FRAMES\[body\.mode\]\.includes\(tf\)\)/,"timeframes are checked against mode");
+ assert.match(worker,/MAX_BODY_BYTES = 4096/,"request body size bounded");
+ assert.doesNotMatch(worker,/OrderSend|trade-command|\/mt5\/order/,"worker exposes no order execution route");
+ assert.match(worker,/public-config/,"public config endpoint is metadata-only");
+});
+test("website config sync sends selected settings but never persists bridge token",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ assert.match(html,/id="bridgeToken"/,"private token input exists");
+ assert.match(html,/id="syncBridgeConfig"/,"sync button exists");
+ assert.match(html,/id="bridgeSymbols"/,"MT5 symbol input exists");
+ const start=app.indexOf("async function syncMT5BridgeConfig("),end=app.indexOf("async function refreshMT5BridgeConfig(",start);
+ const fn=app.slice(start,end);
+ assert.match(fn,/Authorization: "Bearer "\+token/,"token is sent only in auth header");
+ assert.match(fn,/demoOnly:true,liveLocked:true/,"website config forces demo/live lock");
+ assert.match(fn,/MT5_CONFIG_URL/,"config is sent to bridge API");
+ assert.doesNotMatch(fn,/localStorage|STORAGE_KEY/,"token/config is not persisted by sync handler");
+});
+test("website and MT5 bridge keep trading disabled during config sync",()=>{
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const ea=fs.readFileSync(path.join(__dirname,"../mt5-bridge/SMC_Sniper_MT5_Bridge.mq5"),"utf8");
+ assert.match(html,/demo-only/);
+ assert.match(html,/does not send trading orders/);
+ assert.match(app,/liveLocked:true/);
+ assert.match(ea,/FetchConfiguration\(\)/,"MT5 agent polls cloud config");
+ assert.match(ea,/read-only/,"EA documents read-only sync");
+ assert.doesNotMatch(ea,/OrderSend|CTrade|PositionOpen|Buy\(|Sell\(/,"bridge agent has no order functions");
+});
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));

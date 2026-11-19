@@ -89,7 +89,7 @@ bool FetchConfigurationRaw(string &response)
 {
    if(StringLen(InpBridgeToken)<24)return false;
    char data[],result[];
-   string resultHeaders,headers="Authorization: Bearer "+InpBridgeToken+"\\r\\n";
+   string resultHeaders,headers="Authorization: Bearer "+InpBridgeToken+"\r\n";
    ResetLastError();
    int status=WebRequest("GET",InpConfigURL,headers,InpRequestTimeoutMs,data,result,resultHeaders);
    if(status==-1){Print("SMC bridge config fetch failed. WebRequest error ",GetLastError());return false;}
@@ -147,7 +147,7 @@ bool SendMarketData(const string symbol,const string timeframe,const ENUM_TIMEFR
    }
    payload+="]}";
    char data[],result[];int n=StringToCharArray(payload,data,0,WHOLE_ARRAY,CP_UTF8);if(n>0)ArrayResize(data,n-1);
-   string resultHeaders,headers="Content-Type: application/json\\r\\nAuthorization: Bearer "+InpBridgeToken+"\\r\\n";
+   string resultHeaders,headers="Content-Type: application/json\r\nAuthorization: Bearer "+InpBridgeToken+"\r\n";
    ResetLastError();int status=WebRequest("POST",InpMarketDataURL,headers,InpRequestTimeoutMs,data,result,resultHeaders);
    if(status==-1){Print("MT5 candle publish failed ",symbol," ",timeframe," err=",GetLastError());return false;}
    if(status<200||status>=300){Print("MT5 candle publish HTTP ",status," ",CharArrayToString(result,0,-1,CP_UTF8));return false;}

@@ -120,7 +120,8 @@ function setConnectionStatus(message) {
   setText(
     "brokerStatus",
     tradingState.derivConnected
-      ? "Broker: Deriv market data connected"\n      : "Broker: Not connected"
+      ? "Broker: Deriv market data connected"
+      : "Broker: Not connected"
   );
   setText(
     "systemStatus",

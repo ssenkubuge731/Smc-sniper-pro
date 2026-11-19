@@ -655,9 +655,9 @@ function renderSMCEntryPlan(symbol) {
     return timeframe.toUpperCase() + " " + plan.side +
       " | Entry " + fmt(plan.entry) +
       " | SL " + fmt(plan.sl) +
-      " | TP1 " + fmt(plan.tp1) +
-      " | TP2 " + fmt(plan.tp2) +
-      " | TP3 " + fmt(plan.tp3) +
+      " | TP (structure) " + fmt(plan.tp) +
+      " | R:R " + plan.rr.toFixed(2) + "R" +
+      " | Target " + plan.targetSource +
       " | Lot " + lot +
       " | POI " + plan.zone + " (" + plan.zoneStatus + ")";
   });

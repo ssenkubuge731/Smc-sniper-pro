@@ -200,13 +200,17 @@
   }
   function evaluate(symbol,timeframe,candles){
     if(!FRAMES.includes(timeframe))return null;
-    const result=detect(candles),key=symbol+"|"+timeframe,record=Object.assign({symbol,timeframe,time:Date.now()},result);
+    const result=detect(candles),key=symbol+"|"+timeframe;
+    const plan=result.ready&&result.confirmed?makeEntryPlan(result,candles,2):null;
+    const record=Object.assign({symbol,timeframe,time:Date.now()},result,{tradePlan:plan,tradeReady:!!(result.confirmed&&plan&&!plan.blocked)});
     state.latest.set(key,record);state.zones.set(key,result.zones||[]);
-    if(record.confirmed){const sig=key+"|"+record.side+"|"+record.count;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
+    // Publish only if signal AND structural plan are valid. Detection alone
+    // is not enough to authorize a trade setup.
+    if(record.tradeReady){const sig=key+"|"+record.side+"|"+record.count+"|"+record.tradePlan.entry+"|"+record.tradePlan.sl+"|"+record.tradePlan.tp;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
     return record;
   }
   function best(symbol){
-    const list=FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.confirmed);
+    const list=FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.tradeReady);
     // Prefer higher evidence; on tie prefer context frames (15m/30m/1h) over noisy 1m.
     const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;

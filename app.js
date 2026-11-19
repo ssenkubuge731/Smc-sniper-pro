@@ -2276,20 +2276,23 @@ function calculateDemoRiskGuard(records, settings = {}) {
  const dailyLimitPct=Math.max(0.01,Number(settings.dailyLossLimit ?? valueOf("dailyLossLimit"))||2);
  const maxConsecutive=Math.max(1,Number(settings.maxConsecutiveLosses ?? valueOf("maxConsecutiveLosses"))||3);
  const limitR=dailyLimitPct/riskPct;
+ let persisted=null;try{persisted=JSON.parse(localStorage.getItem(DEMO_RISK_LOCK_KEY)||"null");}catch{}
+ const resetAt=persisted&&!persisted.locked?Number(persisted.resetAt||0):0;
+ const sessionHistory=resetAt?history.filter(r=>Number(r.closedAt||r.createdAt||0)>resetAt):history;
  const dayStart=new Date();dayStart.setHours(0,0,0,0);
- const daily=history.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")&&Number(r.closedAt||0)>=dayStart.getTime());
+ const daily=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")&&Number(r.closedAt||0)>=Math.max(dayStart.getTime(),resetAt));
  const dailyNetR=daily.reduce((sum,r)=>sum+(r.status==="TP HIT"?Math.max(0,Number(r.riskReward??r.plannedRR)||0):-1),0);
- const closed=history.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")).sort((a,b)=>Number(a.closedAt||a.createdAt||0)-Number(b.closedAt||b.createdAt||0));
+ const closed=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")).sort((a,b)=>Number(a.closedAt||a.createdAt||0)-Number(b.closedAt||b.createdAt||0));
  let consecutiveLosses=0;for(let i=closed.length-1;i>=0;i--){if(closed[i].status==="SL HIT")consecutiveLosses++;else break;}
- const eq=calculateDemoEquity(history);const reasons=[];
+ const eq=calculateDemoEquity(sessionHistory);const reasons=[];
  if(dailyNetR<=-limitR)reasons.push("Daily loss limit reached");
  if(consecutiveLosses>=maxConsecutive)reasons.push("Consecutive-loss limit reached");
  if(eq.maxDrawdownR>=limitR)reasons.push("Maximum drawdown limit reached");
- let persisted=null;try{persisted=JSON.parse(localStorage.getItem(DEMO_RISK_LOCK_KEY)||"null");}catch{}
  if(reasons.length){const lock={locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now(),source:"risk-calculation"};try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify(lock));}catch{}}
- const activeLock=reasons.length?{locked:true,lockReasons:reasons,lockedAt:Date.now()}:persisted?.locked?persisted:null;
- return {locked:Boolean(activeLock),lockReasons:activeLock?.lockReasons||[],lockedAt:activeLock?.lockedAt||null,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
+ const activeLock=reasons.length?{locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now()}:persisted?.locked?persisted:null;
+ return {locked:Boolean(activeLock),lockReasons:activeLock?.lockReasons||[],lockedAt:activeLock?.lockedAt||null,resetAt,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
 }
+
 
 function calculateDemoEquity(records) {
   const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && !String(record.status).toUpperCase().startsWith("REVIEW") && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
@@ -2313,7 +2316,7 @@ function renderDemoRiskStatus() {
  const row=document.createElement("div");row.className="result-item";
  row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; ")+" | Locked since "+new Date(guard.lockedAt||Date.now()).toLocaleString():"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
  target.appendChild(row);
- const reset=document.createElement("button");reset.type="button";reset.textContent="Reset demo risk lock (manual)";reset.disabled=!guard.locked;reset.addEventListener("click",()=>{try{localStorage.removeItem(DEMO_RISK_LOCK_KEY);}catch{}const current=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);addResult(current.locked?"Risk lock reset attempted, but current limits are still breached: "+current.lockReasons.join("; "):"Demo risk lock manually reset. Historical trades remain unchanged.","tradeHistory");renderSignalHistory();});
+ const reset=document.createElement("button");reset.type="button";reset.textContent="Reset demo risk lock (manual)";reset.disabled=!guard.locked;reset.addEventListener("click",()=>{try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify({locked:false,resetAt:Date.now(),source:"manual-reset"}));}catch{}const current=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);addResult(current.locked?"Risk lock reset attempted, but current limits are still breached: "+current.lockReasons.join("; "):"Demo risk lock manually reset. Historical trades remain unchanged.","tradeHistory");renderSignalHistory();});
  target.appendChild(reset);
 }
 

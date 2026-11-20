@@ -94,6 +94,16 @@ test("MT5 bridge source rotates configured symbols in bounded batches instead of
  assert.match(worker,/MARKET_DATA_TTL_SECONDS = 180/);
  assert.match(worker,/ageSeconds<=90\?"FRESH":"STALE"/);
 });
+test("MT5 scanner reports per-symbol/timeframe feed health and always releases scan lock",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(app,/function recordMT5FeedHealth\(symbol,timeframe,status,details=\{\}\)/);
+ assert.match(app,/function renderMT5FeedHealth\(symbols,frames,batch\)/);
+ assert.match(app,/mt5FeedHealthStatus/);
+ assert.match(app,/Latest candle is stale or not closed/);
+ assert.match(app,/Fewer than 30 valid candles/);
+ assert.match(app,/finally\s*\{\s*tradingState\.mt5ScanInProgress=false;/);
+ assert.match(app,/age>90/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

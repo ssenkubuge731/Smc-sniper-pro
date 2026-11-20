@@ -1075,14 +1075,14 @@ test("Formation zone validity and bounds are stable across repeated evaluations"
 
 test("MT5 symbol rotation cursor commits only after the full batch finishes",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
- const start=app.indexOf("async function scanMT5MarketData()");
- const end=app.indexOf("\\nfunction startMT5Scanner",start);
+ const start=app.indexOf("async function scanMT5MarketData");
+ const end=app.indexOf("\nfunction startMT5Scanner",start);
  assert.ok(start>=0&&end>start,"MT5 scanner function must exist");
  const fn=app.slice(start,end);
- assert.match(fn,/const batch=getRotatingSymbolBatch\\(symbols,tradingState\\.mt5ScanCursor,10\\)/);
- assert.match(fn,/const scanGeneration=tradingState\\.scanGeneration/);
- assert.match(fn,/if\\(!tradingState\\.running\\|\\|tradingState\\.scanGeneration!==scanGeneration\\)/);
- assert.match(fn,/tradingState\\.mt5ScanCursor=batch\\.nextCursor/);
+ assert.ok(fn.includes("getRotatingSymbolBatch(symbols,tradingState.mt5ScanCursor,10)"));
+ assert.ok(fn.includes("const scanGeneration=tradingState.scanGeneration"));
+ assert.ok(fn.includes("tradingState.scanGeneration!==scanGeneration"));
+ assert.ok(fn.includes("tradingState.mt5ScanCursor=batch.nextCursor"));
  assert.ok(fn.indexOf("tradingState.mt5ScanCursor=batch.nextCursor")>fn.indexOf("for(const symbol of batch.symbols)"),
    "cursor must commit after all symbol/timeframe requests");
  assert.ok(fn.indexOf("tradingState.mt5ScanCursor=batch.nextCursor")>fn.indexOf("renderTimeframeAnalysis(symbol,timeframe)"),
@@ -1092,14 +1092,14 @@ test("MT5 symbol rotation cursor commits only after the full batch finishes",()=
 test("MT5 stop and restart preserve the in-flight scan lock",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function startMT5Scanner()");
- const end=app.indexOf("\\nfunction startScanner",start);
+ const end=app.indexOf("\nfunction startScanner",start);
  assert.ok(start>=0&&end>start);
  const starter=app.slice(start,end);
- assert.doesNotMatch(starter,/mt5ScanInProgress\\s*=\\s*false/);
+ assert.equal(starter.includes("mt5ScanInProgress=false"),false);
  const stopStart=app.indexOf("function stopScanner(");
- const stopEnd=app.indexOf("\\n/* =========================================================\\n   SETTINGS",stopStart);
+ const stopEnd=app.indexOf("\n/* =========================================================\n   SETTINGS",stopStart);
  assert.ok(stopStart>=0&&stopEnd>stopStart);
  const stopper=app.slice(stopStart,stopEnd);
- assert.doesNotMatch(stopper,/mt5ScanInProgress\\s*=\\s*false/);
- assert.match(app,/finally\\s*\\{[\\s\\S]*?tradingState\\.mt5ScanInProgress=false/);
+ assert.equal(stopper.includes("mt5ScanInProgress=false"),false);
+ assert.ok(app.includes("finally {\n    tradingState.mt5ScanInProgress=false;"));
 });

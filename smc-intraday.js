@@ -42,7 +42,7 @@
       const loZ=Math.min(N(z.low),N(z.high)),hiZ=Math.max(N(z.low),N(z.high));
       const post=cs.slice(origin+1);
       const touches=post.filter(x=>N(x.low)<=hiZ&&N(x.high)>=loZ);
-      const touched=touches.length>0,invalid=side==="BUY"?N(c.close)<loZ:N(c.close)>hiZ;
+      const touched=touches.length>0,invalid=post.some(x=>side==="BUY"?N(x.close)<loZ:N(x.close)>hiZ);
       const inZone=N(c.low)<=hiZ&&N(c.high)>=loZ;
       const reaction=inZone&&(side==="BUY"?bull&&N(c.close)>hiZ:bear&&N(c.close)<loZ);
       const fullyMitigated=post.some(x=>side==="BUY"?N(x.low)<=loZ:N(x.high)>=hiZ);

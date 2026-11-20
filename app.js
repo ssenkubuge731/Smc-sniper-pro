@@ -3097,7 +3097,7 @@ function startMT5Scanner(){
   }
   stopScanner(false);
   tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
-  tradingState.mt5ScanCursor=0;tradingState.mt5ScanInProgress=false;
+  tradingState.mt5ScanCursor=0;
   tradingState.mode=mode;
   tradingState.strategy=strategy;
   tradingState.selectedSymbols=new Set(symbols);
@@ -3198,7 +3198,8 @@ function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
   if(tradingState.mt5ScannerTimer){clearInterval(tradingState.mt5ScannerTimer);tradingState.mt5ScannerTimer=null;}
-  tradingState.mt5ScanInProgress=false;
+  // Keep the in-flight MT5 request lock until its finally block runs. This
+  // prevents a rapid stop/restart from overlapping two feed scans.
   clearScanQueue();
   for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
     if (isSocketOpen()) sendRequest({ forget: subscriptionId });

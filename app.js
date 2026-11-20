@@ -796,7 +796,13 @@ function renderSMCMultiFrame(symbol) {
   const formationRecord=best||all.slice().reverse().find(record=>record&&record.ready)||null;
   renderSMCFormationMonitor(formationRecord);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
-  setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
+  const lifecycleZones=(formationRecord?.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
+  const lifecycleNote=formationRecord?.note||"Waiting for a confirmed SMC formation.";
+  const rankedPoiText=zones.length?zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"none currently detected";
+  setText("smcZoneStatus",
+    "Zone lifecycle ("+(formationRecord?.timeframe||"latest") + "): "+
+    (lifecycleZones.length?lifecycleZones.join(" | "):"none detected")+
+    " | "+lifecycleNote+"\nTop ranked POIs: "+rankedPoiText);
   renderSMCEntryPlan(symbol);
 }
 function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"] rank "+Math.round(z.score||0)+"/100 ("+(z.tests||0)+" tests)";}

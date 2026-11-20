@@ -137,6 +137,38 @@ test("MT5 bridge source rotates configured symbols in bounded batches instead of
  assert.match(worker,/MARKET_DATA_TTL_SECONDS = 180/);
  assert.match(worker,/ageSeconds<=90\?"FRESH":"STALE"/);
 });
+test("MT5 runtime scanner rejects stale packet without caching candles or refreshing market-data timestamp",async()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function scanMT5MarketData");
+ const end=app.indexOf("\nfunction startMT5Scanner",start);
+ assert.ok(start>=0&&end>start);
+ const now=Date.now();
+ const state={running:true,broker:"mt5",mt5ScanInProgress:false,scanGeneration:7,mt5ScanCursor:0,mode:"intraday",strategy:"apa",mt5LastScanAt:0,lastScanAt:0,lastMarketDataAt:1234,lastAnalysisAt:5678,candles:{}};
+ const health=[];
+ const sandbox={
+  tradingState:state,
+  valueOf:(id)=>({bridgeMode:"intraday",bridgeStrategy:"apa",bridgeSymbols:"EURUSD"}[id]||""),
+  document:{querySelectorAll:()=>[]},
+  getScanSymbolsForMode:()=>["EURUSD"],
+  getBridgeFrames:()=>["1m"],
+  APA_REQUIRED_FRAMES:["1m"],
+  MT5_MARKET_DATA_URL:"https://fake.test/feed",
+  getRotatingSymbolBatch:()=>({symbols:["EURUSD"],nextCursor:1}),
+  fetchMT5MarketDataWithRetry:async()=>({ok:true,json:async()=>({status:"FRESH",ageSeconds:120,candles:[]})}),
+  recordMT5FeedHealth:(symbol,timeframe,status,details)=>health.push({symbol,timeframe,status,details}),
+  renderMT5FeedHealth:()=>{},
+  GRANULARITY:{"1m":60},
+  Date,Math,Number,Array,Set,encodeURIComponent
+ };
+ vm.runInNewContext(app.slice(start,end)+";scanMT5MarketData",sandbox);
+ await sandbox.scanMT5MarketData();
+ assert.equal(state.candles["EURUSD_1m"],undefined,"stale packet must not enter candle cache");
+ assert.equal(state.lastMarketDataAt,1234,"stale data must not refresh market-data freshness timestamp");
+ assert.equal(state.lastAnalysisAt,5678,"stale data must not refresh analysis timestamp");
+ assert.equal(health.some(x=>x.status==="STALE"),true,"stale packet must be marked stale");
+ assert.equal(state.mt5ScanCursor,1,"scanner advances cursor after the symbol batch is fully attempted");
+ assert.equal(state.mt5ScanInProgress,false,"scan lock must release after stale packet handling");
+});
 test("MT5 scanner reports per-symbol/timeframe feed health and always releases scan lock",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  assert.match(app,/function recordMT5FeedHealth\(symbol,timeframe,status,details=\{\}\)/);

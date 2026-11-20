@@ -2482,7 +2482,7 @@ function renderDemoPositions() {
     box.appendChild(empty);
     return;
   }
-  open.slice().sort((a,b)=>(Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0) || (Number(b.opportunityScore)||0)-(Number(a.opportunityScore)||0) || (Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0, 20).forEach((record, index) => {
+  open.slice().sort(compareOpportunityPriority).slice(0, 20).forEach((record, index) => {
     const row = document.createElement("div");
     row.className = "result-item";
     const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
@@ -2667,11 +2667,7 @@ function renderSignalHistory() {
     box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
     return;
   }
-  tradingState.signalHistory.slice().sort((a,b) => {
-    if(a.status==="OPEN"&&b.status!=="OPEN")return -1;
-    if(b.status==="OPEN"&&a.status!=="OPEN")return 1;
-    return (Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0) || Number(b.createdAt)-Number(a.createdAt);
-  }).slice(0, 50).forEach(record => {
+  tradingState.signalHistory.slice().sort(compareOpportunityPriority).slice(0, 50).forEach(record => {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
@@ -2781,6 +2777,20 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 
 function buildCandidateSignalKey(symbol,strategy,mode,timeframe,direction,candleEpoch) {
   return [symbol,strategy,mode,timeframe,direction,Number(candleEpoch)||0].join("|");
+}
+function compareOpportunityPriority(a,b) {
+  const openA=a?.status==="OPEN"?1:0;
+  const openB=b?.status==="OPEN"?1:0;
+  if(openA!==openB)return openB-openA;
+  const rankA=Number.isFinite(Number(a?.opportunityRank))?Number(a.opportunityRank):0;
+  const rankB=Number.isFinite(Number(b?.opportunityRank))?Number(b.opportunityRank):0;
+  if(rankA!==rankB)return rankB-rankA;
+  const scoreA=Number.isFinite(Number(a?.opportunityScore))?Number(a.opportunityScore):0;
+  const scoreB=Number.isFinite(Number(b?.opportunityScore))?Number(b.opportunityScore):0;
+  if(scoreA!==scoreB)return scoreB-scoreA;
+  const createdA=Number.isFinite(Number(a?.createdAt))?Number(a.createdAt):0;
+  const createdB=Number.isFinite(Number(b?.createdAt))?Number(b.createdAt):0;
+  return createdB-createdA;
 }
 function hasDuplicateCandidateSignal(history, candidate) {
   const records=Array.isArray(history)?history:[];

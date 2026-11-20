@@ -697,3 +697,34 @@ test("SMC Scalping scanner refuses multiple or missing pairs for both MT5 and De
 });
 
 console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "failures present":"all passed"));
+
+test("APA intraday scanner rotates batches across the complete market universe",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function getScanSymbolsForMode(");
+ const end=source.indexOf("\\nfunction getBridgeFrames",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={};vm.runInNewContext(source.slice(start,end)+";getScannerUniverseBatch",sandbox);
+ const batch=sandbox.getScannerUniverseBatch;
+ const markets=Array.from({length:23},(_,i)=>"PAIR"+i);
+ const first=batch(markets,"intraday","apa",0,10);
+ const second=batch(markets,"intraday","apa",first.nextCursor,10);
+ const third=batch(markets,"intraday","apa",second.nextCursor,10);
+ assert.equal(first.total,23);assert.equal(first.symbols.length,10);
+ assert.equal(second.symbols.length,10);assert.equal(third.symbols.length,3);
+ assert.equal(new Set([...first.symbols,...second.symbols,...third.symbols]).size,23,"rotation covers all markets before wrap");
+ const wrap=batch(markets,"intraday","apa",third.nextCursor,10);
+ assert.deepEqual(Array.from(wrap.symbols),markets.slice(0,10),"rotation wraps to start");
+ const scalp=batch(["EURUSD","GBPUSD"],"scalping","smc",0,10);
+ assert.deepEqual(Array.from(scalp.symbols),[],"scalp restriction remains single-pair only");
+ const intradaySmc=batch(markets,"intraday","smc",0,10);
+ assert.equal(intradaySmc.symbols.length,23,"SMC intraday keeps all selected markets");
+});
+test("APA intraday scanner uses all available markets and rotation cursor",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function scanSelectedMarkets(");
+ const end=source.indexOf("\\nfunction stopScanner",start);
+ const fn=source.slice(start,end);
+ assert.match(fn,/tradingState\.availableSymbols\.map\(item => item\.symbol\)/);
+ assert.match(fn,/tradingState\.scanUniverseCursor/);
+ assert.match(fn,/getScannerUniverseBatch/);
+});

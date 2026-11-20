@@ -1189,3 +1189,32 @@ test("MT5 retry helper does not retry permanent client errors",async()=>{
  assert.equal(calls,1,"permanent 4xx response must not be retried");
 });
 (async()=>{await Promise.all(testPromises);console.log("TOTAL "+passed+" tests passed");})();
+test("MT5 interrupted runtime scan releases lock without advancing cursor, then resumes and commits completed batch",async()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function scanMT5MarketData");
+ const end=app.indexOf("\\nfunction startMT5Scanner",start);
+ assert.ok(start>=0&&end>start);
+ let calls=0;
+ const state={running:true,broker:"mt5",mt5ScanInProgress:false,scanGeneration:4,mt5ScanCursor:0,mode:"intraday",strategy:"apa",mt5LastScanAt:0,lastScanAt:0};
+ const sandbox={
+  tradingState:state,
+  valueOf:(id)=>({bridgeMode:"intraday",bridgeStrategy:"apa",bridgeSymbols:"EURUSD"}[id]||""),
+  document:{querySelectorAll:()=>[]},
+  getScanSymbolsForMode:()=>["EURUSD","GBPUSD"],
+  getBridgeFrames:()=>["1m"],
+  getRotatingSymbolBatch:()=>({symbols:["EURUSD"],nextCursor:1}),
+  fetchMT5MarketDataWithRetry:async()=>{calls++;if(calls===1){state.running=false;state.scanGeneration++;return {ok:false,status:503};}return {ok:false,status:503};},
+  recordMT5FeedHealth:()=>{},
+  renderMT5FeedHealth:()=>{},
+  Date,Math,Number,Array,Set,encodeURIComponent
+ };
+ vm.runInNewContext(app.slice(start,end)+";scanMT5MarketData",sandbox);
+ await sandbox.scanMT5MarketData();
+ assert.equal(state.mt5ScanInProgress,false,"finally must release scan lock after interruption");
+ assert.equal(state.mt5ScanCursor,0,"an interrupted batch must not commit its cursor");
+ state.running=true;state.scanGeneration++;
+ await sandbox.scanMT5MarketData();
+ assert.equal(calls,2,"a new scan should run after interruption rather than remain locked");
+ assert.equal(state.mt5ScanCursor,1,"cursor commits only after the resumed batch completes");
+ assert.equal(state.mt5ScanInProgress,false,"lock remains released after successful batch");
+});

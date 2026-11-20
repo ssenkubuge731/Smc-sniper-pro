@@ -19,6 +19,15 @@
     const bullBOS=N(c.close)>ph,bearBOS=N(c.close)<pl;
     const sh=hi(cs.slice(-8,-2)),sl=lo(cs.slice(-8,-2));
     const bullMSS=bull&&N(c.close)>sh&&N(p.close)<=sh,bearMSS=bear&&N(c.close)<sl&&N(p.close)>=sl;
+    // CHoCH is a change against the immediately preceding swing sequence;
+    // MSS remains the local structure break. Keep these events distinct.
+    const olderStructure=cs.slice(-14,-7),recentStructure=cs.slice(-7,-2);
+    const priorBullishStructure=olderStructure.length===7&&recentStructure.length===5&&
+      hi(recentStructure)>hi(olderStructure)&&lo(recentStructure)>lo(olderStructure);
+    const priorBearishStructure=olderStructure.length===7&&recentStructure.length===5&&
+      hi(recentStructure)<hi(olderStructure)&&lo(recentStructure)<lo(olderStructure);
+    const bullCHoCH=priorBearishStructure&&bullMSS;
+    const bearCHoCH=priorBullishStructure&&bearMSS;
     const bullFVG=N(cs.at(-2).low)>N(cs.at(-4).high),bearFVG=N(cs.at(-2).high)<N(cs.at(-4).low);
     const bullIFVG=bull&&N(c.close)>N(cs.at(-4).high)&&N(p.close)<=N(cs.at(-4).high);
     const bearIFVG=bear&&N(c.close)<N(cs.at(-4).low)&&N(p.close)>=N(cs.at(-4).low);
@@ -100,14 +109,15 @@
     zones.sort((a,b)=>b.score-a.score);
     // Flexible SMC model matrix: a setup may qualify through several distinct
     // valid routes; no fixed "two entry patterns" restriction is imposed.
-    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,choch:bullMSS,ob:!!bullOB};
-    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker,choch:bearMSS,ob:!!bearOB};
+    const buy={sweep:bullSweep,structure:bullBOS||bullMSS||bullCHoCH,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,mss:bullMSS,choch:bullCHoCH,ob:!!bullOB};
+    const sell={sweep:bearSweep,structure:bearBOS||bearMSS||bearCHoCH,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker,mss:bearMSS,choch:bearCHoCH,ob:!!bearOB};
     const models=(x)=>[
-      {name:"Sweep → MSS → displacement",ok:x.sweep&&x.choch&&x.displacement},
+      {name:"Sweep → MSS → displacement",ok:x.sweep&&x.mss&&x.displacement},
       {name:"BOS → displacement → imbalance",ok:x.structure&&x.displacement&&x.imbalance},
       {name:"Breaker → structure → displacement",ok:x.breaker&&x.structure&&x.displacement},
       {name:"POI reaction → structure → displacement",ok:x.ob&&x.structure&&x.displacement},
-      {name:"MSS → displacement → FVG",ok:x.choch&&x.displacement&&x.imbalance},
+      {name:"MSS → displacement → FVG",ok:x.mss&&x.displacement&&x.imbalance},
+      {name:"CHoCH → displacement → FVG",ok:x.choch&&x.displacement&&x.imbalance},
       {name:"Liquidity reclaim → BOS → FVG",ok:x.sweep&&x.structure&&x.imbalance}
     ].filter(m=>m.ok).map(m=>m.name);
     const buyModels=models(buy),sellModels=models(sell);
@@ -116,7 +126,13 @@
     // Do not let a larger raw evidence count on one side override it.
     const conflict=hasConflict(buyModels,sellModels);
     const side=conflict?"NONE":buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
-    const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
+    const rawConf=side==="BUY"?buy:side==="SELL"?sell:{};
+    // Count independent evidence groups once. MSS/CHoCH are structure detail,
+    // not extra confirmations on top of the structure group.
+    const conf={sweep:!!rawConf.sweep,structure:!!rawConf.structure,
+      displacement:!!rawConf.displacement,imbalance:!!rawConf.imbalance,
+      breaker:!!rawConf.breaker,ob:!!rawConf.ob};
+    const count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
     // until current price actually interacts with a valid zone.
     const watchZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","partially_mitigated","fully_mitigated","reacting","touching"].includes(z.status));
@@ -126,7 +142,7 @@
     const confirmed=side!=="NONE"&&!conflict&&entryModels.length>0&&zoneSupport;
     const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.breaker?10:0)+(zoneSupport?8:0)-(conflict?30:0));
     return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,entryModels,price:N(c.close),zones,
-      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
+      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullCHoCH||bearCHoCH,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 

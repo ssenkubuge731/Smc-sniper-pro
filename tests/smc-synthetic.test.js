@@ -961,6 +961,22 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  assert.match(fn,/getScannerUniverseBatch/);
 });
 
+test("opportunity ranking is bounded, deterministic and handles missing evidence",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function rankCandidateOpportunity(");
+ const end=app.indexOf("\\nfunction hasOpposingOpenSignal",start);
+ assert.ok(start>=0&&end>start,"ranking helper must exist");
+ const sandbox={};
+ vm.runInNewContext(app.slice(start,end)+";rankCandidateOpportunity",sandbox);
+ const rank=sandbox.rankCandidateOpportunity;
+ assert.deepEqual({...rank({score:90,count:3,entryModels:["OB","FVG"]})},
+  {score:90,confirmations:3,models:2,rank:100});
+ assert.deepEqual({...rank({score:-10,count:-2,entryModels:[]})},
+  {score:0,confirmations:0,models:0,rank:0});
+ assert.deepEqual({...rank({score:150,count:99,entryModels:["a","b","c","d"]})},
+  {score:100,confirmations:99,models:4,rank:100});
+ assert.deepEqual({...rank({})},{score:0,confirmations:0,models:0,rank:0});
+});
 test("signal outcomes ignore forming candles and accept only completed timeframe candles",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function isClosedOutcomeCandle(");

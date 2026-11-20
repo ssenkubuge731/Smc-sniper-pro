@@ -58,6 +58,8 @@ const tradingState = {
   requestId: 1,
   scanTimer: null,
   mt5ScannerTimer: null,
+  mt5ScanCursor: 0,
+  mt5ScanInProgress: false,
   scanGeneration: 0,
   scanUniverseCursor: 0,
   scanQueue: [],
@@ -295,6 +297,16 @@ function getScanSymbolsForMode(symbols, mode, strategy) {
     return clean.length === 1 ? clean : [];
   }
   return clean;
+}
+function getRotatingSymbolBatch(symbols, cursor = 0, batchSize = 10) {
+  const clean = [...new Set((Array.isArray(symbols) ? symbols : [])
+    .map(symbol => String(symbol || "").trim()).filter(Boolean))];
+  if (!clean.length) return { symbols: [], nextCursor: 0, total: 0, start: 0 };
+  const size = Math.max(1, Math.min(10, Number(batchSize) || 10));
+  const start = ((Math.floor(Number(cursor) || 0) % clean.length) + clean.length) % clean.length;
+  const count = Math.min(size, clean.length);
+  const batch = Array.from({ length: count }, (_, i) => clean[(start + i) % clean.length]);
+  return { symbols: batch, nextCursor: (start + count) % clean.length, total: clean.length, start };
 }
 function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize = 10) {
   const clean = getScanSymbolsForMode(symbols, mode, strategy);
@@ -2765,7 +2777,8 @@ function manageScalpingBasketSimulation(symbol, quote) {
 ========================================================= */
 
 async function scanMT5MarketData(){
-  if(!tradingState.running||tradingState.broker!=="mt5")return;
+  if(!tradingState.running||tradingState.broker!=="mt5"||tradingState.mt5ScanInProgress)return;
+  tradingState.mt5ScanInProgress=true;
   const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
   const strategy=valueOf("bridgeStrategy")||tradingState.strategy||"apa";
   const rawSymbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
@@ -2779,15 +2792,17 @@ async function scanMT5MarketData(){
   const required=(mode==="intraday"&&(strategy==="apa"||strategy==="both"))?APA_REQUIRED_FRAMES:[];
   const frames=[...new Set([...required,...(checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed)])];
   if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
+  const batch=getRotatingSymbolBatch(symbols,tradingState.mt5ScanCursor,10);
+  tradingState.mt5ScanCursor=batch.nextCursor;
   let fresh=0,stale=0,missing=0;
-  for(const symbol of symbols.slice(0,10)){
+  for(const symbol of batch.symbols){
     for(const timeframe of frames){
       try{
         const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
         const response=await fetch(url,{cache:"no-store"});
         if(!response.ok){missing++;continue;}
         const packet=await response.json();
-        if(packet.status!=="FRESH"||packet.ageSeconds>90){stale++;continue;}
+        if(packet.status!=="FRESH"||packet.ageSeconds>180){stale++;continue;}
         const bars=(packet.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(isValidCandle).slice(-150);
         if(bars.length<30){missing++;continue;}
         const key=candleKey(symbol,timeframe);
@@ -2805,8 +2820,9 @@ async function scanMT5MarketData(){
       }catch(error){missing++;}
     }
   }
-  setText("scannerStatus","MT5 scanner: "+fresh+" fresh feeds • "+stale+" stale • "+missing+" missing. Demo-only analysis.");
+  setText("scannerStatus","MT5 scanner: symbols "+(batch.total?batch.start+1+"–"+(batch.start+batch.symbols.length):"0")+"/"+batch.total+" • "+fresh+" fresh feeds • "+stale+" stale • "+missing+" missing. Demo-only analysis.");
   setText("derivConnectionStatus","Scanner data source: MT5 broker candles (read-only).");
+  tradingState.mt5ScanInProgress=false;
 }
 function startMT5Scanner(){
   const mode=valueOf("bridgeMode")||"scalping";
@@ -2821,6 +2837,7 @@ function startMT5Scanner(){
   }
   stopScanner(false);
   tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
+  tradingState.mt5ScanCursor=0;tradingState.mt5ScanInProgress=false;
   tradingState.mode=mode;
   tradingState.strategy=strategy;
   tradingState.selectedSymbols=new Set(symbols);
@@ -2919,6 +2936,7 @@ function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
   if(tradingState.mt5ScannerTimer){clearInterval(tradingState.mt5ScannerTimer);tradingState.mt5ScannerTimer=null;}
+  tradingState.mt5ScanInProgress=false;
   clearScanQueue();
   for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
     if (isSocketOpen()) sendRequest({ forget: subscriptionId });

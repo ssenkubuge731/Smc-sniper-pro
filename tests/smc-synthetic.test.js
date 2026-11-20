@@ -956,18 +956,20 @@ test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",(
 });
 
 
-test("APA top-down requires D1/H4/H1/M30/M15/M5/M1 and uses M5 refinement",()=>{
+test("APA top-down requires D1/H4/H1 context with M15 setup and M5 entry",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function analyseAPATopDown(");
- const end=source.indexOf("\n/* =========================================================",start);
+ const end=source.indexOf("\\n/* =========================================================",start);
  assert.ok(start>=0&&end>start,"APA top-down function must exist");
  const fn=source.slice(start,end);
- for(const tf of ["1d","4h","1h","30m","5m","1m"])
+ for(const tf of ["1d","4h","1h","15m","5m"])
    assert.ok(fn.includes('candleKey(symbol, "'+tf+'")'),"APA missing "+tf+" feed");
- assert.match(fn,/const setupTimeframe = APA_SETUP_FRAME\.intraday/,"M15 must remain the APA setup timeframe");
- assert.match(fn,/m5Trend/,"M5 must be evaluated as refinement timeframe");
- assert.match(fn,/M5 refinement alignment/,"M5 alignment must gate APA");
+ assert.doesNotMatch(fn,/candleKey\\(symbol, "(?:30m|1m)"\\)/,"APA must not require M30 or M1");
+ assert.match(fn,/const setupTimeframe = APA_SETUP_FRAME\\.intraday/,"M15 must remain APA setup timeframe");
+ assert.match(fn,/const entryTimeframe = APA_ENTRY_FRAME\\.intraday/,"M5 must be preferred entry timeframe");
+ assert.match(fn,/M5 entry trigger/,"M5 entry confirmation must gate APA");
 });
+
 test("MT5 APA bridge requires complete D1-to-M1 timeframe set",()=>{
  const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
  assert.match(worker,/const APA_FRAMES = \["1d", "4h", "1h", "30m", "15m", "5m", "1m"\]/);

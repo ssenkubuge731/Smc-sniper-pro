@@ -2444,7 +2444,7 @@ function analyseMainSelection(symbol) {
   }
   tradingState.lastSignals[symbol] = result;
   (tradingState.strategy === "both" ? readyResults : [result])
-    .forEach(item => recordCandidateSignal(symbol, item.strategy === "apa" ? "1m" : timeframe, item, item.strategy === "apa" ? (tradingState.candles[candleKey(symbol, "1m")] || []) : candles));
+    .forEach(item => recordCandidateSignal(symbol, item.strategy === "apa" ? "5m" : timeframe, item, item.strategy === "apa" ? (tradingState.candles[candleKey(symbol, "5m")] || []) : candles));
 }
 
 /* =========================================================
@@ -2875,7 +2875,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
   // is allowed to create an entry signal or signal-history record.
-  if (result.strategy === "apa" && timeframe !== "1m") return;
+  if (result.strategy === "apa" && timeframe !== "5m") return;
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";

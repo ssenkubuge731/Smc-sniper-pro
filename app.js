@@ -2782,6 +2782,18 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 function buildCandidateSignalKey(symbol,strategy,mode,timeframe,direction,candleEpoch) {
   return [symbol,strategy,mode,timeframe,direction,Number(candleEpoch)||0].join("|");
 }
+function hasDuplicateCandidateSignal(history, candidate) {
+  const records=Array.isArray(history)?history:[];
+  return records.some(record =>
+    record && (
+      record.signalKey === candidate.signalKey ||
+      (!record.signalKey && record.symbol === candidate.symbol &&
+        record.strategy === candidate.strategy && record.mode === candidate.mode &&
+        record.timeframe === candidate.timeframe && record.direction === candidate.direction &&
+        Number(record.signalCandleEpoch) === Number(candidate.candleEpoch))
+    )
+  );
+}
 function rankCandidateOpportunity(result) {
   const rawScore=Number(result?.score);
   const score=Number.isFinite(rawScore)?Math.max(0,Math.min(100,rawScore)):0;
@@ -2897,12 +2909,9 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   // A signal is recorded at most once for this strategy, symbol, timeframe,
   // direction and candle, even if a later scan or another renderer sees it again.
   // Keep APA, SMC and News Trading records independent from one another.
-  if (tradingState.signalHistory.some(record =>
-    record.signalKey === signalKey ||
-    (!record.signalKey && record.symbol === symbol && record.strategy === strategy &&
-      record.mode === tradingState.mode && record.timeframe === timeframe &&
-      record.direction === direction && Number(record.signalCandleEpoch) === candleEpoch)
-  )) return;
+  if (hasDuplicateCandidateSignal(tradingState.signalHistory,{
+    signalKey,symbol,strategy,mode:tradingState.mode,timeframe,direction,candleEpoch
+  })) return;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
 
   // Never keep opposing open candidates on the same market, even when

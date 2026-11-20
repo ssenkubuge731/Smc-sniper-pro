@@ -2358,7 +2358,7 @@ function renderDemoPositions() {
     box.appendChild(empty);
     return;
   }
-  open.slice(0, 20).forEach((record, index) => {
+  open.slice().sort((a,b)=>(Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0)).slice(0, 20).forEach((record, index) => {
     const row = document.createElement("div");
     row.className = "result-item";
     const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
@@ -2369,7 +2369,7 @@ function renderDemoPositions() {
         : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nStatus: OPEN — waiting for individual TP or SL`;
     row.textContent =
       `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\n` +
-      details;
+      details+"\nOpportunity rank: "+(Number.isFinite(Number(record.opportunityRank))?record.opportunityRank+"/100":"not scored");
     box.appendChild(row);
   });
 }
@@ -2543,7 +2543,11 @@ function renderSignalHistory() {
     box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
     return;
   }
-  tradingState.signalHistory.slice(0, 50).forEach(record => {
+  tradingState.signalHistory.slice().sort((a,b) => {
+    if(a.status==="OPEN"&&b.status!=="OPEN")return -1;
+    if(b.status==="OPEN"&&a.status!=="OPEN")return 1;
+    return (Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0) || Number(b.createdAt)-Number(a.createdAt);
+  }).slice(0, 50).forEach(record => {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
@@ -2560,7 +2564,7 @@ function renderSignalHistory() {
         : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nResult: ${outcome}`;
     row.textContent =
       `${date} | ${record.symbol} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()} | ${record.direction}\n` +
-      details;
+      details+"\nOpportunity rank: "+(Number.isFinite(Number(record.opportunityRank))?record.opportunityRank+"/100":"not scored");
     box.appendChild(row);
   });
 }
@@ -2622,6 +2626,26 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 
 function buildCandidateSignalKey(symbol,strategy,mode,timeframe,direction,candleEpoch) {
   return [symbol,strategy,mode,timeframe,direction,Number(candleEpoch)||0].join("|");
+}
+function rankCandidateOpportunity(result) {
+  const rawScore=Number(result?.score);
+  const score=Number.isFinite(rawScore)?Math.max(0,Math.min(100,rawScore)):0;
+  const confirmations=Number.isFinite(Number(result?.count))
+    ? Math.max(0,Number(result.count))
+    : Object.values(result?.confirmations||{}).filter(Boolean).length;
+  const models=Array.isArray(result?.entryModels)?result.entryModels.length:0;
+  return {
+    score,
+    confirmations,
+    models,
+    rank: Math.round(Math.max(0,Math.min(100,score+Math.min(12,confirmations*2)+Math.min(6,models*2))))
+  };
+}
+function hasOpposingOpenSignal(history,symbol,direction) {
+  return (Array.isArray(history)?history:[]).some(record =>
+    record && record.status==="OPEN" && record.symbol===symbol &&
+    record.direction && record.direction!==direction
+  );
 }
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
@@ -2686,11 +2710,13 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   )) return;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
 
-  // SMC entries must not oppose an already-open SMC entry on the same symbol.
-  // This guard spans timeframes and applies to demo signal records only.
-  if (strategy === "smc" && openEntries.some(record =>
-    record.symbol === symbol && record.strategy === "smc" && record.direction !== direction
-  )) return;
+  // Never keep opposing open candidates on the same market, even when
+  // they came from different independent engines or different timeframes.
+  // This is a signal-ledger conflict guard only; it never sends broker orders.
+  if (hasOpposingOpenSignal(openEntries,symbol,direction)) {
+    addResult("CONFLICT BLOCKED: "+symbol+" "+direction+" opposes an existing open demo candidate. Review the existing setup before accepting another direction.","scannerResults");
+    return;
+  }
 
   // SMC Scalping is locked to the user's active pair until its basket closes.
   if (isScalp && openEntries.some(record =>
@@ -2720,9 +2746,14 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     return;
   }
 
+  const opportunityRank=rankCandidateOpportunity(result);
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
     signalKey,
+    opportunityScore: opportunityRank.score,
+    confirmationCount: opportunityRank.confirmations,
+    modelCount: opportunityRank.models,
+    opportunityRank: opportunityRank.rank,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,
     mode: isScalp ? "scalping" : "intraday",

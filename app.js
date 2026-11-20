@@ -3027,7 +3027,6 @@ async function scanMT5MarketData(){
           const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
           const response=await fetch(url,{cache:"no-store"});
           if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
-            batchCompleted=false;
             return;
           }
           if(!response.ok){

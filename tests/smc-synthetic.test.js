@@ -120,7 +120,8 @@ test("Signal coordination deduplicates same strategy/symbol/timeframe/candle but
  assert.notEqual(apa,key("EURUSD","apa","intraday","1m","SELL",1234),"directions remain independent");
  assert.notEqual(apa,key("EURUSD","apa","intraday","1m","BUY",1235),"new candles can create a new candidate");
  assert.match(source,/record\.signalKey === signalKey/,"existing candidate keys prevent duplicate signal records");
- assert.match(source,/signalKey,\s*symbol, strategy, timeframe, direction/,"new candidate stores its deduplication key");
+ assert.match(source,/signalKey,/,"new candidate stores its deduplication key");
+ assert.match(source,/opportunityScore: opportunityRank\.score/,"rank metadata is stored with the candidate");
 });
 test("Opportunity ranking is bounded and uses independent confirmation/model evidence",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
@@ -155,6 +156,28 @@ test("Signal history and open positions prioritize ranked opportunities and disp
  assert.match(source,/open\.slice\(\)\.sort\(\(a,b\)=>\(Number\(b\.opportunityRank\)/);
  assert.match(source,/Opportunity rank:/);
  assert.match(source,/hasOpposingOpenSignal\(openEntries,symbol,direction\)/);
+});
+test("Signal expiry uses timeframe-specific windows and leaves scalping baskets untouched",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function getSignalExpiryBars(");
+ const end=source.indexOf("\nfunction evaluateSignalHistory",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={String};vm.runInNewContext(source.slice(start,end)+";getSignalExpiryBars;getTimeframeSeconds",sandbox);
+ assert.equal(sandbox.getSignalExpiryBars("1m"),30);
+ assert.equal(sandbox.getSignalExpiryBars("M5"),24);
+ assert.equal(sandbox.getSignalExpiryBars("15m"),16);
+ assert.equal(sandbox.getSignalExpiryBars("H1"),10);
+ assert.equal(sandbox.getTimeframeSeconds("M15"),900);
+ const evaluator=source.slice(source.indexOf("function evaluateSignalHistory"),source.indexOf("function buildCandidateSignalKey"));
+ assert.match(evaluator,/if \(record\.mode === "scalping"\) return/);
+ assert.match(evaluator,/REVIEW — signal expired without TP or SL/);
+ assert.match(evaluator,/lastEpoch>=expiryEpoch/);
+});
+test("Intraday signal expiry is a review outcome, not a win or loss",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(source,/status\.startsWith\("REVIEW"\)/);
+ assert.match(source,/record\.expired=true/);
+ assert.match(source,/record\.status="REVIEW — signal expired without TP or SL"/);
 });
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);

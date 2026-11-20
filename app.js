@@ -3017,12 +3017,21 @@ async function scanMT5MarketData(){
     const frames=[...new Set([...required,...(checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed)])];
     if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
     const batch=getRotatingSymbolBatch(symbols,tradingState.mt5ScanCursor,10);
-    tradingState.mt5ScanCursor=batch.nextCursor;
+    const scanGeneration=tradingState.scanGeneration;
+    let batchCompleted=true;
     for(const symbol of batch.symbols){
       for(const timeframe of frames){
+        if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+          batchCompleted=false;
+          return;
+        }
         try{
           const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
           const response=await fetch(url,{cache:"no-store"});
+          if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+            batchCompleted=false;
+            return;
+          }
           if(!response.ok){
             recordMT5FeedHealth(symbol,timeframe,"MISSING",{reason:"HTTP "+response.status});
             continue;
@@ -3062,9 +3071,16 @@ async function scanMT5MarketData(){
         }
       }
     }
+    if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+      batchCompleted=false;
+      return;
+    }
+    tradingState.mt5ScanCursor=batch.nextCursor;
     tradingState.mt5LastScanAt=Date.now();
     renderMT5FeedHealth(batch.symbols,frames,batch);
   } finally {
+    // Commit rotation only after the entire batch has been attempted. If the
+    // scanner is stopped/restarted mid-request, the same batch is retried.
     tradingState.mt5ScanInProgress=false;
   }
 }

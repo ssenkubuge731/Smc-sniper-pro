@@ -972,7 +972,8 @@ test("market data freshness rejects missing, invalid and stale candles",()=>{
  assert.equal(fresh([], "1m",1000),false);
  assert.equal(fresh([{epoch:0}], "1m",1000),false);
  assert.equal(fresh([{epoch:900}], "unknown",1000),false);
- assert.equal(fresh([{epoch:900}], "1m",1100),true);
+ assert.equal(fresh([{epoch:900}], "1m",1080),true);
+ assert.equal(fresh([{epoch:900}], "1m",1081),false);
  assert.equal(fresh([{epoch:600}], "1m",1000),false);
  assert.equal(fresh([{epoch:600}], "5m",1000),true);
 });

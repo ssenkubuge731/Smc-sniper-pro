@@ -1192,9 +1192,9 @@ test("MT5 retry helper does not retry permanent client errors",async()=>{
 test("MT5 interrupted runtime scan releases lock without advancing cursor, then resumes and commits completed batch",async()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("async function scanMT5MarketData");
- const end=app.indexOf("\nfunction startMT5Scanner",start);
+ const end=app.indexOf("\\nfunction startMT5Scanner",start);
  assert.ok(start>=0&&end>start);
- let calls=0;
+ let calls=0,resolveFirst;
  const state={running:true,broker:"mt5",mt5ScanInProgress:false,scanGeneration:4,mt5ScanCursor:0,mode:"intraday",strategy:"apa",mt5LastScanAt:0,lastScanAt:0};
  const sandbox={
   tradingState:state,
@@ -1204,13 +1204,17 @@ test("MT5 interrupted runtime scan releases lock without advancing cursor, then 
   getBridgeFrames:()=>["1m"],
   APA_REQUIRED_FRAMES:[],
   getRotatingSymbolBatch:()=>({symbols:["EURUSD"],nextCursor:1}),
-  fetchMT5MarketDataWithRetry:async()=>{calls++;if(calls===1){state.running=false;state.scanGeneration++;return {ok:false,status:503};}return {ok:false,status:503};},
+  fetchMT5MarketDataWithRetry:()=>{calls++;if(calls===1)return new Promise(resolve=>{resolveFirst=resolve;});return Promise.resolve({ok:false,status:503});},
   recordMT5FeedHealth:()=>{},
   renderMT5FeedHealth:()=>{},
   Date,Math,Number,Array,Set,encodeURIComponent
  };
  vm.runInNewContext(app.slice(start,end)+";scanMT5MarketData",sandbox);
- await sandbox.scanMT5MarketData();
+ const interrupted=sandbox.scanMT5MarketData();
+ assert.equal(state.mt5ScanInProgress,true,"lock should be held while the request is pending");
+ state.running=false;state.scanGeneration++;
+ resolveFirst({ok:false,status:503});
+ await interrupted;
  assert.equal(state.mt5ScanInProgress,false,"finally must release scan lock after interruption");
  assert.equal(state.mt5ScanCursor,0,"an interrupted batch must not commit its cursor");
  state.running=true;state.scanGeneration++;

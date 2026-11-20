@@ -131,7 +131,13 @@
     // not extra confirmations on top of the structure group.
     const conf={sweep:!!rawConf.sweep,structure:!!rawConf.structure,
       displacement:!!rawConf.displacement,imbalance:!!rawConf.imbalance,
-      breaker:!!rawConf.breaker,ob:!!rawConf.ob};
+      block:!!(rawConf.breaker||rawConf.ob)};
+    // Supply/demand and block formations are exposed from the zone catalogue,
+    // so the dashboard can distinguish their presence from a current entry trigger.
+    const hasSupply=zones.some(z=>z.type==="Supply"&&z.valid);
+    const hasDemand=zones.some(z=>z.type==="Demand"&&z.valid);
+    const hasOrderBlock=zones.some(z=>z.type==="Order Block"&&z.valid);
+    const hasBreakerBlock=zones.some(z=>z.type==="Breaker Block"&&z.valid);
     const count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
     // until current price actually interacts with a valid zone.
@@ -140,9 +146,9 @@
     const zoneSupport=entryZones.length>0;
     const entryModels=side==="BUY"?buyModels:side==="SELL"?sellModels:[];
     const confirmed=side!=="NONE"&&!conflict&&entryModels.length>0&&zoneSupport;
-    const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.breaker?10:0)+(zoneSupport?8:0)-(conflict?30:0));
+    const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.block?10:0)+(zoneSupport?8:0)-(conflict?30:0));
     return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,entryModels,price:N(c.close),zones,
-      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullCHoCH||bearCHoCH,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
+      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullCHoCH||bearCHoCH,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,supply:hasSupply,demand:hasDemand,supplyDemand:hasSupply||hasDemand,orderBlock:hasOrderBlock||!!(bullOB||bearOB),breakerBlock:hasBreakerBlock||!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 

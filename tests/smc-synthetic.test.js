@@ -63,6 +63,46 @@ test("SMC formation payload exposes separate structure, imbalance, POI and block
  assert.ok(Array.isArray(r.zones),"zone catalogue must be available");
  assert.ok(r.zones.every(z=>["Supply","Demand","FVG","Order Block","Breaker Block","Sweep reclaim"].includes(z.type)),"zone types must be recognized");
 });
+test("Demand zone stays invalid after a confirmed close breaks its distal boundary, even if price later reclaims",()=>{
+ const c=bars(100);
+ c[18]={open:99,high:100,low:97,close:99,time:18};
+ c[19]={open:99,high:100,low:97,close:99,time:19};
+ c[20]={open:98,high:99,low:95,close:98,time:20};
+ c[21]={open:98,high:102,low:97.5,close:101.5,time:21};
+ c[22]={open:101.5,high:102,low:100,close:101,time:22};
+ c[23]={open:101,high:102,low:100,close:101,time:23};
+ c[24]={open:96,high:97,low:93,close:94,time:24};
+ c[25]={open:99,high:101,low:98,close:100,time:25};
+ c[26]={open:100,high:101,low:99,close:100,time:26};
+ c[27]={open:100,high:101,low:99,close:100,time:27};
+ c[28]={open:100,high:101,low:99,close:100,time:28};
+ c[29]={open:100,high:101,low:99,close:100,time:29};
+ const r=engine.detect(c);
+ const zone=r.zones.find(z=>z.type==="Demand"&&z.origin===20);
+ assert.ok(zone,"synthetic demand pivot should be catalogued");
+ assert.equal(zone.valid,false,"later close below distal boundary permanently invalidates zone");
+ assert.equal(zone.status,"invalidated");
+});
+test("Supply zone stays invalid after a confirmed close breaks its distal boundary, even if price later falls back",()=>{
+ const c=bars(100);
+ c[18]={open:101,high:103,low:100,close:101,time:18};
+ c[19]={open:101,high:103,low:100,close:101,time:19};
+ c[20]={open:102,high:105,low:101,close:102,time:20};
+ c[21]={open:102,high:102.5,low:98,close:98.5,time:21};
+ c[22]={open:98.5,high:99,low:98,close:98.8,time:22};
+ c[23]={open:98.8,high:99,low:98,close:98.7,time:23};
+ c[24]={open:104,high:107,low:103,close:106,time:24};
+ c[25]={open:100,high:101,low:99,close:100,time:25};
+ c[26]={open:100,high:101,low:99,close:100,time:26};
+ c[27]={open:100,high:101,low:99,close:100,time:27};
+ c[28]={open:100,high:101,low:99,close:100,time:28};
+ c[29]={open:100,high:101,low:99,close:100,time:29};
+ const r=engine.detect(c);
+ const zone=r.zones.find(z=>z.type==="Supply"&&z.origin===20);
+ assert.ok(zone,"synthetic supply pivot should be catalogued");
+ assert.equal(zone.valid,false,"later close above distal boundary permanently invalidates zone");
+ assert.equal(zone.status,"invalidated");
+});
 test("SMC confirmation count counts independent evidence groups, not duplicate structure/block labels",()=>{
  const r=engine.detect(bullPattern());
  assert.equal(r.count,Object.values(r.confirmations).filter(Boolean).length);

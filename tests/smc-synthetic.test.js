@@ -959,7 +959,7 @@ test("SMC Scalping routing is SMC-only, user-selected, and single-pair locked",(
 test("APA top-down requires D1/H4/H1 context with M15 setup and M5 entry",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function analyseAPATopDown(");
- const end=source.indexOf("\\n/* =========================================================",start);
+ const end=source.indexOf("NEWS TRADING",start);
  assert.ok(start>=0&&end>start,"APA top-down function must exist");
  const fn=source.slice(start,end);
  for(const tf of ["1d","4h","1h","15m","5m"])

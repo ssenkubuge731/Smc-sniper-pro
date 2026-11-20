@@ -2802,7 +2802,7 @@ async function scanMT5MarketData(){
         const response=await fetch(url,{cache:"no-store"});
         if(!response.ok){missing++;continue;}
         const packet=await response.json();
-        if(packet.status!=="FRESH"||packet.ageSeconds>180){stale++;continue;}
+        if(packet.status!=="FRESH"||packet.ageSeconds>90){stale++;continue;}
         const bars=(packet.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(isValidCandle).slice(-150);
         if(bars.length<30){missing++;continue;}
         const key=candleKey(symbol,timeframe);

@@ -104,6 +104,24 @@ test("MT5 scanner reports per-symbol/timeframe feed health and always releases s
  assert.match(app,/finally\s*\{\s*tradingState\.mt5ScanInProgress=false;/);
  assert.match(app,/age>90/);
 });
+test("Signal coordination deduplicates same strategy/symbol/timeframe/candle but keeps engines independent",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function buildCandidateSignalKey(");
+ const end=source.indexOf("\nfunction recordCandidateSignal(",start);
+ assert.ok(start>=0&&end>start,"candidate key helper must exist");
+ const sandbox={Number};
+ vm.runInNewContext(source.slice(start,end)+";buildCandidateSignalKey",sandbox);
+ const key=sandbox.buildCandidateSignalKey;
+ const apa=key("EURUSD","apa","intraday","1m","BUY",1234);
+ assert.equal(apa,key("EURUSD","apa","intraday","1m","BUY",1234));
+ assert.notEqual(apa,key("EURUSD","smc","intraday","1m","BUY",1234),"APA and SMC signals remain independent");
+ assert.notEqual(apa,key("EURUSD","news","intraday","1m","BUY",1234),"News Trading remains independent");
+ assert.notEqual(apa,key("EURUSD","apa","intraday","5m","BUY",1234),"timeframes remain independent");
+ assert.notEqual(apa,key("EURUSD","apa","intraday","1m","SELL",1234),"directions remain independent");
+ assert.notEqual(apa,key("EURUSD","apa","intraday","1m","BUY",1235),"new candles can create a new candidate");
+ assert.match(source,/record\.signalKey === signalKey/,"existing candidate keys prevent duplicate signal records");
+ assert.match(source,/signalKey,\s*symbol, strategy, timeframe, direction/,"new candidate stores its deduplication key");
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

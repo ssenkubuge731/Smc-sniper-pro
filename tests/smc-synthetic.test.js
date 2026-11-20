@@ -964,7 +964,7 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
 test("Final entry authorization enforces strategy timeframe, direction and minimum 2R",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function authorizeFinalEntry(");
- const end=app.indexOf("\\nfunction recordCandidateSignal",start);
+ const end=app.indexOf("\nfunction recordCandidateSignal",start);
  assert.ok(start>=0&&end>start,"final authorization helper must exist before signal recording");
  const sandbox={};
  vm.runInNewContext(app.slice(start,end)+";authorizeFinalEntry",sandbox);

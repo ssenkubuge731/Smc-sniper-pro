@@ -644,7 +644,7 @@ test("MT5 EA publishes configured candle data and website scanner consumes it",(
  assert.match(ea,/PublishConfiguredMarketData\(/,"EA publishes configured symbol/timeframes");
  const scanner=app.slice(app.indexOf("async function scanMT5MarketData"),app.indexOf("function startMT5Scanner"));
  assert.match(scanner,/MT5_MARKET_DATA_URL/,"website polls MT5 candle endpoint");
- assert.match(scanner,/packet\.status!=="FRESH"\|\|packet\.ageSeconds>90/,"scanner rejects stale feeds");
+ assert.match(scanner,/packet\.status!=="FRESH"\|\|!Number\.isFinite\(age\)\|\|age>90/,"scanner rejects stale feeds");
  assert.match(scanner,/renderTimeframeAnalysis/,"fresh MT5 candles enter scanner analysis");
  assert.match(scanner,/SMCIntradayEngine\.evaluate/,"MT5 candle feed enters SMC engine");
  assert.match(app,/if \(tradingState\.broker === "mt5"\) \{ startMT5Scanner\(\); return; \}/,"scanner switches to MT5 data mode");
@@ -653,8 +653,8 @@ test("MT5 EA publishes configured candle data and website scanner consumes it",(
 test("MT5 candle feed data source is visible and scanner rejects nonfresh data",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
- assert.match(app,/MT5 scanner: .*fresh feeds/,"scanner reports freshness counters");
- assert.match(app,/Scanner data source: MT5 broker candles/,"source is shown in scanner connection status");
+ assert.match(app,/MT5 feed health: .*fresh/,"scanner reports per-feed freshness counters");
+ assert.match(app,/MT5 read-only feed health updated/,"source and feed-health update time are shown");
  assert.match(html,/MT5 broker/,"MT5 broker source selector exists");
  assert.match(html,/bridgeSymbols/,"scanner feed uses configured MT5 symbols");
 });
@@ -725,7 +725,7 @@ test("MT5 scanner feeds latest M1 quote into SMC scalp basket simulation",()=>{
  const end=source.indexOf("\nfunction startMT5Scanner",start);
  assert.ok(start>=0&&end>start,"MT5 scanner must exist");
  const fn=source.slice(start,end);
- assert.match(fn,/timeframe==="1m"\) manageScalpingBasketSimulation\(symbol,bars\[bars.length-1\]\.close\)/);
+ assert.match(fn,/timeframe==="1m"\) manageScalpingBasketSimulation\(symbol,lastBar\.close\)/);
 });
 
 test("SMC Scalping scanner refuses multiple or missing pairs for both MT5 and Deriv",()=>{

@@ -968,7 +968,8 @@ test("APA top-down requires D1/H4/H1 context with M15 setup and M5 entry",()=>{
  assert.equal(fn.includes('candleKey(symbol, "1m")'),false,"APA must not require M1");
  assert.ok(fn.includes("const setupTimeframe = APA_SETUP_FRAME.intraday"),"M15 remains setup timeframe");
  assert.ok(source.includes('const APA_SETUP_FRAME = { intraday: "15m" }'),"M15 must be configured as APA setup frame");
- assert.ok(fn.includes("const entryTimeframe = APA_ENTRY_FRAME.intraday"),"M5 is preferred entry timeframe");\n assert.ok(source.includes('const APA_ENTRY_FRAME = { intraday: "5m" }'),"M5 must be configured as APA entry frame");
+ assert.ok(fn.includes("const entryTimeframe = APA_ENTRY_FRAME.intraday"),"M5 is preferred entry timeframe");
+ assert.ok(source.includes('const APA_ENTRY_FRAME = { intraday: "5m" }'),"M5 must be configured as APA entry frame");
  assert.ok(fn.includes("M5 entry trigger"),"M5 entry confirmation must gate APA");
 });
 

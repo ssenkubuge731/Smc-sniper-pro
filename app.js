@@ -3018,11 +3018,9 @@ async function scanMT5MarketData(){
     if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
     const batch=getRotatingSymbolBatch(symbols,tradingState.mt5ScanCursor,10);
     const scanGeneration=tradingState.scanGeneration;
-    let batchCompleted=true;
     for(const symbol of batch.symbols){
       for(const timeframe of frames){
         if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
-          batchCompleted=false;
           return;
         }
         try{
@@ -3072,15 +3070,12 @@ async function scanMT5MarketData(){
       }
     }
     if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
-      batchCompleted=false;
       return;
     }
     tradingState.mt5ScanCursor=batch.nextCursor;
     tradingState.mt5LastScanAt=Date.now();
     renderMT5FeedHealth(batch.symbols,frames,batch);
   } finally {
-    // Commit rotation only after the entire batch has been attempted. If the
-    // scanner is stopped/restarted mid-request, the same batch is retried.
     tradingState.mt5ScanInProgress=false;
   }
 }

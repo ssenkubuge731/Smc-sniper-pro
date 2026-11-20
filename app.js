@@ -82,7 +82,10 @@ const tradingState = {
   newsError: "",
   newsTimer: null,
   newsLoading: false,
-  lastAnalysedSymbol: ""
+  lastAnalysedSymbol: "",
+  lastMarketDataAt: 0,
+  lastScanAt: 0,
+  healthMonitorTimer: null
 };
 
 const $ = id => document.getElementById(id);
@@ -398,6 +401,30 @@ async function refreshMT5BridgeStatus() {
   }
 }
 
+function updateRuntimeHealth() {
+  const now = Date.now();
+  const dataAge = tradingState.lastMarketDataAt ? Math.max(0, Math.floor((now - tradingState.lastMarketDataAt) / 1000)) : null;
+  const scanAge = tradingState.lastScanAt ? Math.max(0, Math.floor((now - tradingState.lastScanAt) / 1000)) : null;
+  const broker = tradingState.broker === "mt5"
+    ? (valueOf("mt5BridgeStatus") || "MT5 bridge status not checked")
+    : (isSocketOpen() ? "Deriv WebSocket connected" : "Deriv WebSocket disconnected");
+  const dataStatus = dataAge === null ? "No market data received in this session"
+    : dataAge <= 90 ? "Market data fresh (" + dataAge + "s since last update)"
+    : "Market data stale (" + dataAge + "s since last update)";
+  const scanStatus = tradingState.running
+    ? (scanAge === null ? "Scanner running; first scan not yet recorded" : "Scanner running; last scan " + scanAge + "s ago")
+    : "Scanner stopped";
+  setText("runtimeBrokerHealth", "Broker: " + broker);
+  setText("runtimeDataHealth", dataStatus);
+  setText("runtimeScannerHealth", scanStatus);
+  setText("runtimeSafetyHealth", tradingState.demo && tradingState.liveLocked
+    ? "Safety: DEMO ONLY • LIVE LOCKED"
+    : "Safety warning: demo/live lock state requires review");
+  setText("runtimeHealthStatus", !tradingState.demo || !tradingState.liveLocked || (dataAge !== null && dataAge > 90)
+    ? "Runtime health: WARNING — review the items below"
+    : "Runtime health: Monitoring (connection and data status shown separately)");
+}
+
 function prepareMT5Connection() {
   const broker = valueOf("mt5Broker");
   const server = valueOf("mt5Server").trim();
@@ -674,6 +701,7 @@ function handleDerivMessage(data) {
 
   if (data.msg_type === "candles" && Array.isArray(data.candles)) {
     if (!context) return;
+    tradingState.lastMarketDataAt = Date.now();
 
     const key = candleKey(context.symbol, context.timeframe);
 
@@ -694,6 +722,7 @@ function handleDerivMessage(data) {
   }
 
   if (data.msg_type === "ohlc" && data.ohlc && context) {
+    tradingState.lastMarketDataAt = Date.now();
     const key = candleKey(context.symbol, context.timeframe);
     const list = tradingState.candles[key] || [];
     const candle = normalizeCandle(data.ohlc);
@@ -3100,6 +3129,8 @@ async function scanMT5MarketData(){
     }
     tradingState.mt5ScanCursor=batch.nextCursor;
     tradingState.mt5LastScanAt=Date.now();
+    tradingState.lastScanAt=tradingState.mt5LastScanAt;
+    tradingState.lastMarketDataAt=tradingState.mt5LastScanAt;
     renderMT5FeedHealth(batch.symbols,frames,batch);
   } finally {
     tradingState.mt5ScanInProgress=false;
@@ -3175,6 +3206,7 @@ function startScanner(resume = false) {
 
 function scanSelectedMarkets() {
   if (!tradingState.running || !isSocketOpen()) return;
+  tradingState.lastScanAt = Date.now();
 
   const selected = [...tradingState.selectedSymbols];
   if (tradingState.mode === "scalping" &&
@@ -3421,6 +3453,11 @@ function initApp() {
 
   renderBridgeTimeframes();
   refreshMT5BridgeStatus();
+  updateRuntimeHealth();
+  tradingState.healthMonitorTimer = setInterval(() => {
+    updateRuntimeHealth();
+    if (tradingState.broker === "mt5") refreshMT5BridgeStatus();
+  }, 60000);
   setConnectionStatus("Not connected");
   setText("scannerStatus", "Scanner stopped");
   setText("cloudStatus", "Cloud engine status: Not verified");

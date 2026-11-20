@@ -721,9 +721,11 @@ function renderSMCFormationMonitor(record) {
     return;
   }
   const f=record.formations||{};
-  const labels=[["BOS","BOS"],["MSS","MSS"],["CHoCH","CHoCH"],["liquiditySweep","Liquidity sweep"],["EQH","Equal highs"],["EQL","Equal lows"],["FVG","FVG"],["IFVG","IFVG"],["orderBlock","Order Block"],["breakerBlock","Breaker Block"],["displacement","Displacement"]];
+  const labels=[["BOS","BOS"],["MSS","MSS"],["CHoCH","CHoCH"],["liquiditySweep","Liquidity sweep"],["EQH","Equal highs"],["EQL","Equal lows"],["FVG","FVG"],["IFVG","IFVG"],["supply","Supply"],["demand","Demand"],["orderBlock","Order Block"],["breakerBlock","Breaker Block"],["displacement","Displacement"]];
   const found=labels.filter(([k])=>f[k]).map(([,v])=>v);
-  setText("smcFormationStatus","Detected formations ("+record.timeframe+"): "+(found.length?found.join(" • "):"none on latest candle"));
+  const confirmations=record.count??Object.values(record.confirmations||{}).filter(Boolean).length;
+  const models=Array.isArray(record.entryModels)?record.entryModels:[];
+  setText("smcFormationStatus","SMC formations ("+record.timeframe+"): "+(found.length?found.join(" • "):"none detected")+" | Independent confirmations: "+confirmations+" | Models: "+(models.length?models.join(" / "):"none"));
   const zones=(record.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
   setText("smcZoneStatus","Zones: "+(zones.length?zones.join(" | "):"none detected")+"\n"+(record.note||""));
 }
@@ -773,10 +775,11 @@ function renderSMCMultiFrame(symbol) {
     const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
     return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
   });
-  setText("smcFormationStatus","SMC timeframes — "+symbol+": "+rows.join(" | "));
   const best=window.SMCIntradayEngine.best(symbol,frames);
-  setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
+  setText("smcEngineStatus",(best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes")+" | "+rows.join(" | "));
   const all=frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const formationRecord=best||all.slice().reverse().find(record=>record&&record.ready)||null;
+  renderSMCFormationMonitor(formationRecord);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
   setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
   renderSMCEntryPlan(symbol);

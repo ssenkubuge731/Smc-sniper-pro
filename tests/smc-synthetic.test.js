@@ -263,7 +263,8 @@ test("Signal history and open positions prioritize ranked opportunities and disp
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  assert.match(source,/opportunityScore: opportunityRank\.score/);
  assert.match(source,/opportunityRank: opportunityRank\.rank/);
- assert.match(source,/open\.slice\(\)\.sort\(\(a,b\)=>\(Number\(b\.opportunityRank\)/);
+ assert.match(source,/open\.slice\(\)\.sort\(compareOpportunityPriority\)/);
+ assert.match(source,/signalHistory\.slice\(\)\.sort\(compareOpportunityPriority\)/);
  assert.match(source,/Opportunity rank:/);
  assert.match(source,/hasOpposingOpenSignal\(openEntries,symbol,direction\)/);
 });

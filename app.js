@@ -59,6 +59,7 @@ const tradingState = {
   scanTimer: null,
   mt5ScannerTimer: null,
   scanGeneration: 0,
+  scanUniverseCursor: 0,
   scanQueue: [],
   scanQueueTimer: null,
   scanInProgress: false,
@@ -293,7 +294,18 @@ function getScanSymbolsForMode(symbols, mode, strategy) {
   if (mode === "scalping" && (strategy === "smc" || strategy === "both")) {
     return clean.length === 1 ? clean : [];
   }
-  return clean.slice(0, 10);
+  return clean;
+}
+function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize = 10) {
+  const clean = getScanSymbolsForMode(symbols, mode, strategy);
+  if (mode !== "intraday" || (strategy !== "apa" && strategy !== "both")) {
+    return { symbols: clean, nextCursor: 0, total: clean.length };
+  }
+  if (!clean.length) return { symbols: [], nextCursor: 0, total: 0 };
+  const size = Math.max(1, Math.min(10, Number(batchSize) || 10));
+  const start = ((Math.floor(Number(cursor) || 0) % clean.length) + clean.length) % clean.length;
+  const batch = Array.from({ length: Math.min(size, clean.length) }, (_, i) => clean[(start + i) % clean.length]);
+  return { symbols: batch, nextCursor: (start + batch.length) % clean.length, total: clean.length };
 }
 function getBridgeFrames(mode,strategy){
   if(mode==="scalping") return [...BRIDGE_ALLOWED_FRAMES.scalping];
@@ -2838,7 +2850,14 @@ function scanSelectedMarkets() {
     setText("scannerStatus", "SMC Scalping paused — exactly one user-selected pair is required.");
     return;
   }
-  const symbols = selected;
+  const universe = tradingState.mode === "intraday" &&
+    (tradingState.strategy === "apa" || tradingState.strategy === "both")
+    ? tradingState.availableSymbols.map(item => item.symbol)
+    : selected;
+  const batch = getScannerUniverseBatch(universe, tradingState.mode, tradingState.strategy,
+    tradingState.scanUniverseCursor, 10);
+  const symbols = batch.symbols;
+  tradingState.scanUniverseCursor = batch.nextCursor;
   const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
   const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")
     ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]
@@ -2855,7 +2874,7 @@ function scanSelectedMarkets() {
 
   setText(
     "scannerStatus",
-    `Scanner active: ${symbols.length} markets / ${frames.length} timeframes`
+    `APA all-market rotation: ${symbols.length}/${batch.total} markets in this batch / ${frames.length} timeframes`
   );
 }
 

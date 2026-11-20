@@ -962,11 +962,11 @@ test("APA top-down requires D1/H4/H1 context with M15 setup and M5 entry",()=>{
  const end=source.indexOf("NEWS TRADING",start);
  assert.ok(start>=0&&end>start,"APA top-down function must exist");
  const fn=source.slice(start,end);
- for(const tf of ["1d","4h","1h","15m","5m"])
+ for(const tf of ["1d","4h","1h","5m"])
    assert.ok(fn.includes('candleKey(symbol, "'+tf+'")'),"APA missing "+tf+" feed");
  assert.equal(fn.includes('candleKey(symbol, "30m")'),false,"APA must not require M30");
  assert.equal(fn.includes('candleKey(symbol, "1m")'),false,"APA must not require M1");
- assert.ok(fn.includes("const setupTimeframe = APA_SETUP_FRAME.intraday"),"M15 remains setup timeframe");
+ assert.ok(fn.includes("const setupTimeframe = APA_SETUP_FRAME.intraday"),"M15 remains setup timeframe");\n assert.ok(source.includes('const APA_SETUP_FRAME = { intraday: "15m" }'),"M15 must be configured as APA setup frame");
  assert.ok(fn.includes("const entryTimeframe = APA_ENTRY_FRAME.intraday"),"M5 is preferred entry timeframe");
  assert.ok(fn.includes("M5 entry trigger"),"M5 entry confirmation must gate APA");
 });

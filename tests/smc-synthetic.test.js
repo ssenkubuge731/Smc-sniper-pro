@@ -10,7 +10,10 @@ const sandbox = { window: fakeWindow, CustomEvent: class CustomEvent { construct
 vm.runInNewContext(source, sandbox, {filename:"smc-intraday.js"});
 const engine = fakeWindow.SMCIntradayEngine;
 let passed=0;
-function test(name,fn){try{fn();passed++;console.log("PASS "+name);}catch(e){console.error("FAIL "+name+" — "+e.message);process.exitCode=1;}}
+const testPromises=[];
+function test(name,fn){
+ testPromises.push(Promise.resolve().then(fn).then(()=>{passed++;console.log("PASS "+name);},e=>{console.error("FAIL "+name+" — "+e.message);process.exitCode=1;}));
+}
 function bars(base=105,count=30){return Array.from({length:count},(_,i)=>({open:base,high:base+0.5,low:base-0.5,close:base+0.1,time:i}));}
 function buyCandles(target=110,current=105){
  const c=bars(105); c[22]={open:target-1.5,high:target,low:target-2,close:target-0.5,time:22};
@@ -1160,3 +1163,29 @@ test("SMC zone monitor preserves lifecycle details and ranked POIs together",()=
  assert.equal(fn.split('setText("smcZoneStatus"').length-1,1,
    "multi-frame renderer must not overwrite the combined zone status");
 });
+
+test("MT5 retry helper dynamically retries transient HTTP failures then succeeds within the attempt cap",async()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function fetchMT5MarketDataWithRetry");
+ const end=app.indexOf("\\nasync function scanMT5MarketData",start);
+ assert.ok(start>=0&&end>start);
+ let calls=0;
+ const sandbox={fetch:async()=>{calls++;return calls<3?{ok:false,status:503}:{ok:true,status:200};},setTimeout:(fn)=>fn(),Promise,Math,Error};
+ vm.runInNewContext(app.slice(start,end)+";fetchMT5MarketDataWithRetry",sandbox);
+ const response=await sandbox.fetchMT5MarketDataWithRetry("/feed",{},3);
+ assert.equal(response.status,200);
+ assert.equal(calls,3,"should stop retrying as soon as success is returned");
+});
+test("MT5 retry helper does not retry permanent client errors",async()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function fetchMT5MarketDataWithRetry");
+ const end=app.indexOf("\\nasync function scanMT5MarketData",start);
+ assert.ok(start>=0&&end>start);
+ let calls=0;
+ const sandbox={fetch:async()=>{calls++;return {ok:false,status:400};},setTimeout:(fn)=>fn(),Promise,Math,Error};
+ vm.runInNewContext(app.slice(start,end)+";fetchMT5MarketDataWithRetry",sandbox);
+ const response=await sandbox.fetchMT5MarketDataWithRetry("/feed",{},3);
+ assert.equal(response.status,400);
+ assert.equal(calls,1,"permanent 4xx response must not be retried");
+});
+(async()=>{await Promise.all(testPromises);console.log("TOTAL "+passed+" tests passed");})();

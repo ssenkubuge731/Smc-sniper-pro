@@ -1131,17 +1131,17 @@ test("MT5 market-data fetch retries transient failures with bounded backoff",()=
 
 test("MT5 Worker rejects invalid and future-dated heartbeat timestamps",()=>{
  const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
- assert.match(worker,/!Number\\.isFinite\\(receivedMs\\)\\|\\|receivedMs>Date\\.now\\(\\)\\+30000/);
- assert.match(worker,/status:"INVALID_TIMESTAMP"/);
- assert.match(worker,/const ageSeconds=Math\\.floor\\(\\(Date\\.now\\(\\)-receivedMs\\)\\/1000\\)/);
+ assert.ok(worker.includes("!Number.isFinite(receivedMs)||receivedMs>Date.now()+30000"));
+ assert.ok(worker.includes('status:"INVALID_TIMESTAMP"'));
+ assert.ok(worker.includes("const ageSeconds=Math.floor((Date.now()-receivedMs)/1000)"));
 });
 test("MT5 Worker rejects invalid and future-dated candle packet timestamps",()=>{
  const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
  const start=worker.indexOf('if(url.pathname==="/mt5/market-data"&&request.method==="GET")');
- const end=worker.indexOf('const protectedPaths=',start);
+ const end=worker.indexOf("const protectedPaths=",start);
  assert.ok(start>=0&&end>start);
  const route=worker.slice(start,end);
- assert.match(route,/!Number\\.isFinite\\(receivedMs\\)\\|\\|receivedMs>Date\\.now\\(\\)\\+30000/);
- assert.match(route,/status:"INVALID_TIMESTAMP"/);
- assert.match(route,/ageSeconds<=90\\?"FRESH":"STALE"/);
+ assert.ok(route.includes("!Number.isFinite(receivedMs)||receivedMs>Date.now()+30000"));
+ assert.ok(route.includes('status:"INVALID_TIMESTAMP"'));
+ assert.ok(route.includes('ageSeconds<=90?"FRESH":"STALE"'));
 });

@@ -12,7 +12,7 @@ const FRAMES = {
   scalping: ["1m", "5m"],
   intraday: ["1m", "5m", "15m", "30m", "1h"]
 };
-const APA_FRAMES = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"];
+const APA_FRAMES = ["1d", "4h", "1h", "15m", "5m"];
 const ALL_MARKET_FRAMES = [...new Set([...Object.values(FRAMES).flat(), ...APA_FRAMES])];
 function allowedConfigFrames(mode, strategy) {
   if (mode === "scalping") return FRAMES.scalping;

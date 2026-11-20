@@ -9,6 +9,9 @@ input int InpCandlesToSend = 80;
 input string InpBridgeToken = ""; // Enter locally in MT5; never commit a real token.
 input int    InpHeartbeatSeconds = 30;
 input int    InpRequestTimeoutMs = 8000;
+input int    InpSymbolsPerCycle = 10;
+
+int g_symbolCursor = 0;
 
 string JsonEscape(const string value)
 {
@@ -159,8 +162,14 @@ void PublishConfiguredMarketData()
    string symbolsRaw=GetJsonArray(response,"symbols"),framesRaw=GetJsonArray(response,"timeframes");
    string symbols[],frames[];ParseStringArray(symbolsRaw,symbols);ParseStringArray(framesRaw,frames);
    if(ArraySize(symbols)==0||ArraySize(frames)==0)return;
-   for(int i=0;i<ArraySize(symbols)&&i<10;i++)
+   int total=ArraySize(symbols);
+   if(total<=0)return;
+   int batch=MathMax(1,MathMin(10,InpSymbolsPerCycle));
+   int start=g_symbolCursor%total;
+   int count=MathMin(batch,total);
+   for(int offset=0;offset<count;offset++)
    {
+      int i=(start+offset)%total;
       if(!SymbolSelect(symbols[i],true)){Print("MT5 symbol not available: ",symbols[i]);continue;}
       for(int j=0;j<ArraySize(frames)&&j<7;j++)
       {
@@ -168,12 +177,15 @@ void PublishConfiguredMarketData()
          SendMarketData(symbols[i],frames[j],tf);
       }
    }
+   g_symbolCursor=(start+count)%total;
+   Print("MT5 read-only market rotation: symbols ",start+1,"–",start+count," of ",total,
+         " (next cursor ",g_symbolCursor+1,").");
 }
 int OnInit()
 {
-   if(InpHeartbeatSeconds < 10)
+   if(InpHeartbeatSeconds < 10 || InpSymbolsPerCycle < 1 || InpSymbolsPerCycle > 10)
    {
-      Print("Heartbeat interval must be at least 10 seconds.");
+      Print("Heartbeat interval must be at least 10 seconds and symbols per cycle must be 1–10.");
       return INIT_PARAMETERS_INCORRECT;
    }
 

@@ -1708,6 +1708,43 @@ function getNewsCurrenciesForRequest() {
   return currencies.size ? [...currencies].join(",") : "";
 }
 
+function hasNewsValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+function normalizeNewsCalendarEvents(events, nowMs = Date.now()) {
+  if (!Array.isArray(events)) throw new Error("Calendar response did not contain an events list");
+  const nowSeconds=Math.floor(nowMs/1000);
+  const unique=new Map();
+  for(const raw of events){
+    if(!raw||typeof raw!=="object")continue;
+    const currency=String(raw.currency||"").trim().toUpperCase();
+    const impact=String(raw.impact||"").trim().toLowerCase();
+    const title=String(raw.title||"").trim();
+    let timestamp=typeof raw.ts==="number"?raw.ts:
+      (typeof raw.ts==="string"&&raw.ts.trim()!==""?Number(raw.ts):NaN);
+    if(!Number.isFinite(timestamp)&&raw.date){
+      const parsed=Date.parse(raw.date);
+      if(Number.isFinite(parsed))timestamp=parsed/1000;
+    }
+    // Accept Unix milliseconds as well as seconds, then store seconds consistently.
+    if(Number.isFinite(timestamp)&&timestamp>1e12)timestamp=Math.floor(timestamp/1000);
+    if(!NEWS_CURRENCIES.has(currency)||!["high","medium"].includes(impact)||
+       !title||!Number.isFinite(timestamp)||timestamp<=0)continue;
+    // Keep the provider's requested horizon plus the recent-release window only.
+    if(timestamp<nowSeconds-2*60*60||timestamp>nowSeconds+3*24*60*60)continue;
+    const event={
+      ...raw,ts:Math.floor(timestamp),currency,impact,title,
+      actual:hasNewsValue(raw.actual)?String(raw.actual).trim():"",
+      forecast:hasNewsValue(raw.forecast)?String(raw.forecast).trim():"",
+      status:String(raw.status||"scheduled").trim().toLowerCase(),
+      confidence:String(raw.confidence||"").trim().toLowerCase()
+    };
+    const key=[currency,event.ts,title.toLowerCase()].join("|");
+    unique.set(key,event);
+  }
+  return [...unique.values()].sort((a,b)=>Number(a.ts)-Number(b.ts));
+}
+
 function renderNewsCalendar() {
   const list = $("newsEventsList");
   if (!list) return;
@@ -1760,11 +1797,15 @@ async function loadNewsCalendar(force = false) {
     if (!payload || !Array.isArray(payload.events)) {
       throw new Error("Calendar response did not contain an events list");
     }
-    tradingState.newsEvents = payload.events;
+    const normalizedEvents=normalizeNewsCalendarEvents(payload.events);
+    if(payload.events.length>0&&!normalizedEvents.length){
+      throw new Error("Calendar returned events, but none passed timestamp, currency and impact validation");
+    }
+    tradingState.newsEvents = normalizedEvents;
     tradingState.newsLoadedAt = Date.now();
     tradingState.newsError = "";
     setText("newsCalendarStatus",
-      `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${payload.count ?? payload.events.length} events`);
+      `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${normalizedEvents.length} valid high/medium-impact events`);
     renderNewsCalendar();
     refreshSucceeded = true;
   } catch (error) {
@@ -1880,8 +1921,9 @@ function analyseNews(symbol, candles) {
       const age = now - Number(event.ts) * 1000;
       return (currency === pair.base || currency === pair.quote) &&
         Number.isFinite(Number(event.ts)) &&
+        ["high","medium"].includes(String(event.impact||"").toLowerCase()) &&
         age >= 0 && age <= 2 * 60 * 60 * 1000 &&
-        event.actual && event.forecast;
+        hasNewsValue(event.actual) && hasNewsValue(event.forecast);
     })
     .sort((a, b) => Number(b.ts) - Number(a.ts));
 

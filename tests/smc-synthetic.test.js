@@ -974,7 +974,7 @@ test("APA top-down requires D1/H4/H1 context with M15 setup and M5 entry",()=>{
 
 test("MT5 APA bridge requires D1/H4/H1 context plus M15/M5 setup-entry feeds",()=>{
  const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
- assert.match(worker,/const APA_FRAMES = \["1d", "4h", "1h", "30m", "15m", "5m", "1m"\]/);
+ assert.match(worker,/const APA_FRAMES = \["1d", "4h", "1h", "15m", "5m"\]/);
  assert.match(worker,/Required strategy timeframes are missing/);
  assert.match(worker,/strategy === "apa" \|\| strategy === "both"/);
 });

@@ -1211,6 +1211,8 @@ test("MT5 interrupted runtime scan releases lock without advancing cursor, then 
  };
  vm.runInNewContext(app.slice(start,end)+";scanMT5MarketData",sandbox);
  const interrupted=sandbox.scanMT5MarketData();
+ await Promise.resolve();
+ assert.equal(calls,1,"scan should reach the pending market-data request before interruption");
  assert.equal(state.mt5ScanInProgress,true,"lock should be held while the request is pending");
  state.running=false;state.scanGeneration++;
  resolveFirst({ok:false,status:503});

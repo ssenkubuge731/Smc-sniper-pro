@@ -1096,22 +1096,29 @@ test("signal outcomes ignore forming candles and accept only completed timeframe
  assert.equal(isClosed({epoch:100},"unknown",999),false);
  assert.equal(isClosed({epoch:NaN},"1m",999),false);
 });
-test("Final entry authorization enforces strategy timeframe, direction and minimum 2R",()=>{
+test("Final entry authorization enforces selected pair, strategy selection, demo lock, timeframe, direction and 2R",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function authorizeFinalEntry(");
- const end=app.indexOf("\nfunction recordCandidateSignal",start);
+ const end=app.indexOf("\nfunction isMarketDataFresh",start);
  assert.ok(start>=0&&end>start,"final authorization helper must exist before signal recording");
  const sandbox={};
  vm.runInNewContext(app.slice(start,end)+";authorizeFinalEntry",sandbox);
  const authorize=sandbox.authorizeFinalEntry;
- assert.equal(authorize({strategy:"apa",mode:"intraday",timeframe:"1m",direction:"BUY",entry:100,sl:99,tp:102}).authorized,true);
- assert.equal(authorize({strategy:"apa",mode:"scalping",timeframe:"1m",direction:"BUY",entry:100,sl:99,tp:103}).authorized,false);
- assert.equal(authorize({strategy:"smc",mode:"scalping",timeframe:"5m",direction:"BUY",entry:100,sl:null,tp:null}).authorized,true);
- assert.equal(authorize({strategy:"smc",mode:"scalping",timeframe:"15m",direction:"BUY",entry:100}).authorized,false);
- assert.equal(authorize({strategy:"smc",mode:"intraday",timeframe:"4h",direction:"BUY",entry:100,sl:99,tp:103}).authorized,false);
- assert.equal(authorize({strategy:"smc",mode:"intraday",timeframe:"15m",direction:"BUY",entry:100,sl:99,tp:101.9}).authorized,false);
- assert.equal(authorize({strategy:"smc",mode:"intraday",timeframe:"15m",direction:"BUY",entry:100,sl:101,tp:104}).authorized,false);
- assert.equal(authorize({strategy:"smc",mode:"intraday",timeframe:"30m",direction:"SELL",entry:100,sl:101,tp:98}).authorized,true);
+ const base={symbol:"EURUSD",selectedSymbols:new Set(["EURUSD"]),selectedStrategy:"both",demo:true,liveLocked:true};
+ const check=overrides=>authorize({...base,strategy:"apa",mode:"intraday",timeframe:"1m",direction:"BUY",entry:100,sl:99,tp:102,...overrides});
+ assert.equal(check({}).authorized,true);
+ assert.equal(check({strategy:"apa",mode:"scalping"}).authorized,false);
+ assert.equal(check({strategy:"smc",mode:"scalping",timeframe:"5m",sl:null,tp:null}).authorized,true);
+ assert.equal(check({strategy:"smc",mode:"scalping",timeframe:"15m"}).authorized,false);
+ assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"4h"}).authorized,false);
+ assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"15m",tp:101.9}).authorized,false);
+ assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"15m",sl:101,tp:104}).authorized,false);
+ assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"30m",direction:"SELL",entry:100,sl:101,tp:98}).authorized,true);
+ assert.match(check({symbol:"GBPUSD"}).reason,/not selected/);
+ assert.match(check({selectedStrategy:"apa",strategy:"smc"}).reason,/not enabled/);
+ assert.match(check({demo:false}).reason,/Demo-only/);
+ assert.match(check({liveLocked:false}).reason,/Demo-only/);
+ assert.match(check({strategy:"news"}).reason,/Only APA and SMC/);
 });
 test("Bullish and bearish formation outputs remain directionally isolated",()=>{
  const cases=[{candles:bullPattern(),side:"BUY"},{candles:bearPattern(),side:"SELL"}];

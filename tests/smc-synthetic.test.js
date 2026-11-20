@@ -1167,7 +1167,7 @@ test("SMC zone monitor preserves lifecycle details and ranked POIs together",()=
 test("MT5 retry helper dynamically retries transient HTTP failures then succeeds within the attempt cap",async()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("async function fetchMT5MarketDataWithRetry");
- const end=app.indexOf("\\nasync function scanMT5MarketData",start);
+ const end=app.indexOf("\nasync function scanMT5MarketData",start);
  assert.ok(start>=0&&end>start);
  let calls=0;
  const sandbox={fetch:async()=>{calls++;return calls<3?{ok:false,status:503}:{ok:true,status:200};},setTimeout:(fn)=>fn(),Promise,Math,Error};
@@ -1179,7 +1179,7 @@ test("MT5 retry helper dynamically retries transient HTTP failures then succeeds
 test("MT5 retry helper does not retry permanent client errors",async()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("async function fetchMT5MarketDataWithRetry");
- const end=app.indexOf("\\nasync function scanMT5MarketData",start);
+ const end=app.indexOf("\nasync function scanMT5MarketData",start);
  assert.ok(start>=0&&end>start);
  let calls=0;
  const sandbox={fetch:async()=>{calls++;return {ok:false,status:400};},setTimeout:(fn)=>fn(),Promise,Math,Error};

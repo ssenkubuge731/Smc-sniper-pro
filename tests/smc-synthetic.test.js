@@ -179,6 +179,41 @@ test("Intraday signal expiry is a review outcome, not a win or loss",()=>{
  assert.match(source,/record\.expired=true/);
  assert.match(source,/record\.status="REVIEW — signal expired without TP or SL"/);
 });
+test("News calendar normalization rejects malformed and low-impact events, normalizes timestamps and deduplicates",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function hasNewsValue(");
+ const end=source.indexOf("\nfunction renderNewsCalendar",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Date,Map,String,Number,Array,NEWS_CURRENCIES:new Set(["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF","CNY"])};
+ vm.runInNewContext(source.slice(start,end)+";hasNewsValue;normalizeNewsCalendarEvents",sandbox);
+ const now=Date.UTC(2026,0,1);
+ const events=sandbox.normalizeNewsCalendarEvents([
+  {currency:"usd",impact:"HIGH",title:"Payrolls",ts:now/1000,actual:0,forecast:"10"},
+  {currency:"USD",impact:"high",title:"Payrolls",ts:now,actual:"0",forecast:"10"},
+  {currency:"EUR",impact:"low",title:"Low event",ts:now/1000},
+  {currency:"XXX",impact:"high",title:"Unknown currency",ts:now/1000},
+  {currency:"GBP",impact:"medium",title:"",ts:now/1000},
+  {currency:"EUR",impact:"medium",title:"No timestamp"},
+  {currency:"JPY",impact:"high",title:"Valid future",ts:now/1000+3600}
+ ],now);
+ assert.equal(events.length,2,"duplicate event should be collapsed and invalid events removed");
+ assert.equal(events[0].currency,"USD");
+ assert.equal(events[0].ts,now/1000);
+ assert.equal(events[0].actual,"0","numeric zero is a valid actual value");
+ assert.equal(events[1].currency,"JPY");
+ assert.equal(sandbox.hasNewsValue(0),true);
+ assert.equal(sandbox.hasNewsValue(""),false);
+});
+test("News analysis only considers confirmed high or medium impact events with actual and forecast values",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function analyseNews(");
+ const end=source.indexOf("\nfunction ",start+20);
+ const fn=source.slice(start,end);
+ assert.match(fn,/\["high","medium"\]\.includes\(String\(event\.impact\|\|""\)\.toLowerCase\(\)\)/);
+ assert.match(fn,/hasNewsValue\(event\.actual\) && hasNewsValue\(event\.forecast\)/);
+ assert.match(source,/none passed timestamp, currency and impact validation/);
+ assert.match(source,/WAIT — upcoming news blackout/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

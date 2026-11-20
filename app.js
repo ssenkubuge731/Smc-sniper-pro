@@ -2824,25 +2824,34 @@ function hasOpposingOpenSignal(history,symbol,direction) {
     record.direction && record.direction!==direction
   );
 }
-function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp}) {
+function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp,symbol,selectedSymbols,selectedStrategy,demo,liveLocked}) {
+  const blocked = reason => ({authorized:false,reason});
+  if (demo !== true || liveLocked !== true)
+    return blocked("Demo-only safety state is not confirmed; live execution remains locked.");
+  if (!symbol || !selectedSymbols || typeof selectedSymbols.has !== "function" || !selectedSymbols.has(symbol))
+    return blocked("Pair is not selected by the user.");
+  if (!["apa","smc"].includes(strategy))
+    return blocked("Only APA and SMC engines may publish entries.");
+  if (selectedStrategy && selectedStrategy !== "both" && selectedStrategy !== strategy)
+    return blocked("This strategy is not enabled in the user's selection.");
   const scalp = strategy === "smc" && mode === "scalping";
   const tf = String(timeframe || "").toLowerCase();
   const allowed = mode === "scalping" ? ["1m","m1","5m","m5"] :
     mode === "intraday" ? ["1m","m1","5m","m5","15m","m15","30m","m30","1h","h1"] : [];
-  if (!allowed.includes(tf)) return {authorized:false,reason:"Timeframe is not enabled for this strategy mode."};
-  if (strategy === "apa" && mode !== "intraday") return {authorized:false,reason:"APA is Intraday-only."};
-  if (mode === "scalping" && !scalp) return {authorized:false,reason:"Only SMC may publish Scalping entries."};
+  if (!allowed.includes(tf)) return blocked("Timeframe is not enabled for this strategy mode.");
+  if (strategy === "apa" && mode !== "intraday") return blocked("APA is Intraday-only.");
+  if (mode === "scalping" && !scalp) return blocked("Only SMC may publish Scalping entries.");
   if (scalp) return {authorized:true,reason:"SMC Scalping uses its separate basket exit policy.",rr:null};
   const e=Number(entry), stop=Number(sl), target=Number(tp);
   if (![e,stop,target].every(Number.isFinite) || e<=0 || stop<=0 || target<=0)
-    return {authorized:false,reason:"Entry, SL and TP must be valid positive prices."};
+    return blocked("Entry, SL and TP must be valid positive prices.");
   const buy=direction==="BUY", sell=direction==="SELL";
   if ((!buy&&!sell) || (buy && !(stop<e && target>e)) || (sell && !(target<e && stop>e)))
-    return {authorized:false,reason:"SL and TP must be on the correct sides of entry."};
+    return blocked("SL and TP must be on the correct sides of entry.");
   const risk=Math.abs(e-stop), reward=Math.abs(target-e), rr=reward/risk;
   if (!Number.isFinite(rr) || rr<2)
     return {authorized:false,reason:"Structural target must offer at least 2R; otherwise WAIT.",rr};
-  return {authorized:true,reason:"Final entry checks passed.",rr};
+  return {authorized:true,reason:"Final entry checks passed; signal only, no order execution.",rr};
 }
 
 function isMarketDataFresh(candles,timeframe,nowEpoch=Math.floor(Date.now()/1000)) {
@@ -2906,7 +2915,11 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     console.warn("Signal not saved: valid SL and TP are required for Intraday.", { symbol, timeframe, signal: signalText, entry, sl, tp });
     return;
   }
-  const authorization=authorizeFinalEntry({strategy:activeStrategy,mode:tradingState.mode,timeframe,direction,entry,sl,tp});
+  const authorization=authorizeFinalEntry({
+    strategy:activeStrategy,mode:tradingState.mode,timeframe,direction,entry,sl,tp,
+    symbol,selectedSymbols:tradingState.selectedSymbols,selectedStrategy:tradingState.strategy,
+    demo:tradingState.demo,liveLocked:tradingState.liveLocked
+  });
   if (!authorization.authorized) {
     addResult("ENTRY BLOCKED: "+symbol+" "+direction+" — "+authorization.reason,"scannerResults");
     return;

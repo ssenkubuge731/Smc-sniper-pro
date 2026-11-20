@@ -13,7 +13,7 @@ const checks = [
   ["APA retains D1/H4 context and M1 entry frames", /APA_REQUIRED_FRAMES\s*=\s*\["1d",\s*"4h",\s*"1h",\s*"30m",\s*"15m",\s*"5m",\s*"1m"\]/.test(app)],
   ["Application starts in demo mode with live trading locked", /demo:\s*true,\s*liveLocked:\s*true/.test(app)],
   ["Runtime health monitor reports broker, data, scanner and safety state", /function updateRuntimeHealth\(\)/.test(app) && /runtimeBrokerHealth/.test(app) && /runtimeDataHealth/.test(app) && /runtimeScannerHealth/.test(app)],
-  ["Scanner stall detection uses completed cycles, not scan-start timestamps", /SCANNER STALLED/.test(app) && /last completed scan cycle/.test(app)],
+  ["Scanner stall detection uses completed cycles, not scan-start timestamps", /SCANNER STALLED/.test(app) && /no completed scan cycle/.test(app) && /scanAge > 180/.test(app) && /if \(!job\)\s*\{[\s\S]*?commitCompletedScanBatch\(tradingState\)[\s\S]*?tradingState\.lastScanAt = Date\.now\(\)/.test(app)],
   ["Market-data freshness updates only after valid candle data", /lastAnalysisAt=tradingState.lastMarketDataAt/.test(app) && !/lastMarketDataAt=tradingState\.mt5LastScanAt/.test(app)],
   ["Dashboard contains the runtime health monitor", /id="runtimeHealthPanel"/.test(fs.readFileSync("index.html", "utf8"))],
   ["SMC engine exposes its public analysis interface", /SMCIntradayEngine/.test(smc)],

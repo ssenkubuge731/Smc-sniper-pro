@@ -2569,14 +2569,24 @@ function renderSignalHistory() {
   });
 }
 
+function getSignalExpiryBars(timeframe) {
+  const limits={"1m":30,"M1":30,"5m":24,"M5":24,"15m":16,"M15":16,
+    "30m":12,"M30":12,"1h":10,"H1":10,"4h":8,"H4":8,"1d":5,"D1":5};
+  return limits[String(timeframe||"")]||12;
+}
+function getTimeframeSeconds(timeframe) {
+  const values={"1m":60,"M1":60,"5m":300,"M5":300,"15m":900,"M15":900,
+    "30m":1800,"M30":1800,"1h":3600,"H1":3600,"4h":14400,"H4":14400,"1d":86400,"D1":86400};
+  return values[String(timeframe||"")]||60;
+}
 function evaluateSignalHistory(symbol, timeframe, candles) {
   if (!Array.isArray(candles) || !candles.length) return;
   let changed = false;
 
   tradingState.signalHistory.forEach(record => {
     if (record.status !== "OPEN" || record.symbol !== symbol || record.timeframe !== timeframe) return;
-    // Scalp baskets exit from market-data ticks at the first positive
-    // combined price move. Fixed SL and TP are not used in Scalping for now.
+    // Scalp baskets follow their separate all-positions-profitable exit rule.
+    // Never expire or force-close a scalp basket through this intraday timer.
     if (record.mode === "scalping") return;
 
     // Recheck every later candle on each OHLC update. Deriv updates the
@@ -2617,6 +2627,17 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
         record.outcomeCandleEpoch = Number(candle.epoch);
         changed = true;
         break;
+      }
+    }
+    if (record.status === "OPEN" && laterCandles.length) {
+      const lastEpoch=Number(laterCandles[laterCandles.length-1].epoch);
+      const expiryEpoch=signalEpoch+getTimeframeSeconds(timeframe)*getSignalExpiryBars(timeframe);
+      if (lastEpoch>=expiryEpoch) {
+        record.status="REVIEW — signal expired without TP or SL";
+        record.closedAt=Date.now();
+        record.outcomeCandleEpoch=lastEpoch;
+        record.expired=true;
+        changed=true;
       }
     }
   });

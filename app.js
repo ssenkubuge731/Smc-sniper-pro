@@ -85,6 +85,7 @@ const tradingState = {
   lastAnalysedSymbol: "",
   lastMarketDataAt: 0,
   lastScanAt: 0,
+  lastAnalysisAt: 0,
   healthMonitorTimer: null
 };
 
@@ -405,22 +406,29 @@ function updateRuntimeHealth() {
   const now = Date.now();
   const dataAge = tradingState.lastMarketDataAt ? Math.max(0, Math.floor((now - tradingState.lastMarketDataAt) / 1000)) : null;
   const scanAge = tradingState.lastScanAt ? Math.max(0, Math.floor((now - tradingState.lastScanAt) / 1000)) : null;
+  const analysisAge = tradingState.lastAnalysisAt ? Math.max(0, Math.floor((now - tradingState.lastAnalysisAt) / 1000)) : null;
   const broker = tradingState.broker === "mt5"
     ? (valueOf("mt5BridgeStatus") || "MT5 bridge status not checked")
     : (isSocketOpen() ? "Deriv WebSocket connected" : "Deriv WebSocket disconnected");
-  const dataStatus = dataAge === null ? "No market data received in this session"
-    : dataAge <= 90 ? "Market data fresh (" + dataAge + "s since last update)"
-    : "Market data stale (" + dataAge + "s since last update)";
-  const scanStatus = tradingState.running
-    ? (scanAge === null ? "Scanner running; first scan not yet recorded" : "Scanner running; last scan " + scanAge + "s ago")
-    : "Scanner stopped";
+  const dataStatus = dataAge === null ? "No valid market data received in this session"
+    : dataAge <= 90 ? "Market data fresh (" + dataAge + "s since last valid update)"
+    : "Market data stale (" + dataAge + "s since last valid update)";
+  const scanStatus = !tradingState.running ? "Scanner stopped"
+    : scanAge === null ? "Scanner running; no completed scan cycle recorded"
+    : scanAge > 180 ? "SCANNER STALLED — no completed scan cycle for " + scanAge + "s"
+    : "Scanner active; last completed cycle " + scanAge + "s ago";
+  const analysisStatus = analysisAge === null ? "No candle analysis completed in this session"
+    : analysisAge > 180 ? "Analysis activity stale (" + analysisAge + "s ago)"
+    : "Analysis active (" + analysisAge + "s since last candle analysis)";
   setText("runtimeBrokerHealth", "Broker: " + broker);
   setText("runtimeDataHealth", dataStatus);
-  setText("runtimeScannerHealth", scanStatus);
+  setText("runtimeScannerHealth", scanStatus + " • " + analysisStatus);
   setText("runtimeSafetyHealth", tradingState.demo && tradingState.liveLocked
     ? "Safety: DEMO ONLY • LIVE LOCKED"
     : "Safety warning: demo/live lock state requires review");
-  setText("runtimeHealthStatus", !tradingState.demo || !tradingState.liveLocked || (dataAge !== null && dataAge > 90)
+  const stalled = tradingState.running && (scanAge === null || scanAge > 180);
+  const staleData = dataAge !== null && dataAge > 90;
+  setText("runtimeHealthStatus", !tradingState.demo || !tradingState.liveLocked || staleData || stalled
     ? "Runtime health: WARNING — review the items below"
     : "Runtime health: Monitoring (connection and data status shown separately)");
 }
@@ -702,6 +710,7 @@ function handleDerivMessage(data) {
   if (data.msg_type === "candles" && Array.isArray(data.candles)) {
     if (!context) return;
     tradingState.lastMarketDataAt = Date.now();
+    tradingState.lastAnalysisAt = tradingState.lastMarketDataAt;
 
     const key = candleKey(context.symbol, context.timeframe);
 
@@ -723,6 +732,7 @@ function handleDerivMessage(data) {
 
   if (data.msg_type === "ohlc" && data.ohlc && context) {
     tradingState.lastMarketDataAt = Date.now();
+    tradingState.lastAnalysisAt = tradingState.lastMarketDataAt;
     const key = candleKey(context.symbol, context.timeframe);
     const list = tradingState.candles[key] || [];
     const candle = normalizeCandle(data.ohlc);
@@ -1068,6 +1078,7 @@ function processScanQueue() {
       clearInterval(tradingState.scanQueueTimer);
       tradingState.scanQueueTimer = null;
       tradingState.scanInProgress = false;
+      tradingState.lastScanAt = Date.now();
       return;
     }
 
@@ -3109,6 +3120,8 @@ async function scanMT5MarketData(){
           }
           const key=candleKey(symbol,timeframe);
           tradingState.candles[key]=bars;
+          tradingState.lastMarketDataAt=Date.now();
+          tradingState.lastAnalysisAt=tradingState.lastMarketDataAt;
           recordMT5FeedHealth(symbol,timeframe,"FRESH",{ageSeconds:Math.max(age,candleAge),candles:bars.length});
           if(timeframe==="1m") manageScalpingBasketSimulation(symbol,lastBar.close);
           renderTimeframeAnalysis(symbol,timeframe);
@@ -3130,7 +3143,6 @@ async function scanMT5MarketData(){
     tradingState.mt5ScanCursor=batch.nextCursor;
     tradingState.mt5LastScanAt=Date.now();
     tradingState.lastScanAt=tradingState.mt5LastScanAt;
-    tradingState.lastMarketDataAt=tradingState.mt5LastScanAt;
     renderMT5FeedHealth(batch.symbols,frames,batch);
   } finally {
     tradingState.mt5ScanInProgress=false;
@@ -3206,8 +3218,6 @@ function startScanner(resume = false) {
 
 function scanSelectedMarkets() {
   if (!tradingState.running || !isSocketOpen()) return;
-  tradingState.lastScanAt = Date.now();
-
   const selected = [...tradingState.selectedSymbols];
   if (tradingState.mode === "scalping" &&
       (tradingState.strategy === "smc" || tradingState.strategy === "both") &&

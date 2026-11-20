@@ -2620,6 +2620,9 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
   if (changed) saveSignalHistory();
 }
 
+function buildCandidateSignalKey(symbol,strategy,mode,timeframe,direction,candleEpoch) {
+  return [symbol,strategy,mode,timeframe,direction,Number(candleEpoch)||0].join("|");
+}
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
@@ -2671,6 +2674,16 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const lastCandle = candles[candles.length - 1];
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
   const strategy = activeStrategy;
+  const signalKey = buildCandidateSignalKey(symbol,strategy,tradingState.mode,timeframe,direction,candleEpoch);
+  // A signal is recorded at most once for this strategy, symbol, timeframe,
+  // direction and candle, even if a later scan or another renderer sees it again.
+  // Keep APA, SMC and News Trading records independent from one another.
+  if (tradingState.signalHistory.some(record =>
+    record.signalKey === signalKey ||
+    (!record.signalKey && record.symbol === symbol && record.strategy === strategy &&
+      record.mode === tradingState.mode && record.timeframe === timeframe &&
+      record.direction === direction && Number(record.signalCandleEpoch) === candleEpoch)
+  )) return;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
 
   // SMC entries must not oppose an already-open SMC entry on the same symbol.
@@ -2709,6 +2722,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
 
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
+    signalKey,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,
     mode: isScalp ? "scalping" : "intraday",

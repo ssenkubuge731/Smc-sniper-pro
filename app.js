@@ -2846,6 +2846,7 @@ function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp,symb
     mode === "intraday" ? ["1m","m1","5m","m5","15m","m15","30m","m30","1h","h1"] : [];
   if (!allowed.includes(tf)) return blocked("Timeframe is not enabled for this strategy mode.");
   if (strategy === "apa" && mode !== "intraday") return blocked("APA is Intraday-only.");
+  if (strategy === "apa" && tf !== "5m" && tf !== "m5") return blocked("APA entries are authorized only on M5.");
   if (mode === "scalping" && !scalp) return blocked("Only SMC may publish Scalping entries.");
   if (scalp) return {authorized:true,reason:"SMC Scalping uses its separate basket exit policy.",rr:null};
   const e=Number(entry), stop=Number(sl), target=Number(tp);

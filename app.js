@@ -2850,6 +2850,9 @@ function scanSelectedMarkets() {
     setText("scannerStatus", "SMC Scalping paused — exactly one user-selected pair is required.");
     return;
   }
+  // Do not advance the market cursor while a previous batch is still queued.
+  if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
+
   const universe = tradingState.mode === "intraday" &&
     (tradingState.strategy === "apa" || tradingState.strategy === "both")
     ? tradingState.availableSymbols.map(item => item.symbol)
@@ -2862,8 +2865,6 @@ function scanSelectedMarkets() {
   const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")
     ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]
     : modeFrames;
-
-  if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
 
   tradingState.scanInProgress = true;
   symbols.forEach(symbol => {

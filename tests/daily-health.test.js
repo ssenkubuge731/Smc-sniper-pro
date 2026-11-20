@@ -12,6 +12,8 @@ const checks = [
   ["Intraday is restricted to M1, M5, M15, M30 and H1", /intraday:\s*\["1m",\s*"5m",\s*"15m",\s*"30m",\s*"1h"\]/.test(app)],
   ["APA retains D1/H4 context and M1 entry frames", /APA_REQUIRED_FRAMES\s*=\s*\["1d",\s*"4h",\s*"1h",\s*"30m",\s*"15m",\s*"5m",\s*"1m"\]/.test(app)],
   ["Application starts in demo mode with live trading locked", /demo:\s*true,\s*liveLocked:\s*true/.test(app)],
+  ["Runtime health monitor reports broker, data, scanner and safety state", /function updateRuntimeHealth\(\)/.test(app) && /runtimeBrokerHealth/.test(app) && /runtimeDataHealth/.test(app) && /runtimeScannerHealth/.test(app)],
+  ["Dashboard contains the runtime health monitor", /id="runtimeHealthPanel"/.test(fs.readFileSync("index.html", "utf8"))],
   ["SMC engine exposes its public analysis interface", /SMCIntradayEngine/.test(smc)],
   ["MT5 Worker source contains heartbeat handling", /heartbeat/i.test(worker)]
 ];

@@ -80,6 +80,20 @@ test("SMC monitor is wired to render detected formations and confirmation counts
  assert.match(multi,/renderSMCFormationMonitor\(formationRecord\)/);
  assert.doesNotMatch(multi,/setText\("smcFormationStatus","SMC timeframes/);
 });
+test("MT5 bridge source rotates configured symbols in bounded batches instead of truncating to first ten",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const ea=fs.readFileSync(path.join(__dirname,"../mt5-bridge/SMC_Sniper_MT5_Bridge.mq5"),"utf8");
+ const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
+ assert.match(app,/function getRotatingSymbolBatch\(symbols, cursor = 0, batchSize = 10\)/);
+ assert.match(app,/getRotatingSymbolBatch\(symbols,tradingState\.mt5ScanCursor,10\)/);
+ assert.match(app,/tradingState\.mt5ScanCursor=batch\.nextCursor/);
+ assert.doesNotMatch(app,/for\(const symbol of symbols\.slice\(0,10\)\)/);
+ assert.match(ea,/int g_symbolCursor = 0/);
+ assert.match(ea,/g_symbolCursor=\(start\+count\)%total/);
+ assert.match(ea,/InpSymbolsPerCycle/);
+ assert.match(worker,/MARKET_DATA_TTL_SECONDS = 600/);
+ assert.match(worker,/ageSeconds<=180\?"FRESH":"STALE"/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

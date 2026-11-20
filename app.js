@@ -2999,6 +2999,27 @@ function renderMT5FeedHealth(symbols,frames,batch) {
   setText("derivConnectionStatus","MT5 read-only feed health updated "+new Date(tradingState.mt5LastScanAt).toLocaleTimeString()+".");
   setText("mt5FeedHealthStatus",lines.join("\n"));
 }
+async function fetchMT5MarketDataWithRetry(url,options={},attempts=3){
+  let lastError=null;
+  for(let attempt=0;attempt<attempts;attempt++){
+    try{
+      const response=await fetch(url,{...options,cache:"no-store"});
+      if(response.ok)return response;
+      // Retry only transient server/rate-limit responses. Permanent client
+      // errors should be surfaced immediately instead of hammering the bridge.
+      if(response.status!==408&&response.status!==425&&response.status!==429&&response.status<500){
+        return response;
+      }
+      lastError=new Error("HTTP "+response.status);
+    }catch(error){
+      lastError=error;
+    }
+    if(attempt<attempts-1){
+      await new Promise(resolve=>setTimeout(resolve,500*Math.pow(2,attempt)));
+    }
+  }
+  throw lastError||new Error("MT5 market-data request failed after retries");
+}
 async function scanMT5MarketData(){
   if(!tradingState.running||tradingState.broker!=="mt5"||tradingState.mt5ScanInProgress)return;
   tradingState.mt5ScanInProgress=true;
@@ -3025,7 +3046,7 @@ async function scanMT5MarketData(){
         }
         try{
           const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
-          const response=await fetch(url,{cache:"no-store"});
+          const response=await fetchMT5MarketDataWithRetry(url,{},3);
           if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
             return;
           }

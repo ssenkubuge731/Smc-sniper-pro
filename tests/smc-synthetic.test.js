@@ -1202,6 +1202,7 @@ test("MT5 interrupted runtime scan releases lock without advancing cursor, then 
   document:{querySelectorAll:()=>[]},
   getScanSymbolsForMode:()=>["EURUSD","GBPUSD"],
   getBridgeFrames:()=>["1m"],
+  APA_REQUIRED_FRAMES:[],
   getRotatingSymbolBatch:()=>({symbols:["EURUSD"],nextCursor:1}),
   fetchMT5MarketDataWithRetry:async()=>{calls++;if(calls===1){state.running=false;state.scanGeneration++;return {ok:false,status:503};}return {ok:false,status:503};},
   recordMT5FeedHealth:()=>{},

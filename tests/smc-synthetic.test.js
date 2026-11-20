@@ -55,6 +55,31 @@ test("Detector recognizes synthetic bearish sweep, BOS/MSS, displacement, FVG an
  assert.equal(r.formations.MSS,true);assert.equal(r.formations.displacement,true);
  assert.equal(r.formations.FVG,true);assert.ok(r.zones.some(z=>z.side==="SELL"&&["reacting","touching"].includes(z.status)));
 });
+test("SMC formation payload exposes separate structure, imbalance, POI and block flags",()=>{
+ const r=engine.detect(bullPattern());
+ assert.equal(r.ready,true);
+ for(const key of ["BOS","MSS","CHoCH","liquiditySweep","FVG","IFVG","supply","demand","supplyDemand","orderBlock","breakerBlock","displacement"])
+  assert.equal(typeof r.formations[key],"boolean","formation flag must be boolean: "+key);
+ assert.ok(Array.isArray(r.zones),"zone catalogue must be available");
+ assert.ok(r.zones.every(z=>["Supply","Demand","FVG","Order Block","Breaker Block","Sweep reclaim"].includes(z.type)),"zone types must be recognized");
+});
+test("SMC confirmation count counts independent evidence groups, not duplicate structure/block labels",()=>{
+ const r=engine.detect(bullPattern());
+ assert.equal(r.count,Object.values(r.confirmations).filter(Boolean).length);
+ assert.deepEqual(Object.keys(r.confirmations).sort(),["block","displacement","imbalance","structure","sweep"].sort());
+ assert.equal(Object.hasOwn(r.confirmations,"mss"),false);
+ assert.equal(Object.hasOwn(r.confirmations,"choch"),false);
+});
+test("SMC monitor is wired to render detected formations and confirmation counts",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const render=app.slice(app.indexOf("function renderSMCFormationMonitor("),app.indexOf("function renderSMCEntryPlan("));
+ const multi=app.slice(app.indexOf("function renderSMCMultiFrame("),app.indexOf("function tfZone("));
+ assert.match(render,/\["supply","Supply"\]/);
+ assert.match(render,/\["demand","Demand"\]/);
+ assert.match(render,/Independent confirmations:/);
+ assert.match(multi,/renderSMCFormationMonitor\(formationRecord\)/);
+ assert.doesNotMatch(multi,/setText\("smcFormationStatus","SMC timeframes/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

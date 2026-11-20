@@ -701,7 +701,7 @@ console.log("SMC synthetic test suite: "+passed+" passed; "+(process.exitCode? "
 test("APA intraday scanner rotates batches across the complete market universe",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function getScanSymbolsForMode(");
- const end=source.indexOf("\\nfunction getBridgeFrames",start);
+ const end=source.indexOf("\nfunction getBridgeFrames",start);
  assert.ok(start>=0&&end>start);
  const sandbox={};vm.runInNewContext(source.slice(start,end)+";getScannerUniverseBatch",sandbox);
  const batch=sandbox.getScannerUniverseBatch;

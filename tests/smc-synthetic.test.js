@@ -1203,6 +1203,7 @@ test("MT5 interrupted runtime scan releases lock without advancing cursor, then 
   getScanSymbolsForMode:()=>["EURUSD","GBPUSD"],
   getBridgeFrames:()=>["1m"],
   APA_REQUIRED_FRAMES:[],
+  MT5_MARKET_DATA_URL:"https://fake.test/feed",
   getRotatingSymbolBatch:()=>({symbols:["EURUSD"],nextCursor:1}),
   fetchMT5MarketDataWithRetry:()=>{calls++;if(calls===1)return new Promise(resolve=>{resolveFirst=resolve;});return Promise.resolve({ok:false,status:503});},
   recordMT5FeedHealth:()=>{},

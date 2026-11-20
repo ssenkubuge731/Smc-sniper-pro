@@ -210,7 +210,7 @@ test("Signal coordination deduplicates same strategy/symbol/timeframe/candle but
  assert.notEqual(apa,key("EURUSD","apa","intraday","5m","BUY",1234),"timeframes remain independent");
  assert.notEqual(apa,key("EURUSD","apa","intraday","1m","SELL",1234),"directions remain independent");
  assert.notEqual(apa,key("EURUSD","apa","intraday","1m","BUY",1235),"new candles can create a new candidate");
- assert.match(source,/record\.signalKey === signalKey/,"existing candidate keys prevent duplicate signal records");
+ assert.match(source,/hasDuplicateCandidateSignal\(tradingState\.signalHistory/,"dedicated duplicate guard prevents repeated candidate records");
  assert.match(source,/signalKey,/,"new candidate stores its deduplication key");
  assert.match(source,/opportunityScore: opportunityRank\.score/,"rank metadata is stored with the candidate");
 });

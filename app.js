@@ -64,6 +64,7 @@ const tradingState = {
   mt5LastScanAt: 0,
   scanGeneration: 0,
   scanUniverseCursor: 0,
+  pendingScanCursor: null,
   scanQueue: [],
   scanQueueTimer: null,
   scanInProgress: false,
@@ -996,7 +997,19 @@ function requestCandles(symbol, timeframe) {
   processScanQueue();
 }
 
+function commitCompletedScanBatch(state) {
+  if (!state || !Number.isInteger(state.pendingScanCursor)) return false;
+  state.scanUniverseCursor = state.pendingScanCursor;
+  state.pendingScanCursor = null;
+  return true;
+}
+function discardPendingScanBatch(state) {
+  if (!state) return;
+  state.pendingScanCursor = null;
+}
+
 function clearScanQueue() {
+  discardPendingScanBatch(tradingState);
   tradingState.scanQueue.length = 0;
   if (tradingState.scanQueueTimer) {
     clearInterval(tradingState.scanQueueTimer);
@@ -1016,6 +1029,7 @@ function processScanQueue() {
 
     const job = tradingState.scanQueue.shift();
     if (!job) {
+      commitCompletedScanBatch(tradingState);
       clearInterval(tradingState.scanQueueTimer);
       tradingState.scanQueueTimer = null;
       tradingState.scanInProgress = false;
@@ -3129,7 +3143,9 @@ function scanSelectedMarkets() {
   const batch = getScannerUniverseBatch(universe, tradingState.mode, tradingState.strategy,
     tradingState.scanUniverseCursor, 10);
   const symbols = batch.symbols;
-  tradingState.scanUniverseCursor = batch.nextCursor;
+  // Commit cursor only after every request in this batch has drained.
+  // If scanning stops or disconnects mid-batch, retry this same market slice.
+  tradingState.pendingScanCursor = batch.nextCursor;
   const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
   const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")
     ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]

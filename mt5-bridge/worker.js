@@ -74,7 +74,11 @@ export default {
     if(!env.MT5_HEARTBEATS)return json({error:"Bridge storage is not configured"},503);
     const latest=await env.MT5_HEARTBEATS.get("latest","json");
     if(!latest)return json({status:"NO_HEARTBEAT_RECEIVED"});
-    const ageSeconds=Math.max(0,Math.floor((Date.now()-Date.parse(latest.receivedAt))/1000));
+    const receivedMs=Date.parse(latest.receivedAt);
+    if(!Number.isFinite(receivedMs)||receivedMs>Date.now()+30000){
+      return json({status:"INVALID_TIMESTAMP",receivedAt:latest.receivedAt,ageSeconds:null});
+    }
+    const ageSeconds=Math.floor((Date.now()-receivedMs)/1000);
     return json({status:ageSeconds<=90&&latest.terminalConnected?"ONLINE":"OFFLINE",receivedAt:latest.receivedAt,ageSeconds});
   }
   if(url.pathname==="/mt5/public-config"&&request.method==="GET"){
@@ -90,7 +94,11 @@ export default {
     const key="market:"+encodeURIComponent(symbol)+"|"+timeframe;
     const packet=await env.MT5_HEARTBEATS.get(key,"json");
     if(!packet)return json({status:"NO_DATA",symbol,timeframe},404);
-    const ageSeconds=Math.max(0,Math.floor((Date.now()-Date.parse(packet.receivedAt))/1000));
+    const receivedMs=Date.parse(packet.receivedAt);
+    if(!Number.isFinite(receivedMs)||receivedMs>Date.now()+30000){
+      return json({status:"INVALID_TIMESTAMP",ageSeconds:null,symbol,timeframe,receivedAt:packet.receivedAt});
+    }
+    const ageSeconds=Math.floor((Date.now()-receivedMs)/1000);
     return json({status:ageSeconds<=90?"FRESH":"STALE",ageSeconds,...packet});
   }
   const protectedPaths=["/mt5/heartbeat","/mt5/status","/mt5/config","/mt5/market-data"];

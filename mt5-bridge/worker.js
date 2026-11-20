@@ -4,7 +4,7 @@
  * No order/trading command routes are implemented.
  */
 const MAX_BODY_BYTES = 32768;
-const MARKET_DATA_TTL_SECONDS = 600;
+const MARKET_DATA_TTL_SECONDS = 180;
 const HEARTBEAT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const CONFIG_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SITE_ORIGIN = "https://ssenkubuge731.github.io";
@@ -91,7 +91,7 @@ export default {
     const packet=await env.MT5_HEARTBEATS.get(key,"json");
     if(!packet)return json({status:"NO_DATA",symbol,timeframe},404);
     const ageSeconds=Math.max(0,Math.floor((Date.now()-Date.parse(packet.receivedAt))/1000));
-    return json({status:ageSeconds<=180?"FRESH":"STALE",ageSeconds,...packet});
+    return json({status:ageSeconds<=90?"FRESH":"STALE",ageSeconds,...packet});
   }
   const protectedPaths=["/mt5/heartbeat","/mt5/status","/mt5/config","/mt5/market-data"];
   if(!protectedPaths.includes(url.pathname))return json({error:"Not found"},404);

@@ -1595,6 +1595,8 @@ function getAPASequence(candles, poi, direction) {
     return { swept: true, confirmed: Boolean(structureBreak && displacement), sweepIndex: i,
       sweepExtreme: direction === "bullish" ? sweep.low : sweep.high,
       sweepLevel: direction === "bullish" ? poolLow : poolHigh,
+      confirmationEpoch: Number(confirm.epoch),
+      setupHigh: Number(confirm.high), setupLow: Number(confirm.low),
       structureLabel: structureBreak
         ? (direction === "bullish" ? "Bullish BOS after sell-side sweep" : "Bearish BOS after buy-side sweep")
         : "Sweep detected — waiting for later BOS/MSS",
@@ -1687,6 +1689,7 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
     structureDetails: structure, fvgDetails: getFVGState(confirmedEntry),
     orderBlock: higherTrend === "Bullish" ? bullishOB : bearishOB,
+    apaSequence: buyReady ? bullishSequence : sellReady ? bearishSequence : null,
     displacement: bullishSequence.displacement || bearishSequence.displacement };
 }
 
@@ -1697,6 +1700,27 @@ function isAPATrendStackAligned(direction,trends) {
   // M15/M5 have their own setup/trigger rules and are not forced to trend-align.
   return Boolean(expected&&Array.isArray(trends)&&trends.length===3&&trends.every(value=>value===expected));
 }
+function isAPAM5PairedTrigger(direction,m15Setup,m5Candle,structure,displacement) {
+  if (!m15Setup || !m5Candle || !Number.isFinite(Number(m15Setup.epoch)) ||
+      !Number.isFinite(Number(m5Candle.epoch)) || !structure || !displacement) return false;
+  const setupCloseEpoch = Number(m15Setup.epoch) + 15 * 60;
+  const m5Epoch = Number(m5Candle.epoch);
+  // M5 must be a later closed candle, within 15 minutes of the M15 setup close.
+  if (m5Epoch < setupCloseEpoch || m5Epoch > setupCloseEpoch + 15 * 60) return false;
+  const breaksSetup = direction === "BUY"
+    ? Number(m5Candle.close) > Number(m15Setup.high) &&
+      Boolean(structure.bosUp || structure.mssUp || structure.chochUp)
+    : direction === "SELL"
+      ? Number(m5Candle.close) < Number(m15Setup.low) &&
+        Boolean(structure.bosDown || structure.mssDown || structure.chochDown)
+      : false;
+  const candleAgrees = direction === "BUY"
+    ? Number(m5Candle.close) > Number(m5Candle.open)
+    : direction === "SELL"
+      ? Number(m5Candle.close) < Number(m5Candle.open) : false;
+  return Boolean(breaksSetup && candleAgrees);
+}
+
 function isAPAEntryTrigger(direction,lastCandle,structure,displacement) {
   if(!lastCandle||!structure||!displacement)return false;
   const bullish=direction==="BUY"&&Number(lastCandle.close)>Number(lastCandle.open);
@@ -1737,13 +1761,15 @@ function analyseAPATopDown(symbol) {
   const m5BuyTrigger = isAPAEntryTrigger("BUY",lastM5,m5Structure,m5Displacement);
   const m5SellTrigger = isAPAEntryTrigger("SELL",lastM5,m5Structure,m5Displacement);
   const contextAligned = direction === "BUY" ? bullishContext : direction === "SELL" ? bearishContext : false;
-  const trigger = direction === "BUY" ? m5BuyTrigger : direction === "SELL" ? m5SellTrigger : false;
+  const m15SetupCandle = closed(setup).slice(-1)[0];
+  const pairedTrigger = isAPAM5PairedTrigger(direction, m15SetupCandle, lastM5, m5Structure, m5Displacement);
+  const trigger = Boolean((direction === "BUY" ? m5BuyTrigger : direction === "SELL" ? m5SellTrigger : false) && pairedTrigger);
   const entry = lastM5 ? Number(lastM5.close) : null, sl = direction ? base.sl : null;
   const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;
   const tp = risk > 0 ? (direction === "BUY" ? entry + risk * 2 : entry - risk * 2) : null;
   const valid = Boolean(enough && base.ready && direction && contextAligned && trigger && Number.isFinite(entry) && risk > 0);
   const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + " / M15 " + m15Trend + " / M5 " + m5Trend;
-  const waitReason = !enough ? "Waiting for sufficient CLOSED candles on D1/H4/H1/M15/M5" : !direction ? "M15 has no completed APA setup sequence" : !contextAligned ? "D1/H4/H1 directional context is not aligned" : !trigger ? "Waiting for M5 directional BOS/MSS/CHoCH plus displacement" : "APA sequence confirmed";
+  const waitReason = !enough ? "Waiting for sufficient CLOSED candles on D1/H4/H1/M15/M5" : !direction ? "M15 has no completed APA setup sequence" : !contextAligned ? "D1/H4/H1 directional context is not aligned" : !trigger ? "Waiting for a fresh M5 BOS/MSS/CHoCH and displacement that breaks the confirmed M15 setup candle" : "APA sequence confirmed";
   return { ...base, ready: true, strategy: "apa", setupTimeframe, entryTimeframe, trend: contextText,
     signal: valid ? "Potential APA " + direction + " — M15 setup and M5 trigger confirmed" : "APA WAIT — " + waitReason,
     entry: valid ? entry : null, sl: valid ? sl : null, tp: valid ? tp : null, invalidation: valid ? sl : null, riskReward: valid && risk > 0 ? 2 : null,
@@ -1753,9 +1779,10 @@ function analyseAPATopDown(symbol) {
       ["M15 APA setup: POI sweep → later BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))],
       ["M5 directional displacement", Boolean(direction && m5Displacement && (direction === "BUY" ? lastM5?.close > lastM5?.open : lastM5?.close < lastM5?.open))],
       ["M5 BOS/MSS/CHoCH structure break", Boolean(direction && (direction === "BUY" ? (m5Structure.bosUp || m5Structure.mssUp || m5Structure.chochUp) : (m5Structure.bosDown || m5Structure.mssDown || m5Structure.chochDown)))],
+      ["M5 trigger breaks the confirmed M15 setup candle within 15 minutes", pairedTrigger],
       ["M5 entry trigger", valid]],
     reasoning: "Top-down: D1/H4/H1 directional context → M15 APA POI/sweep/BOS setup → M5 directional structure break plus displacement. " + contextText + ". " + waitReason + ". " + (base.reasoning || ""),
-    m5Structure, m5Sweep, m5Displacement };
+    m5Structure, m5Sweep, m5Displacement, pairedTrigger };
 }
 
 /* =========================================================

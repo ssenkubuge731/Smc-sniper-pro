@@ -91,8 +91,8 @@ test("MT5 bridge source rotates configured symbols in bounded batches instead of
  assert.match(ea,/int g_symbolCursor = 0/);
  assert.match(ea,/g_symbolCursor=\(start\+count\)%total/);
  assert.match(ea,/InpSymbolsPerCycle/);
- assert.match(worker,/MARKET_DATA_TTL_SECONDS = 600/);
- assert.match(worker,/ageSeconds<=180\?"FRESH":"STALE"/);
+ assert.match(worker,/MARKET_DATA_TTL_SECONDS = 180/);
+ assert.match(worker,/ageSeconds<=90\?"FRESH":"STALE"/);
 });
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);

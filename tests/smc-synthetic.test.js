@@ -1145,3 +1145,18 @@ test("MT5 Worker rejects invalid and future-dated candle packet timestamps",()=>
  assert.ok(route.includes('status:"INVALID_TIMESTAMP"'));
  assert.ok(route.includes('ageSeconds<=90?"FRESH":"STALE"'));
 });
+
+
+test("SMC zone monitor preserves lifecycle details and ranked POIs together",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function renderSMCMultiFrame(symbol)");
+ const end=app.indexOf("\\nfunction ",start+10);
+ assert.ok(start>=0&&end>start,"multi-frame renderer must exist");
+ const fn=app.slice(start,end);
+ assert.ok(fn.includes("lifecycleZones"),"zone lifecycle details must be retained");
+ assert.ok(fn.includes("lifecycleNote"),"formation note must be retained");
+ assert.ok(fn.includes("rankedPoiText"),"ranked POIs must remain visible");
+ assert.ok(fn.includes("setText(\"smcZoneStatus\""),"zone status must be rendered once from combined content");
+ assert.equal((fn.match(/setText\\(\\\"smcZoneStatus\\\"/g)||[]).length,1,
+   "multi-frame renderer must not overwrite the combined zone status");
+});

@@ -1103,3 +1103,14 @@ test("MT5 stop and restart preserve the in-flight scan lock",()=>{
  assert.equal(stopper.includes("mt5ScanInProgress=false"),false);
  assert.ok(app.includes("finally {\n    tradingState.mt5ScanInProgress=false;"));
 });
+
+test("MT5 interrupted scan path has no undefined batch completion flag",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function scanMT5MarketData");
+ const end=app.indexOf("\\nfunction startMT5Scanner",start);
+ assert.ok(start>=0&&end>start);
+ const fn=app.slice(start,end);
+ assert.doesNotMatch(fn,/batchCompleted/);
+ assert.match(fn,/if\\(!tradingState\\.running\\|\\|tradingState\\.scanGeneration!==scanGeneration\\)\\s*\\{\\s*return;/);
+ assert.match(fn,/tradingState\\.mt5ScanCursor=batch\\.nextCursor/);
+});

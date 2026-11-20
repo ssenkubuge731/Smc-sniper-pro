@@ -179,6 +179,25 @@ test("MT5 scanner reports per-symbol/timeframe feed health and always releases s
  assert.match(app,/finally\s*\{\s*tradingState\.mt5ScanInProgress=false;/);
  assert.match(app,/age>90/);
 });
+test("candidate priority ordering keeps open entries first then rank, score and recency",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function compareOpportunityPriority(");
+ const end=source.indexOf("\nfunction hasDuplicateCandidateSignal(",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Number};
+ vm.runInNewContext(source.slice(start,end)+";compareOpportunityPriority",sandbox);
+ const compare=sandbox.compareOpportunityPriority;
+ const items=[
+  {id:"closed-high",status:"CLOSED",opportunityRank:99,createdAt:999},
+  {id:"open-low",status:"OPEN",opportunityRank:20,createdAt:100},
+  {id:"open-high",status:"OPEN",opportunityRank:90,createdAt:10},
+  {id:"open-score",status:"OPEN",opportunityRank:90,opportunityScore:80,createdAt:20},
+  {id:"open-recent",status:"OPEN",opportunityRank:90,opportunityScore:80,createdAt:30}
+ ];
+ const sorted=items.slice().sort(compare).map(x=>x.id);
+ assert.deepEqual(sorted,["open-recent","open-score","open-high","open-low","closed-high"]);
+ assert.equal(items[0].id,"closed-high","sorting must not mutate the source array");
+});
 test("candidate duplicate guard blocks exact repeats and legacy records but allows a new candle",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function hasDuplicateCandidateSignal(");

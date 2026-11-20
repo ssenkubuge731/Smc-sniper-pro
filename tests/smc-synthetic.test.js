@@ -961,6 +961,21 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  assert.match(fn,/getScannerUniverseBatch/);
 });
 
+test("market data freshness rejects missing, invalid and stale candles",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function isMarketDataFresh(");
+ const end=app.indexOf("\nfunction recordCandidateSignal(",start);
+ assert.ok(start>=0&&end>start,"market freshness helper must exist before signal recorder");
+ const sandbox={GRANULARITY:{"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600}};
+ vm.runInNewContext(app.slice(start,end)+";isMarketDataFresh",sandbox);
+ const fresh=sandbox.isMarketDataFresh;
+ assert.equal(fresh([], "1m",1000),false);
+ assert.equal(fresh([{epoch:0}], "1m",1000),false);
+ assert.equal(fresh([{epoch:900}], "unknown",1000),false);
+ assert.equal(fresh([{epoch:900}], "1m",1100),true);
+ assert.equal(fresh([{epoch:600}], "1m",1000),false);
+ assert.equal(fresh([{epoch:600}], "5m",1000),true);
+});
 test("market scan cursor advances only after a batch drains and retries interrupted batches",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function commitCompletedScanBatch(");

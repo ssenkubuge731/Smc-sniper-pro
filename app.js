@@ -318,7 +318,7 @@ function getRotatingSymbolBatch(symbols, cursor = 0, batchSize = 10) {
 }
 function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize = 10) {
   const clean = getScanSymbolsForMode(symbols, mode, strategy);
-  if (mode !== "intraday" || (strategy !== "apa" && strategy !== "both")) {
+  if (mode !== "intraday") {
     return { symbols: clean, nextCursor: 0, total: clean.length };
   }
   if (!clean.length) return { symbols: [], nextCursor: 0, total: 0 };
@@ -2857,12 +2857,14 @@ function hasOpposingOpenSignal(history,symbol,direction) {
     record.direction && record.direction!==direction
   );
 }
-function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp,symbol,selectedSymbols,selectedStrategy,demo,liveLocked}) {
+function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp,symbol,selectedSymbols,availableSymbols,selectedStrategy,demo,liveLocked}) {
   const blocked = reason => ({authorized:false,reason});
   if (demo !== true || liveLocked !== true)
     return blocked("Demo-only safety state is not confirmed; live execution remains locked.");
-  if (!symbol || !selectedSymbols || typeof selectedSymbols.has !== "function" || !selectedSymbols.has(symbol))
-    return blocked("Pair is not selected by the user.");
+  const isSelected = selectedSymbols && typeof selectedSymbols.has === "function" && selectedSymbols.has(symbol);
+  const isAvailableIntraday = mode === "intraday" && Array.isArray(availableSymbols) && availableSymbols.includes(symbol);
+  if (!symbol || (!isSelected && !isAvailableIntraday))
+    return blocked(mode === "intraday" ? "Pair is not in the broker market universe." : "Pair is not selected by the user.");
   if (!["apa","smc"].includes(strategy))
     return blocked("Only APA and SMC engines may publish entries.");
   if (selectedStrategy && selectedStrategy !== "both" && selectedStrategy !== strategy)
@@ -2951,7 +2953,7 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   }
   const authorization=authorizeFinalEntry({
     strategy:activeStrategy,mode:tradingState.mode,timeframe,direction,entry,sl,tp,
-    symbol,selectedSymbols:tradingState.selectedSymbols,selectedStrategy:tradingState.strategy,
+    symbol,selectedSymbols:tradingState.selectedSymbols,availableSymbols:tradingState.availableSymbols.map(item => item.symbol),selectedStrategy:tradingState.strategy,
     demo:tradingState.demo,liveLocked:tradingState.liveLocked
   });
   if (!authorization.authorized) {
@@ -3253,8 +3255,8 @@ function startScanner(resume = false) {
     return;
   }
 
-  if (!tradingState.selectedSymbols.size) {
-    addResult("Select at least one market first.");
+  if (tradingState.mode === "scalping" && !tradingState.selectedSymbols.size) {
+    addResult("Select one market first for Scalping.");
     return;
   }
   if (tradingState.mode === "scalping" &&
@@ -3295,8 +3297,7 @@ function scanSelectedMarkets() {
   // Do not advance the market cursor while a previous batch is still queued.
   if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
 
-  const universe = tradingState.mode === "intraday" &&
-    (tradingState.strategy === "apa" || tradingState.strategy === "both")
+  const universe = tradingState.mode === "intraday"
     ? tradingState.availableSymbols.map(item => item.symbol)
     : selected;
   const batch = getScannerUniverseBatch(universe, tradingState.mode, tradingState.strategy,

@@ -351,6 +351,26 @@ test("APA M5 trigger requires directional candle, displacement and BOS/MSS/CHoCH
  assert.equal(trigger("SELL",{open:12,close:10},{mssDown:true},true),true);
  assert.equal(trigger("SELL",candle,{bosDown:true},true),false,"candle direction must agree");
 });
+test("APA M5 trigger must break the exact M15 setup candle while fresh",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function isAPAM5PairedTrigger(");
+ const end=source.indexOf("\nfunction isAPAEntryTrigger",start);
+ assert.ok(start>=0&&end>start,"paired timeframe guard must exist");
+ const sandbox={Number,Boolean};
+ vm.runInNewContext(source.slice(start,end)+";isAPAM5PairedTrigger",sandbox);
+ const paired=sandbox.isAPAM5PairedTrigger;
+ const setup={epoch:1000,high:105,low:95};
+ const structure={bosUp:true,bosDown:false};
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:106},structure,true),true,"later M5 break of M15 high passes");
+ assert.equal(paired("BUY",setup,{epoch:1600,open:104,close:106},structure,true),false,"M5 candle before M15 close is rejected");
+ assert.equal(paired("BUY",setup,{epoch:2801,open:105,close:106},structure,true),false,"stale M5 trigger is rejected");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:104},structure,true),false,"wrong-direction M5 candle is rejected");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:106},{bosUp:false},true),false,"M5 must have directional structure break");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:104},structure,true),false,"M5 must close beyond the M15 setup high");
+ assert.equal(paired("SELL",{epoch:1000,high:105,low:95},{epoch:1900,open:95,close:94},{mssDown:true},true),true);
+ assert.equal(paired("SELL",{epoch:1000,high:105,low:95},{epoch:1900,open:95,close:96},{mssDown:true},true),false);
+});
+
 test("APA top-down configuration requires D1 H4 H1 M15 M5 and M5 entry",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  assert.match(source,/APA_REQUIRED_FRAMES = \["1d", "4h", "1h", "15m", "5m"\]/);

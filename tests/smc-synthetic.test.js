@@ -1049,7 +1049,8 @@ test("APA intraday scanner rotates batches across the complete market universe",
  const scalp=batch(["EURUSD","GBPUSD"],"scalping","smc",0,10);
  assert.deepEqual(Array.from(scalp.symbols),[],"scalp restriction remains single-pair only");
  const intradaySmc=batch(markets,"intraday","smc",0,10);
- assert.equal(intradaySmc.symbols.length,23,"SMC intraday keeps all selected markets");
+ assert.equal(intradaySmc.symbols.length,10,"SMC intraday rotates through all markets in batches");
+ assert.equal(intradaySmc.total,23,"SMC intraday universe includes every available market");
 });
 test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
@@ -1057,6 +1058,7 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  const end=source.indexOf("\\nfunction stopScanner",start);
  const fn=source.slice(start,end);
  assert.match(fn,/tradingState\.availableSymbols\.map\(item => item\.symbol\)/);
+ assert.match(fn,/const universe = tradingState\.mode === "intraday"/);
  assert.match(fn,/tradingState\.scanUniverseCursor/);
  assert.match(fn,/getScannerUniverseBatch/);
 });
@@ -1133,7 +1135,7 @@ test("Final entry authorization enforces selected pair, strategy selection, demo
  const sandbox={};
  vm.runInNewContext(app.slice(start,end)+";authorizeFinalEntry",sandbox);
  const authorize=sandbox.authorizeFinalEntry;
- const base={symbol:"EURUSD",selectedSymbols:new Set(["EURUSD"]),selectedStrategy:"both",demo:true,liveLocked:true};
+ const base={symbol:"EURUSD",selectedSymbols:new Set(["EURUSD"]),availableSymbols:["EURUSD","GBPUSD"],selectedStrategy:"both",demo:true,liveLocked:true};
  const check=overrides=>authorize({...base,strategy:"apa",mode:"intraday",timeframe:"5m",direction:"BUY",entry:100,sl:99,tp:102,...overrides});
  assert.equal(check({}).authorized,true);
  assert.equal(check({timeframe:"1m"}).authorized,false,"APA must not authorize M1 entry signals");
@@ -1145,7 +1147,9 @@ test("Final entry authorization enforces selected pair, strategy selection, demo
  assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"15m",tp:101.9}).authorized,false);
  assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"15m",sl:101,tp:104}).authorized,false);
  assert.equal(check({strategy:"smc",mode:"intraday",timeframe:"30m",direction:"SELL",entry:100,sl:101,tp:98}).authorized,true);
- assert.match(check({symbol:"GBPUSD"}).reason,/not selected/);
+ assert.equal(check({symbol:"GBPUSD"}).authorized,true,"Intraday may accept a valid signal from any broker-listed market");
+ assert.match(check({symbol:"USDJPY",availableSymbols:["EURUSD","GBPUSD"]}).reason,/market universe/);
+ assert.match(check({symbol:"GBPUSD",mode:"scalping",strategy:"smc",timeframe:"5m",sl:null,tp:null}).reason,/selected/);
  assert.match(check({selectedStrategy:"apa",strategy:"smc"}).reason,/not enabled/);
  assert.match(check({demo:false}).reason,/Demo-only/);
  assert.match(check({liveLocked:false}).reason,/Demo-only/);

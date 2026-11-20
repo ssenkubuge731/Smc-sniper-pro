@@ -1630,6 +1630,22 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
 }
 
 
+function isAPATrendStackAligned(direction,trends) {
+  const expected=direction==="BUY"?"Bullish":direction==="SELL"?"Bearish":null;
+  return Boolean(expected&&Array.isArray(trends)&&trends.length===6&&trends.every(value=>value===expected));
+}
+function isAPAEntryTrigger(direction,lastCandle,structure,displacement) {
+  if(!lastCandle||!structure||!displacement)return false;
+  const bullish=direction==="BUY"&&Number(lastCandle.close)>Number(lastCandle.open);
+  const bearish=direction==="SELL"&&Number(lastCandle.close)<Number(lastCandle.open);
+  const structureBreak=direction==="BUY"
+    ? Boolean(structure.bosUp||structure.mssUp||structure.chochUp)
+    : direction==="SELL"
+      ? Boolean(structure.bosDown||structure.mssDown||structure.chochDown)
+      : false;
+  return Boolean((bullish||bearish)&&structureBreak);
+}
+
 /* APA TOP-DOWN ENGINE: D1 -> H4 -> H1 -> M30 -> M15 setup -> M5 refinement -> M1 trigger. */
 function analyseAPATopDown(symbol) {
   if (tradingState.mode !== "intraday") {
@@ -1645,29 +1661,35 @@ function analyseAPATopDown(symbol) {
   const m1 = tradingState.candles[candleKey(symbol, "1m")] || [];
   const closed = candles => Array.isArray(candles) ? candles.slice(0, -1) : [];
   const d1Trend = getTrend(closed(daily)), h4Trend = getTrend(closed(h4)), h1Trend = getTrend(closed(h1));
-  const m30Trend = getTrend(closed(m30)), m5Trend = getTrend(closed(m5));
+  const m30Trend = getTrend(closed(m30)), m15Trend = getTrend(closed(setup)), m5Trend = getTrend(closed(m5));
+  // The seven-stage sequence needs enough CLOSED candles at every stage.
   const enough = closed(daily).length >= 12 && closed(h4).length >= 12 &&
     closed(h1).length >= 12 && closed(m30).length >= 12 &&
     closed(setup).length >= 20 && closed(m5).length >= 12 && closed(m1).length >= 20;
-  const context = [d1Trend,h4Trend,h1Trend,m30Trend,m5Trend];
-  const bullishContext = context.every(t => t === "Bullish"), bearishContext = context.every(t => t === "Bearish");
+  // D1/H4/H1 establish direction; M30/M15/M5 must refine in that same direction.
+  const context = [d1Trend,h4Trend,h1Trend,m30Trend,m15Trend,m5Trend];
+  const bullishContext = isAPATrendStackAligned("BUY",context);
+  const bearishContext = isAPATrendStackAligned("SELL",context);
   const base = analyseAPA(setup, daily, m1);
   const direction = /\bBUY\b/i.test(base.signal || "") ? "BUY" : /\bSELL\b/i.test(base.signal || "") ? "SELL" : "";
   const m1Closed = closed(m1), m1Structure = getStructure(m1Closed), m1Sweep = getLiquidity(m1Closed), m1Displacement = getDisplacement(m1Closed);
   const lastM1 = m1Closed[m1Closed.length - 1], m1Bull = Boolean(lastM1 && lastM1.close > lastM1.open), m1Bear = Boolean(lastM1 && lastM1.close < lastM1.open);
-  const m1BuyTrigger = m1Bull && m1Displacement && (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow);
-  const m1SellTrigger = m1Bear && m1Displacement && (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh);
+  // M15 already requires the APA POI sweep followed by a later structure break
+  // and displacement. M1 must now confirm its own directional structure break
+  // plus displacement; a sweep alone is not an entry trigger.
+  const m1BuyTrigger = isAPAEntryTrigger("BUY",lastM1,m1Structure,m1Displacement);
+  const m1SellTrigger = isAPAEntryTrigger("SELL",lastM1,m1Structure,m1Displacement);
   const contextAligned = direction === "BUY" ? bullishContext : direction === "SELL" ? bearishContext : false;
   const trigger = direction === "BUY" ? m1BuyTrigger : direction === "SELL" ? m1SellTrigger : false;
   const entry = lastM1 ? Number(lastM1.close) : null, sl = direction ? base.sl : null;
   const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;
   const tp = risk > 0 ? (direction === "BUY" ? entry + risk * 2 : entry - risk * 2) : null;
   const valid = Boolean(enough && base.ready && direction && contextAligned && trigger && Number.isFinite(entry) && risk > 0);
-  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + " / M30 " + m30Trend + " / M5 " + m5Trend;
+  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + " / M30 " + m30Trend + " / M15 " + m15Trend + " / M5 " + m5Trend;
   const waitReason = !enough ? "Waiting for sufficient closed candles across required timeframes" : !direction ? "Setup timeframe has no completed APA sequence" : !contextAligned ? "Higher-timeframe trend alignment is not confirmed" : !trigger ? "Waiting for M1 structure/sweep plus displacement entry trigger" : "APA sequence confirmed";
   return { ...base, ready: true, strategy: "apa", setupTimeframe, entryTimeframe: "1m", trend: contextText, signal: valid ? "Potential APA " + direction + " — top-down setup and M1 trigger confirmed" : "APA WAIT — " + waitReason, entry: valid ? entry : null, sl: valid ? sl : null, tp: valid ? tp : null, invalidation: valid ? sl : null, riskReward: valid && risk > 0 ? 2 : null,
-    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ...(tradingState.mode === "intraday" ? [["M30 context alignment", m30Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["M5 refinement alignment", m5Trend === (direction === "BUY" ? "Bullish" : "Bearish")]] : []), ["Setup timeframe sweep → BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))], ["M1 directional displacement", Boolean(direction && m1Displacement && (direction === "BUY" ? m1Bull : m1Bear))], ["M1 BOS/MSS/CHoCH or liquidity sweep", Boolean(direction && (direction === "BUY" ? (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp || m1Sweep.sweepLow) : (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown || m1Sweep.sweepHigh)))], ["M1 entry trigger", valid]],
-    reasoning: "Top-down: " + contextText + ". Setup timeframe: " + setupTimeframe.toUpperCase() + ". Final trigger: M1. " + waitReason + ". " + (base.reasoning || ""), m1Structure, m1Sweep, m1Displacement };
+    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ...(tradingState.mode === "intraday" ? [["M30 context alignment", m30Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["M15 setup alignment", m15Trend === (direction === "BUY" ? "Bullish" : "Bearish")], ["M5 refinement alignment", m5Trend === (direction === "BUY" ? "Bullish" : "Bearish")]] : []), ["Setup timeframe sweep → BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))], ["M1 directional displacement", Boolean(direction && m1Displacement && (direction === "BUY" ? m1Bull : m1Bear))], ["M1 BOS/MSS/CHoCH structure break", Boolean(direction && (direction === "BUY" ? (m1Structure.bosUp || m1Structure.mssUp || m1Structure.chochUp) : (m1Structure.bosDown || m1Structure.mssDown || m1Structure.chochDown)))], ["M1 entry trigger", valid]],
+    reasoning: "Top-down: D1 trend → H4 alignment → H1 bias → M30 context → M15 APA POI/sweep/BOS setup → M5 refinement → M1 directional BOS/MSS/CHoCH plus displacement. " + contextText + ". " + waitReason + ". " + (base.reasoning || ""), m1Structure, m1Sweep, m1Displacement };
 }
 
 /* =========================================================

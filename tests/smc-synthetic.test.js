@@ -1111,8 +1111,10 @@ test("Final entry authorization enforces selected pair, strategy selection, demo
  vm.runInNewContext(app.slice(start,end)+";authorizeFinalEntry",sandbox);
  const authorize=sandbox.authorizeFinalEntry;
  const base={symbol:"EURUSD",selectedSymbols:new Set(["EURUSD"]),selectedStrategy:"both",demo:true,liveLocked:true};
- const check=overrides=>authorize({...base,strategy:"apa",mode:"intraday",timeframe:"1m",direction:"BUY",entry:100,sl:99,tp:102,...overrides});
+ const check=overrides=>authorize({...base,strategy:"apa",mode:"intraday",timeframe:"5m",direction:"BUY",entry:100,sl:99,tp:102,...overrides});
  assert.equal(check({}).authorized,true);
+ assert.equal(check({timeframe:"1m"}).authorized,false,"APA must not authorize M1 entry signals");
+ assert.equal(check({timeframe:"15m"}).authorized,false,"APA setup timeframe is not the entry timeframe");
  assert.equal(check({strategy:"apa",mode:"scalping"}).authorized,false);
  assert.equal(check({strategy:"smc",mode:"scalping",timeframe:"5m",sl:null,tp:null}).authorized,true);
  assert.equal(check({strategy:"smc",mode:"scalping",timeframe:"15m"}).authorized,false);

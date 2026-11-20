@@ -2732,6 +2732,27 @@ function hasOpposingOpenSignal(history,symbol,direction) {
     record.direction && record.direction!==direction
   );
 }
+function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp}) {
+  const scalp = strategy === "smc" && mode === "scalping";
+  const tf = String(timeframe || "").toLowerCase();
+  const allowed = mode === "scalping" ? ["1m","m1","5m","m5"] :
+    mode === "intraday" ? ["1m","m1","5m","m5","15m","m15","30m","m30","1h","h1"] : [];
+  if (!allowed.includes(tf)) return {authorized:false,reason:"Timeframe is not enabled for this strategy mode."};
+  if (strategy === "apa" && mode !== "intraday") return {authorized:false,reason:"APA is Intraday-only."};
+  if (mode === "scalping" && !scalp) return {authorized:false,reason:"Only SMC may publish Scalping entries."};
+  if (scalp) return {authorized:true,reason:"SMC Scalping uses its separate basket exit policy.",rr:null};
+  const e=Number(entry), stop=Number(sl), target=Number(tp);
+  if (![e,stop,target].every(Number.isFinite) || e<=0 || stop<=0 || target<=0)
+    return {authorized:false,reason:"Entry, SL and TP must be valid positive prices."};
+  const buy=direction==="BUY", sell=direction==="SELL";
+  if ((!buy&&!sell) || (buy && !(stop<e && target>e)) || (sell && !(target<e && stop>e)))
+    return {authorized:false,reason:"SL and TP must be on the correct sides of entry."};
+  const risk=Math.abs(e-stop), reward=Math.abs(target-e), rr=reward/risk;
+  if (!Number.isFinite(rr) || rr<2)
+    return {authorized:false,reason:"Structural target must offer at least 2R; otherwise WAIT.",rr};
+  return {authorized:true,reason:"Final entry checks passed.",rr};
+}
+
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
@@ -2777,6 +2798,11 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   }
   if (!isScalp && (![sl, tp].every(Number.isFinite) || sl <= 0 || tp <= 0)) {
     console.warn("Signal not saved: valid SL and TP are required for Intraday.", { symbol, timeframe, signal: signalText, entry, sl, tp });
+    return;
+  }
+  const authorization=authorizeFinalEntry({strategy:activeStrategy,mode:tradingState.mode,timeframe,direction,entry,sl,tp});
+  if (!authorization.authorized) {
+    addResult("ENTRY BLOCKED: "+symbol+" "+direction+" — "+authorization.reason,"scannerResults");
     return;
   }
 

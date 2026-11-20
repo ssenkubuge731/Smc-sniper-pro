@@ -964,7 +964,7 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
 test("signal outcomes ignore forming candles and accept only completed timeframe candles",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function isClosedOutcomeCandle(");
- const end=app.indexOf("\\nfunction evaluateSignalHistory(",start);
+ const end=app.indexOf("\nfunction evaluateSignalHistory(",start);
  assert.ok(start>=0&&end>start,"closed-candle helper must exist before outcome manager");
  const sandbox={getTimeframeSeconds:tf=>({ "1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600 }[tf]||0),Date};
  vm.runInNewContext(app.slice(start,end)+";isClosedOutcomeCandle",sandbox);

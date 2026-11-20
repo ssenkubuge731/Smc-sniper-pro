@@ -1188,7 +1188,7 @@ test("MT5 retry helper does not retry permanent client errors",async()=>{
  assert.equal(response.status,400);
  assert.equal(calls,1,"permanent 4xx response must not be retried");
 });
-(async()=>{await Promise.all(testPromises);console.log("TOTAL "+passed+" tests passed");})();
+
 test("MT5 interrupted runtime scan releases lock without advancing cursor, then resumes and commits completed batch",async()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("async function scanMT5MarketData");
@@ -1218,3 +1218,4 @@ test("MT5 interrupted runtime scan releases lock without advancing cursor, then 
  assert.equal(state.mt5ScanCursor,1,"cursor commits only after the resumed batch completes");
  assert.equal(state.mt5ScanInProgress,false,"lock remains released after successful batch");
 });
+(async()=>{await Promise.all(testPromises);console.log("TOTAL "+passed+" tests passed");})();

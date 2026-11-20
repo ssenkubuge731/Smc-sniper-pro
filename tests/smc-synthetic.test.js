@@ -214,6 +214,39 @@ test("News analysis only considers confirmed high or medium impact events with a
  assert.match(source,/none passed timestamp, currency and impact validation/);
  assert.match(source,/WAIT — upcoming news blackout/);
 });
+test("APA top-down trend stack requires D1 H4 H1 M30 M15 and M5 alignment",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function isAPATrendStackAligned(");
+ const end=source.indexOf("\nfunction isAPAEntryTrigger",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Boolean,Array};vm.runInNewContext(source.slice(start,end)+";isAPATrendStackAligned",sandbox);
+ const aligned=sandbox.isAPATrendStackAligned;
+ assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bullish","Bullish"]),true);
+ assert.equal(aligned("SELL",Array(6).fill("Bearish")),true);
+ assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bearish","Bullish"]),false,"M15 disagreement must block");
+ assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bullish"]),false,"missing timeframe must block");
+});
+test("APA M1 trigger requires directional candle, displacement and BOS/MSS/CHoCH",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function isAPAEntryTrigger(");
+ const end=source.indexOf("\n/* APA TOP-DOWN ENGINE",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Boolean,Number};vm.runInNewContext(source.slice(start,end)+";isAPAEntryTrigger",sandbox);
+ const trigger=sandbox.isAPAEntryTrigger;
+ const candle={open:10,close:12};
+ assert.equal(trigger("BUY",candle,{bosUp:true},true),true);
+ assert.equal(trigger("BUY",candle,{sweepLow:true},true),false,"sweep alone is not a final entry trigger");
+ assert.equal(trigger("BUY",candle,{bosUp:true},false),false,"displacement is required");
+ assert.equal(trigger("SELL",{open:12,close:10},{mssDown:true},true),true);
+ assert.equal(trigger("SELL",candle,{bosDown:true},true),false,"candle direction must agree");
+});
+test("APA top-down scanner includes all seven configured stages and reports M15 context",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(source,/APA_REQUIRED_FRAMES = \["1d", "4h", "1h", "30m", "15m", "5m", "1m"\]/);
+ assert.match(source,/M15 " \+ m15Trend/);
+ assert.match(source,/M1 BOS\/MSS\/CHoCH structure break/);
+ assert.match(source,/M15 setup alignment/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

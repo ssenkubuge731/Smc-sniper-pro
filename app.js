@@ -304,7 +304,9 @@ function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize 
   if (!clean.length) return { symbols: [], nextCursor: 0, total: 0 };
   const size = Math.max(1, Math.min(10, Number(batchSize) || 10));
   const start = ((Math.floor(Number(cursor) || 0) % clean.length) + clean.length) % clean.length;
-  const batch = Array.from({ length: Math.min(size, clean.length) }, (_, i) => clean[(start + i) % clean.length]);
+  // Do not wrap within a batch: finish the tail of the universe, then wrap next cycle.
+  const count = Math.min(size, clean.length - start);
+  const batch = clean.slice(start, start + count);
   return { symbols: batch, nextCursor: (start + batch.length) % clean.length, total: clean.length };
 }
 function getBridgeFrames(mode,strategy){

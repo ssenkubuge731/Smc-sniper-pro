@@ -961,6 +961,23 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  assert.match(fn,/getScannerUniverseBatch/);
 });
 
+test("market scan cursor advances only after a batch drains and retries interrupted batches",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function commitCompletedScanBatch(");
+ const end=app.indexOf("\nfunction clearScanQueue(",start);
+ assert.ok(start>=0&&end>start,"batch cursor helpers must exist");
+ const sandbox={};
+ vm.runInNewContext(app.slice(start,end)+";commitCompletedScanBatch;discardPendingScanBatch",sandbox);
+ const state={scanUniverseCursor:10,pendingScanCursor:20};
+ assert.equal(sandbox.commitCompletedScanBatch(state),true);
+ assert.equal(state.scanUniverseCursor,20);
+ assert.equal(state.pendingScanCursor,null);
+ state.pendingScanCursor=30;
+ sandbox.discardPendingScanBatch(state);
+ assert.equal(state.scanUniverseCursor,20,"interrupted batch must not skip forward");
+ assert.equal(state.pendingScanCursor,null);
+ assert.equal(sandbox.commitCompletedScanBatch(state),false);
+});
 test("opportunity ranking is bounded, deterministic and handles missing evidence",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function rankCandidateOpportunity(");

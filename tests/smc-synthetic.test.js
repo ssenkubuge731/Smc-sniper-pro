@@ -325,38 +325,39 @@ test("News analysis only considers confirmed high or medium impact events with a
  assert.match(source,/none passed timestamp, currency and impact validation/);
  assert.match(source,/WAIT — upcoming news blackout/);
 });
-test("APA top-down trend stack requires D1 H4 H1 M30 M15 and M5 alignment",()=>{
+test("APA higher-timeframe bias requires D1 H4 H1 alignment while M15/M5 remain entry frames",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function isAPATrendStackAligned(");
- const end=source.indexOf("\nfunction isAPAEntryTrigger",start);
+ const end=source.indexOf("\\nfunction isAPAEntryTrigger",start);
  assert.ok(start>=0&&end>start);
  const sandbox={Boolean,Array};vm.runInNewContext(source.slice(start,end)+";isAPATrendStackAligned",sandbox);
  const aligned=sandbox.isAPATrendStackAligned;
- assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bullish","Bullish"]),true);
- assert.equal(aligned("SELL",Array(6).fill("Bearish")),true);
- assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bearish","Bullish"]),false,"M15 disagreement must block");
- assert.equal(aligned("BUY",["Bullish","Bullish","Bullish","Bullish","Bullish"]),false,"missing timeframe must block");
+ assert.equal(aligned("BUY",["Bullish","Bullish","Bullish"]),true);
+ assert.equal(aligned("SELL",Array(3).fill("Bearish")),true);
+ assert.equal(aligned("BUY",["Bullish","Bullish","Bearish"]),false,"H1 disagreement blocks");
+ assert.equal(aligned("BUY",["Bullish","Bullish"]),false,"missing higher timeframe blocks");
 });
-test("APA M1 trigger requires directional candle, displacement and BOS/MSS/CHoCH",()=>{
+test("APA M5 trigger requires directional candle, displacement and BOS/MSS/CHoCH",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function isAPAEntryTrigger(");
- const end=source.indexOf("\n/* APA TOP-DOWN ENGINE",start);
+ const end=source.indexOf("\\n/* APA TOP-DOWN ENGINE",start);
  assert.ok(start>=0&&end>start);
  const sandbox={Boolean,Number};vm.runInNewContext(source.slice(start,end)+";isAPAEntryTrigger",sandbox);
  const trigger=sandbox.isAPAEntryTrigger;
  const candle={open:10,close:12};
  assert.equal(trigger("BUY",candle,{bosUp:true},true),true);
- assert.equal(trigger("BUY",candle,{sweepLow:true},true),false,"sweep alone is not a final entry trigger");
+ assert.equal(trigger("BUY",candle,{sweepLow:true},true),false,"sweep alone is not final trigger");
  assert.equal(trigger("BUY",candle,{bosUp:true},false),false,"displacement is required");
  assert.equal(trigger("SELL",{open:12,close:10},{mssDown:true},true),true);
  assert.equal(trigger("SELL",candle,{bosDown:true},true),false,"candle direction must agree");
 });
-test("APA top-down scanner includes all seven configured stages and reports M15 context",()=>{
+test("APA top-down configuration requires D1 H4 H1 M15 M5 and M5 entry",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
- assert.match(source,/APA_REQUIRED_FRAMES = \["1d", "4h", "1h", "30m", "15m", "5m", "1m"\]/);
- assert.match(source,/M15 " \+ m15Trend/);
- assert.match(source,/M1 BOS\/MSS\/CHoCH structure break/);
- assert.match(source,/M15 setup alignment/);
+ assert.match(source,/APA_REQUIRED_FRAMES = \\["1d", "4h", "1h", "15m", "5m"\\]/);
+ assert.match(source,/M15 " \\+ m15Trend/);
+ assert.match(source,/M5 BOS\\/MSS\\/CHoCH structure break/);
+ assert.match(source,/entryTimeframe = APA_ENTRY_FRAME\\.intraday/);
+ assert.doesNotMatch(source,/M1 entry trigger/);
 });
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);

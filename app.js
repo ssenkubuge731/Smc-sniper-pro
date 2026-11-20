@@ -2422,7 +2422,7 @@ function renderDemoPositions() {
     box.appendChild(empty);
     return;
   }
-  open.slice().sort((a,b)=>(Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0)).slice(0, 20).forEach((record, index) => {
+  open.slice().sort((a,b)=>(Number(b.opportunityRank)||0)-(Number(a.opportunityRank)||0) || (Number(b.opportunityScore)||0)-(Number(a.opportunityScore)||0) || (Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0, 20).forEach((record, index) => {
     const row = document.createElement("div");
     row.className = "result-item";
     const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";

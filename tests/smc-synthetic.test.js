@@ -358,6 +358,9 @@ test("APA top-down configuration requires D1 H4 H1 M15 M5 and M5 entry",()=>{
  assert.match(source,/M5 BOS\/MSS\/CHoCH structure break/);
  assert.match(source,/entryTimeframe = APA_ENTRY_FRAME\.intraday/);
  assert.doesNotMatch(source,/M1 entry trigger/);
+ assert.match(source,/result\.strategy === "apa" && timeframe !== "5m"/,"APA history recording must only accept final M5 entry confirmation");
+ assert.match(source,/item\.strategy === "apa" \? "5m" : timeframe/,"APA candidates must be recorded on M5, never M1");
+ assert.match(source,/candleKey\(symbol, "5m"\).*?: candles/,"APA signal freshness must use M5 candles");
 });
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);

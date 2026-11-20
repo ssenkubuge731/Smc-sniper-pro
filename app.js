@@ -2643,6 +2643,13 @@ function getTimeframeSeconds(timeframe) {
     "30m":1800,"M30":1800,"1h":3600,"H1":3600,"4h":14400,"H4":14400,"1d":86400,"D1":86400};
   return values[String(timeframe||"")]||60;
 }
+function isClosedOutcomeCandle(candle,timeframe,nowEpoch=Math.floor(Date.now()/1000)) {
+  const epoch=Number(candle?.epoch);
+  const seconds=getTimeframeSeconds(timeframe);
+  return Number.isFinite(epoch) && Number.isFinite(seconds) && seconds>0 &&
+    Number.isFinite(Number(nowEpoch)) && Number(nowEpoch)>=epoch+seconds;
+}
+
 function evaluateSignalHistory(symbol, timeframe, candles) {
   if (!Array.isArray(candles) || !candles.length) return;
   let changed = false;
@@ -2657,8 +2664,11 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
     // current candle repeatedly, so checking an epoch only once can miss
     // a TP/SL touched later while that same candle is still forming.
     const signalEpoch = Number(record.signalCandleEpoch ?? record.lastCheckedCandleEpoch ?? 0);
+    // Finalize demo outcomes only after the candle has closed; live OHLC can reverse.
     const laterCandles = candles.filter(candle =>
-      Number.isFinite(Number(candle.epoch)) && Number(candle.epoch) > signalEpoch
+      Number.isFinite(Number(candle.epoch)) &&
+      Number(candle.epoch) > signalEpoch &&
+      isClosedOutcomeCandle(candle,timeframe)
     ).sort((x, y) => Number(x.epoch) - Number(y.epoch));
 
     for (const candle of laterCandles) {

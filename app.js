@@ -2232,7 +2232,7 @@ function analyseMainSelection(symbol) {
   const showDirection = (up, down) => up ? "Bullish detected" : down ? "Bearish detected" : "Not detected";
   setText("bosStatus", showDirection(structureState.bosUp, structureState.bosDown));
   setText("mssStatus", showDirection(structureState.mssUp, structureState.mssDown));
-  setText("chochStatus", showDirection(structureState.mssUp, structureState.mssDown));
+  setText("chochStatus", showDirection(structureState.chochUp, structureState.chochDown));
   setText("fvgStatus", showDirection(fvgState.bullishFVG, fvgState.bearishFVG));
   setText("ifvgStatus", showDirection(fvgState.bullishIFVG, fvgState.bearishIFVG));
   setText("displacementStatus", result.displacement ? "Detected" : "Not detected");
@@ -2922,7 +2922,10 @@ function collectSettings() {
   const settings = {};
 
   ids.forEach(id => {
-    settings[id] = valueOf(id);
+    const element = $(id);
+    settings[id] = element?.type === "checkbox"
+      ? Boolean(element.checked)
+      : valueOf(id);
   });
 
   settings.mode = valueOf("tradingStyle") || "scalping";

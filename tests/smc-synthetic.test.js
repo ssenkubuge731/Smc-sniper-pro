@@ -1088,3 +1088,18 @@ test("MT5 symbol rotation cursor commits only after the full batch finishes",()=
  assert.ok(fn.indexOf("tradingState.mt5ScanCursor=batch.nextCursor")>fn.indexOf("renderTimeframeAnalysis(symbol,timeframe)"),
    "cursor must commit after processing the batch");
 });
+
+test("MT5 stop and restart preserve the in-flight scan lock",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("function startMT5Scanner()");
+ const end=app.indexOf("\\nfunction startScanner",start);
+ assert.ok(start>=0&&end>start);
+ const starter=app.slice(start,end);
+ assert.doesNotMatch(starter,/mt5ScanInProgress\\s*=\\s*false/);
+ const stopStart=app.indexOf("function stopScanner(");
+ const stopEnd=app.indexOf("\\n/* =========================================================\\n   SETTINGS",stopStart);
+ assert.ok(stopStart>=0&&stopEnd>stopStart);
+ const stopper=app.slice(stopStart,stopEnd);
+ assert.doesNotMatch(stopper,/mt5ScanInProgress\\s*=\\s*false/);
+ assert.match(app,/finally\\s*\\{[\\s\\S]*?tradingState\\.mt5ScanInProgress=false/);
+});

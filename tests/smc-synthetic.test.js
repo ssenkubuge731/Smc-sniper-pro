@@ -964,7 +964,7 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
 test("opportunity ranking is bounded, deterministic and handles missing evidence",()=>{
  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=app.indexOf("function rankCandidateOpportunity(");
- const end=app.indexOf("\\nfunction hasOpposingOpenSignal",start);
+ const end=app.indexOf("\nfunction hasOpposingOpenSignal",start);
  assert.ok(start>=0&&end>start,"ranking helper must exist");
  const sandbox={};
  vm.runInNewContext(app.slice(start,end)+";rankCandidateOpportunity",sandbox);

@@ -212,7 +212,7 @@ function updateMode() {
   timeframeSelect.value = entryFrames.includes(previous) ? previous : "1m";
 
   const modeInfo = mode === "intraday"
-    ? "APA + SMC Intraday: D1 → H4 → H1 → M30 → M15 → M5 → M1 entry"
+    ? "Intraday — APA: D1/H4/H1 → M15 setup → M5 entry; SMC: M1/M5/M15/M30/H1"
     : "SMC Scalping: M5 setup analysis + M1 entry confirmation";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
@@ -2179,13 +2179,13 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   }
   const analyses = tradingState.strategy === "both"
     ? [
-        ...(timeframe === "1m" ? [analyseAPATopDown(symbol)] : []),
+        ...(timeframe === "5m" ? [analyseAPATopDown(symbol)] : []),
         analyseSMC(candles)
       ]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
         : tradingState.strategy === "apa"
-          ? (timeframe === "1m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry trigger is evaluated on M1", signal: "APA context loaded — waiting for final M1 entry analysis", supply: null, demand: null })
+          ? (timeframe === "5m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry confirmation is evaluated on M5", signal: "APA context loaded — waiting for final M5 entry analysis", supply: null, demand: null })
           : analyseSMC(candles)];
   const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
   const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
@@ -3278,9 +3278,11 @@ function scanSelectedMarkets() {
   // If scanning stops or disconnects mid-batch, retry this same market slice.
   tradingState.pendingScanCursor = batch.nextCursor;
   const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
-  const frames = (tradingState.strategy === "apa" || tradingState.strategy === "both")
-    ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]
-    : modeFrames;
+  const frames = tradingState.strategy === "apa"
+    ? [...APA_REQUIRED_FRAMES]
+    : tradingState.strategy === "both"
+      ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]
+      : modeFrames;
 
   tradingState.scanInProgress = true;
   symbols.forEach(symbol => {

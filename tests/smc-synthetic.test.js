@@ -340,7 +340,7 @@ test("APA higher-timeframe bias requires D1 H4 H1 alignment while M15/M5 remain 
 test("APA M5 trigger requires directional candle, displacement and BOS/MSS/CHoCH",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function isAPAEntryTrigger(");
- const end=source.indexOf("\\n/* APA TOP-DOWN ENGINE",start);
+ const end=source.indexOf("\n/* APA TOP-DOWN ENGINE",start);
  assert.ok(start>=0&&end>start);
  const sandbox={Boolean,Number};vm.runInNewContext(source.slice(start,end)+";isAPAEntryTrigger",sandbox);
  const trigger=sandbox.isAPAEntryTrigger;
@@ -354,7 +354,7 @@ test("APA M5 trigger requires directional candle, displacement and BOS/MSS/CHoCH
 test("APA top-down configuration requires D1 H4 H1 M15 M5 and M5 entry",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  assert.match(source,/APA_REQUIRED_FRAMES = \["1d", "4h", "1h", "15m", "5m"\]/);
- assert.match(source,/M15 " \\+ m15Trend/);
+ assert.match(source,/M15 " \+ m15Trend/);
  assert.match(source,/M5 BOS\/MSS\/CHoCH structure break/);
  assert.match(source,/entryTimeframe = APA_ENTRY_FRAME\.intraday/);
  assert.doesNotMatch(source,/M1 entry trigger/);

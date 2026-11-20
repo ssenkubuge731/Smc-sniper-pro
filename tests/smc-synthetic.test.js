@@ -1072,3 +1072,19 @@ test("Formation zone validity and bounds are stable across repeated evaluations"
                   second.zones.map(z=>({type:z.type,side:z.side,low:z.low,high:z.high,valid:z.valid})));
  assert.deepEqual(first.formations,second.formations);
 });
+
+test("MT5 symbol rotation cursor commits only after the full batch finishes",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function scanMT5MarketData()");
+ const end=app.indexOf("\\nfunction startMT5Scanner",start);
+ assert.ok(start>=0&&end>start,"MT5 scanner function must exist");
+ const fn=app.slice(start,end);
+ assert.match(fn,/const batch=getRotatingSymbolBatch\\(symbols,tradingState\\.mt5ScanCursor,10\\)/);
+ assert.match(fn,/const scanGeneration=tradingState\\.scanGeneration/);
+ assert.match(fn,/if\\(!tradingState\\.running\\|\\|tradingState\\.scanGeneration!==scanGeneration\\)/);
+ assert.match(fn,/tradingState\\.mt5ScanCursor=batch\\.nextCursor/);
+ assert.ok(fn.indexOf("tradingState.mt5ScanCursor=batch.nextCursor")>fn.indexOf("for(const symbol of batch.symbols)"),
+   "cursor must commit after all symbol/timeframe requests");
+ assert.ok(fn.indexOf("tradingState.mt5ScanCursor=batch.nextCursor")>fn.indexOf("renderTimeframeAnalysis(symbol,timeframe)"),
+   "cursor must commit after processing the batch");
+});

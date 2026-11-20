@@ -179,6 +179,22 @@ test("MT5 scanner reports per-symbol/timeframe feed health and always releases s
  assert.match(app,/finally\s*\{\s*tradingState\.mt5ScanInProgress=false;/);
  assert.match(app,/age>90/);
 });
+test("candidate duplicate guard blocks exact repeats and legacy records but allows a new candle",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function hasDuplicateCandidateSignal(");
+ const end=source.indexOf("\nfunction rankCandidateOpportunity(",start);
+ assert.ok(start>=0&&end>start,"pure duplicate guard should exist");
+ const sandbox={Number};
+ vm.runInNewContext(source.slice(start,end)+";hasDuplicateCandidateSignal",sandbox);
+ const duplicate=sandbox.hasDuplicateCandidateSignal;
+ const candidate={signalKey:"EURUSD|smc|intraday|1m|BUY|100",symbol:"EURUSD",strategy:"smc",mode:"intraday",timeframe:"1m",direction:"BUY",candleEpoch:100};
+ const exact={...candidate,status:"OPEN",signalCandleEpoch:100};
+ assert.equal(duplicate([exact],candidate),true,"same key must be blocked");
+ assert.equal(duplicate([{...exact,signalKey:undefined}],candidate),true,"legacy ledger entries must still block repeats");
+ assert.equal(duplicate([{...exact,signalKey:undefined}],{...candidate,candleEpoch:101}),false,"a new candle may create a new candidate");
+ assert.equal(duplicate([{...exact,signalKey:undefined}],{...candidate,strategy:"apa"}),false,"independent engines may retain separate candidates");
+ assert.equal(duplicate([],candidate),false,"empty history must allow a candidate");
+});
 test("Signal coordination deduplicates same strategy/symbol/timeframe/candle but keeps engines independent",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
  const start=source.indexOf("function buildCandidateSignalKey(");

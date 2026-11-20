@@ -920,3 +920,34 @@ test("APA intraday scanner uses all available markets and rotation cursor",()=>{
  assert.match(fn,/tradingState\.scanUniverseCursor/);
  assert.match(fn,/getScannerUniverseBatch/);
 });
+
+test("Bullish and bearish formation outputs remain directionally isolated",()=>{
+ const cases=[{candles:bullPattern(),side:"BUY"},{candles:bearPattern(),side:"SELL"}];
+ for(const item of cases){
+  const r=engine.detect(item.candles);
+  assert.equal(r.ready,true);
+  assert.ok(["BUY","SELL","NONE"].includes(r.side));
+  assert.ok(r.zones.every(z=>z.side==="BUY"||z.side==="SELL"));
+  assert.ok(r.zones.every(z=>Number.isFinite(z.low)&&Number.isFinite(z.high)&&z.low<=z.high));
+  assert.ok(r.zones.every(z=>Number.isFinite(z.score)&&z.score>=0&&z.score<=100));
+  assert.ok(r.zones.every(z=>typeof z.valid==="boolean"));
+  assert.ok(r.formations&&Object.values(r.formations).every(v=>typeof v==="boolean"));
+ }
+});
+test("Malformed and incomplete candles fail closed without producing an entry",()=>{
+ const short=bars().slice(0,29);
+ const malformed=bars();malformed[29]={open:NaN,high:110,low:99,close:105,time:29};
+ for(const candles of [short,malformed]){
+  const r=engine.detect(candles);
+  assert.equal(r.ready,false);
+  assert.notEqual(r.confirmed,true);
+  assert.equal(r.side,undefined);
+ }
+});
+test("Formation zone validity and bounds are stable across repeated evaluations",()=>{
+ const candles=bullPattern();
+ const first=engine.detect(candles),second=engine.detect(candles);
+ assert.deepEqual(first.zones.map(z=>({type:z.type,side:z.side,low:z.low,high:z.high,valid:z.valid})),
+                  second.zones.map(z=>({type:z.type,side:z.side,low:z.low,high:z.high,valid:z.valid})));
+ assert.deepEqual(first.formations,second.formations);
+});

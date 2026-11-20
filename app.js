@@ -2777,6 +2777,16 @@ function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp}) {
   return {authorized:true,reason:"Final entry checks passed.",rr};
 }
 
+function isMarketDataFresh(candles,timeframe,nowEpoch=Math.floor(Date.now()/1000)) {
+  const granularity=GRANULARITY[timeframe];
+  if (!Array.isArray(candles) || !candles.length || !Number.isFinite(granularity) || granularity<=0) return false;
+  const latest=candles.reduce((max,c)=>Math.max(max,Number(c?.epoch)||0),0);
+  if (!latest || !Number.isFinite(Number(nowEpoch))) return false;
+  // Allow up to two candle intervals of lag, with a 2-minute floor for sparse feeds.
+  const tolerance=Math.max(granularity*2,120);
+  return Number(nowEpoch)<=latest+granularity+tolerance;
+}
+
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
@@ -2812,6 +2822,10 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     renderScalpActivity();
   }
   if (!direction) return;
+  if (!isMarketDataFresh(candles,timeframe)) {
+    addResult("ENTRY BLOCKED: "+symbol+" "+timeframe.toUpperCase()+" — market data is stale or unavailable; waiting for fresh candles.");
+    return;
+  }
 
   const entry = Number(result.entry);
   const sl = isScalp ? null : Number(result.sl);

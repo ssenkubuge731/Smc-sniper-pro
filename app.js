@@ -1728,6 +1728,7 @@ function renderNewsCalendar() {
 
 async function loadNewsCalendar(force = false) {
   if (tradingState.newsLoading) return;
+  let refreshSucceeded = false;
   if (!force && Date.now() - tradingState.newsLoadedAt < 15 * 60 * 1000) return;
 
   tradingState.newsLoading = true;
@@ -1748,9 +1749,7 @@ async function loadNewsCalendar(force = false) {
     setText("newsCalendarStatus",
       `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${payload.count ?? payload.events.length} events`);
     renderNewsCalendar();
-    if (tradingState.lastAnalysedSymbol) {
-      analyseMainSelection(tradingState.lastAnalysedSymbol);
-    }
+    refreshSucceeded = true;
   } catch (error) {
     tradingState.newsError = error && error.message ? error.message : "Unknown calendar error";
     tradingState.newsEvents = [];
@@ -1763,6 +1762,11 @@ async function loadNewsCalendar(force = false) {
     setText("newsSignal", "WAIT — no calendar data");
   } finally {
     tradingState.newsLoading = false;
+    // Re-run only after the loading flag is cleared, so analyseNews sees
+    // the newly refreshed calendar as available rather than returning WAIT.
+    if (tradingState.lastAnalysedSymbol) {
+      analyseMainSelection(tradingState.lastAnalysedSymbol);
+    }
   }
 }
 
@@ -1849,6 +1853,10 @@ function analyseNews(symbol, candles) {
   }
 
   const now = Date.now();
+  const nowSeconds = Math.floor(now / 1000);
+  const selectedTimeframe = valueOf("timeframe") || "1m";
+  const candleSeconds = GRANULARITY[selectedTimeframe] || 60;
+  const preReleaseBlackoutMs = 30 * 60 * 1000;
   const recentEvents = tradingState.newsEvents
     .filter(event => {
       const currency = String(event.currency || "").toUpperCase();
@@ -1863,10 +1871,30 @@ function analyseNews(symbol, candles) {
   const upcoming = tradingState.newsEvents
     .filter(event => {
       const currency = String(event.currency || "").toUpperCase();
+      const eventTime = Number(event.ts);
+      const impact = String(event.impact || "").toLowerCase();
       return (currency === pair.base || currency === pair.quote) &&
-        Number(event.ts) * 1000 >= now;
+        Number.isFinite(eventTime) && eventTime * 1000 >= now &&
+        (impact === "high" || impact === "medium");
     })
     .sort((a, b) => Number(a.ts) - Number(b.ts))[0];
+
+  // Do not open a news trade shortly before a matching high/medium-impact
+  // release, even if another event has already produced a recent signal.
+  if (upcoming && Number(upcoming.ts) * 1000 - now <= preReleaseBlackoutMs) {
+    const minutesUntil = Math.max(0, Math.ceil((Number(upcoming.ts) * 1000 - now) / 60000));
+    return {
+      ready: true, strategy: "news", trend: "Upcoming high-impact event blackout",
+      structure: "Entry blocked before scheduled release",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — upcoming news blackout",
+      reasoning: `WAIT on ${pair.pair}: ${upcoming.currency} ${upcoming.title} (${String(upcoming.impact).toUpperCase()}) is scheduled in approximately ${minutesUntil} minute(s). News entries are blocked during the 30-minute pre-release safety window.`,
+      checks: [["Forex pair identified", true], ["30-minute pre-release blackout clear", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
 
   const last = candles[candles.length - 1];
 
@@ -1892,9 +1920,12 @@ function analyseNews(symbol, candles) {
   const eventAgeMinutes = Math.round((now - Number(event.ts) * 1000) / 60000);
   const sourceConfidence = event.confidence || "not supplied";
   const eventSummary = `${event.currency} ${event.title} (${event.impact} impact), ${eventAgeMinutes} minutes ago. Actual: ${event.actual}; forecast: ${event.forecast}.`;
-  const postReleaseCandles = candles.filter(c =>
-    Number(c.epoch) >= Number(event.ts)
-  ).slice(-4);
+  const postReleaseCandles = candles.filter(c => {
+    const candleOpen = Number(c.epoch);
+    return Number.isFinite(candleOpen) &&
+      candleOpen >= Number(event.ts) &&
+      candleOpen + candleSeconds <= nowSeconds;
+  }).slice(-4);
 
   if (postReleaseCandles.length < 3) {
     return {

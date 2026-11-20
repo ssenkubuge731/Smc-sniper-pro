@@ -122,6 +122,40 @@ test("Signal coordination deduplicates same strategy/symbol/timeframe/candle but
  assert.match(source,/record\.signalKey === signalKey/,"existing candidate keys prevent duplicate signal records");
  assert.match(source,/signalKey,\s*symbol, strategy, timeframe, direction/,"new candidate stores its deduplication key");
 });
+test("Opportunity ranking is bounded and uses independent confirmation/model evidence",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function rankCandidateOpportunity(");
+ const end=source.indexOf("\nfunction hasOpposingOpenSignal",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Number,Object,Array,Math};
+ vm.runInNewContext(source.slice(start,end)+";rankCandidateOpportunity",sandbox);
+ const rank=sandbox.rankCandidateOpportunity;
+ assert.deepEqual({...rank({score:70,count:4,entryModels:["A","B"]})},{score:70,confirmations:4,models:2,rank:82});
+ assert.equal(rank({score:150,count:0}).rank,100,"rank must be capped at 100");
+ assert.equal(rank({score:-10,count:0}).rank,0,"rank must not be negative");
+ assert.equal(rank({score:40,confirmations:{a:true,b:false}}).confirmations,1);
+});
+test("Opposing open candidates are blocked across APA, SMC and News on the same symbol",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=source.indexOf("function hasOpposingOpenSignal(");
+ const end=source.indexOf("\nfunction recordCandidateSignal",start);
+ assert.ok(start>=0&&end>start);
+ const sandbox={Array};vm.runInNewContext(source.slice(start,end)+";hasOpposingOpenSignal",sandbox);
+ const conflict=sandbox.hasOpposingOpenSignal;
+ const open=[{status:"OPEN",symbol:"EURUSD",strategy:"apa",direction:"BUY"}];
+ assert.equal(conflict(open,"EURUSD","SELL"),true);
+ assert.equal(conflict(open,"EURUSD","BUY"),false);
+ assert.equal(conflict(open,"GBPUSD","SELL"),false);
+ assert.equal(conflict([{...open[0],status:"TP HIT"}],"EURUSD","SELL"),false);
+});
+test("Signal history and open positions prioritize ranked opportunities and display rank",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ assert.match(source,/opportunityScore: opportunityRank\.score/);
+ assert.match(source,/opportunityRank: opportunityRank\.rank/);
+ assert.match(source,/open\.slice\(\)\.sort\(\(a,b\)=>\(Number\(b\.opportunityRank\)/);
+ assert.match(source,/Opportunity rank:/);
+ assert.match(source,/hasOpposingOpenSignal\(openEntries,symbol,direction\)/);
+});
 test("Neutral candles do not generate confirmed signal",()=>{
  const r=engine.detect(bars(100));assert.equal(r.ready,true);assert.equal(r.confirmed,false);assert.equal(r.side,"NONE");assert.equal(r.entryModels.length,0);
 });

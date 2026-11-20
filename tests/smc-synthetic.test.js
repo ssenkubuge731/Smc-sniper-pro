@@ -1114,3 +1114,17 @@ test("MT5 interrupted scan path has no undefined batch completion flag",()=>{
  assert.match(fn,/if\\(!tradingState\\.running\\|\\|tradingState\\.scanGeneration!==scanGeneration\\)\\s*\\{\\s*return;/);
  assert.match(fn,/tradingState\\.mt5ScanCursor=batch\\.nextCursor/);
 });
+
+test("MT5 market-data fetch retries transient failures with bounded backoff",()=>{
+ const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+ const start=app.indexOf("async function fetchMT5MarketDataWithRetry");
+ const end=app.indexOf("\\nasync function scanMT5MarketData",start);
+ assert.ok(start>=0&&end>start,"retry helper must exist before MT5 scanner");
+ const fn=app.slice(start,end);
+ assert.match(fn,/attempts=3/);
+ assert.match(fn,/response\\.status!==408/);
+ assert.match(fn,/response\\.status!==429/);
+ assert.match(fn,/response\\.status<500/);
+ assert.match(fn,/Math\\.pow\\(2,attempt\\)/);
+ assert.match(app.slice(end,end+5000),/fetchMT5MarketDataWithRetry\\(url,\\{\\},3\\)/);
+});

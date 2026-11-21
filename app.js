@@ -14,12 +14,17 @@ const DERIV_PUBLIC_WS =
 
 const STORAGE_KEY = "smcSniperProSettingsV2";
 const SIGNAL_HISTORY_KEY = "smcSniperProSignalHistoryV1";
+const DEMO_RISK_LOCK_KEY = "smcSniperProDemoRiskLockV1";
 
 const TIMEFRAMES = {
   scalping: ["1m", "5m"],
-  intraday: ["1m", "5m", "15m", "30m", "1h"],
-  swing: ["1h", "4h", "1d"]
+  intraday: ["1m", "5m", "15m", "30m", "1h"]
 };
+
+// APA is intraday-only. D1/H4 are context frames, not Swing trading sessions.
+const APA_REQUIRED_FRAMES = ["1d", "4h", "1h", "15m", "5m"];
+const APA_SETUP_FRAME = { intraday: "15m" };
+const APA_ENTRY_FRAME = { intraday: "5m" };
 
 const GRANULARITY = {
   "1m": 60,
@@ -48,11 +53,19 @@ const tradingState = {
   lastPrices: {},
   candles: {},
   requestContexts: new Map(),
+  candleSubscriptions: new Map(),
   tickSubscriptions: new Map(),
 
   requestId: 1,
   scanTimer: null,
+  mt5ScannerTimer: null,
+  mt5ScanCursor: 0,
+  mt5ScanInProgress: false,
+  mt5FeedHealth: {},
+  mt5LastScanAt: 0,
   scanGeneration: 0,
+  scanUniverseCursor: 0,
+  pendingScanCursor: null,
   scanQueue: [],
   scanQueueTimer: null,
   scanInProgress: false,
@@ -70,7 +83,11 @@ const tradingState = {
   newsError: "",
   newsTimer: null,
   newsLoading: false,
-  lastAnalysedSymbol: ""
+  lastAnalysedSymbol: "",
+  lastMarketDataAt: 0,
+  lastScanAt: 0,
+  lastAnalysisAt: 0,
+  healthMonitorTimer: null
 };
 
 const $ = id => document.getElementById(id);
@@ -184,22 +201,19 @@ function updateMode() {
 
   timeframeSelect.replaceChildren();
 
-  frames.forEach(frame => {
+  const entryFrames = frames.includes("1m") ? frames : ["1m", ...frames];
+  entryFrames.forEach(frame => {
     const option = document.createElement("option");
     option.value = frame;
     option.textContent = frame.toUpperCase();
     timeframeSelect.appendChild(option);
   });
 
-  timeframeSelect.value = frames.includes(previous)
-    ? previous
-    : frames[0];
+  timeframeSelect.value = entryFrames.includes(previous) ? previous : "1m";
 
   const modeInfo = mode === "intraday"
-    ? "Intraday analysis and entry timeframes: M1, M5, M15, M30 and H1"
-    : mode === "scalping"
-      ? "APA scalping scan and selected-entry logic: M1 / M5"
-      : "Swing timeframe set: H1 / H4 / D1";
+    ? "Intraday — APA: D1/H4/H1 → M15 setup → M5 entry; SMC: M1/M5/M15/M30/H1"
+    : "SMC Scalping: M5 setup analysis + M1 entry confirmation";
   setText("timeframeInfo", `${mode.toUpperCase()} — ${modeInfo}`);
 
   updateActiveTimeframes();
@@ -277,6 +291,94 @@ function updateBrokerPanels(sourceId = "brokerType") {
 }
 
 const MT5_PUBLIC_STATUS_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
+const MT5_CONFIG_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/config";
+const MT5_MARKET_DATA_URL = "https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/market-data";
+const BRIDGE_ALLOWED_FRAMES = {
+  scalping: ["1m","5m"],
+  intraday: ["1m","5m","15m","30m","1h"]
+};
+function getScanSymbolsForMode(symbols, mode, strategy) {
+  const clean = [...new Set((Array.isArray(symbols) ? symbols : [])
+    .map(symbol => String(symbol || "").trim()).filter(Boolean))];
+  // SMC Scalping is strictly one user-selected pair; never silently pick one.
+  if (mode === "scalping" && (strategy === "smc" || strategy === "both")) {
+    return clean.length === 1 ? clean : [];
+  }
+  return clean;
+}
+function getRotatingSymbolBatch(symbols, cursor = 0, batchSize = 10) {
+  const clean = [...new Set((Array.isArray(symbols) ? symbols : [])
+    .map(symbol => String(symbol || "").trim()).filter(Boolean))];
+  if (!clean.length) return { symbols: [], nextCursor: 0, total: 0, start: 0 };
+  const size = Math.max(1, Math.min(10, Number(batchSize) || 10));
+  const start = ((Math.floor(Number(cursor) || 0) % clean.length) + clean.length) % clean.length;
+  const count = Math.min(size, clean.length);
+  const batch = Array.from({ length: count }, (_, i) => clean[(start + i) % clean.length]);
+  return { symbols: batch, nextCursor: (start + count) % clean.length, total: clean.length, start };
+}
+function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize = 10) {
+  const clean = getScanSymbolsForMode(symbols, mode, strategy);
+  if (mode !== "intraday") {
+    return { symbols: clean, nextCursor: 0, total: clean.length };
+  }
+  if (!clean.length) return { symbols: [], nextCursor: 0, total: 0 };
+  const size = Math.max(1, Math.min(10, Number(batchSize) || 10));
+  const start = ((Math.floor(Number(cursor) || 0) % clean.length) + clean.length) % clean.length;
+  // Do not wrap within a batch: finish the tail of the universe, then wrap next cycle.
+  const count = Math.min(size, clean.length - start);
+  const batch = clean.slice(start, start + count);
+  return { symbols: batch, nextCursor: (start + batch.length) % clean.length, total: clean.length };
+}
+function getBridgeFrames(mode,strategy){
+  if(mode==="scalping") return [...BRIDGE_ALLOWED_FRAMES.scalping];
+  if(strategy==="apa") return [...APA_REQUIRED_FRAMES];
+  if(strategy==="both") return [...new Set([...BRIDGE_ALLOWED_FRAMES.intraday,...APA_REQUIRED_FRAMES])];
+  return [...BRIDGE_ALLOWED_FRAMES.intraday];
+}
+function renderBridgeTimeframes(){
+  const mode=valueOf("bridgeMode")||"scalping",box=$("bridgeTimeframes");
+  if(!box)return;
+  box.replaceChildren();
+  (getBridgeFrames(mode,valueOf("bridgeStrategy"))).forEach(tf=>{
+    const label=document.createElement("label");label.className="check";
+    const input=document.createElement("input");input.type="checkbox";input.value=tf;input.checked=true;input.dataset.bridgeTf="1";
+    label.appendChild(input);label.appendChild(document.createTextNode(tf.toUpperCase()));
+    box.appendChild(label);
+  });
+}
+async function syncMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim(),mode=valueOf("bridgeMode"),strategy=valueOf("bridgeStrategy");
+  const symbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const timeframes=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private bridge token (minimum 24 characters) locally.");return;}
+  if(!symbols.length){setText("bridgeConfigStatus","Enter at least one MT5 symbol name.");return;}
+  if(!timeframes.length){setText("bridgeConfigStatus","Select at least one allowed timeframe.");return;}
+  const payload={version:1,mode,strategy,symbols,timeframes,
+    riskPercent:Number(valueOf("bridgeRisk")),maxOpenTrades:Number(valueOf("bridgeMaxTrades")),
+    dailyLossLimitPercent:Number(valueOf("bridgeDailyLoss")),maxConsecutiveLosses:Number(valueOf("bridgeLossStreak")),
+    demoOnly:true,liveLocked:true};
+  setText("bridgeConfigStatus","Sending configuration to the protected cloud bridge…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config rejected (HTTP "+response.status+"): "+(data.error||"unknown error"));return;}
+    setText("bridgeConfigStatus","Synchronized at "+(data.configuration?.updatedAt||"time unavailable")+". Demo-only; live locked. No trade commands were sent.");
+  }catch(error){setText("bridgeConfigStatus","Sync failed: "+(error?.message||"network error")+" — check Worker deployment/CORS.");}
+}
+async function refreshMT5BridgeConfig(){
+  const token=valueOf("bridgeToken").trim();
+  if(token.length<24){setText("bridgeConfigStatus","Enter the private token locally to check protected configuration.");return;}
+  setText("bridgeConfigStatus","Checking cloud configuration…");
+  try{
+    const response=await fetch(MT5_CONFIG_URL,{method:"GET",headers:{"Authorization":"Bearer "+token},cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){setText("bridgeConfigStatus","Config status check failed (HTTP "+response.status+").");return;}
+    if(!data.configuration){setText("bridgeConfigStatus","Cloud bridge is reachable; no configuration has been saved.");return;}
+    const c=data.configuration;
+    setText("bridgeConfigStatus","Saved "+(c.updatedAt||"")+" | "+c.mode+" | "+c.strategy.toUpperCase()+" | "+c.symbols.join(", ")+" | "+c.timeframes.map(x=>x.toUpperCase()).join(", ")+" | demo-only / live-locked.");
+  }catch(error){setText("bridgeConfigStatus","Config check failed: "+(error?.message||"network error"));}
+}
+"https://smc-sniper-mt5-bridge.henryssenkubuge38.workers.dev/mt5/public-status";
 
 async function refreshMT5BridgeStatus() {
   setText("mt5BridgeStatus", "Checking cloud bridge…");
@@ -300,6 +402,37 @@ async function refreshMT5BridgeStatus() {
     setText("mt5BridgeStatus", "Cloud bridge status could not be reached. Check the Worker deployment.");
     setText("mt5LastHeartbeat", "Status check failed: " + (error && error.message ? error.message : "network error"));
   }
+}
+
+function updateRuntimeHealth() {
+  const now = Date.now();
+  const dataAge = tradingState.lastMarketDataAt ? Math.max(0, Math.floor((now - tradingState.lastMarketDataAt) / 1000)) : null;
+  const scanAge = tradingState.lastScanAt ? Math.max(0, Math.floor((now - tradingState.lastScanAt) / 1000)) : null;
+  const analysisAge = tradingState.lastAnalysisAt ? Math.max(0, Math.floor((now - tradingState.lastAnalysisAt) / 1000)) : null;
+  const broker = tradingState.broker === "mt5"
+    ? (valueOf("mt5BridgeStatus") || "MT5 bridge status not checked")
+    : (isSocketOpen() ? "Deriv WebSocket connected" : "Deriv WebSocket disconnected");
+  const dataStatus = dataAge === null ? "No valid market data received in this session"
+    : dataAge <= 90 ? "Market data fresh (" + dataAge + "s since last valid update)"
+    : "Market data stale (" + dataAge + "s since last valid update)";
+  const scanStatus = !tradingState.running ? "Scanner stopped"
+    : scanAge === null ? "Scanner running; no completed scan cycle recorded"
+    : scanAge > 180 ? "SCANNER STALLED — no completed scan cycle for " + scanAge + "s"
+    : "Scanner active; last completed cycle " + scanAge + "s ago";
+  const analysisStatus = analysisAge === null ? "No candle analysis completed in this session"
+    : analysisAge > 180 ? "Analysis activity stale (" + analysisAge + "s ago)"
+    : "Analysis active (" + analysisAge + "s since last candle analysis)";
+  setText("runtimeBrokerHealth", "Broker: " + broker);
+  setText("runtimeDataHealth", dataStatus);
+  setText("runtimeScannerHealth", scanStatus + " • " + analysisStatus);
+  setText("runtimeSafetyHealth", tradingState.demo && tradingState.liveLocked
+    ? "Safety: DEMO ONLY • LIVE LOCKED"
+    : "Safety warning: demo/live lock state requires review");
+  const stalled = tradingState.running && (scanAge === null || scanAge > 180);
+  const staleData = dataAge !== null && dataAge > 90;
+  setText("runtimeHealthStatus", !tradingState.demo || !tradingState.liveLocked || staleData || stalled
+    ? "Runtime health: WARNING — review the items below"
+    : "Runtime health: Monitoring (connection and data status shown separately)");
 }
 
 function prepareMT5Connection() {
@@ -431,6 +564,7 @@ function connectDeriv() {
     tradingState.derivConnected = false;
     tradingState.derivSocket = null;
     tradingState.requestContexts.clear();
+    tradingState.candleSubscriptions.clear();
     tradingState.tickSubscriptions.clear();
 
     if (tradingState.pingTimer) {
@@ -542,8 +676,13 @@ function handleDerivMessage(data) {
 
   if (data.error) {
     const message = data.error.message || "Unknown API error";
+    const failedContext = data.req_id ? tradingState.requestContexts.get(data.req_id) : null;
+    if (data.req_id) tradingState.requestContexts.delete(data.req_id);
+    const contextLabel = failedContext
+      ? " " + failedContext.symbol + " " + failedContext.timeframe.toUpperCase()
+      : "";
     setConnectionStatus("Deriv API: " + message);
-    addResult(message);
+    addResult("Market-data request failed" + contextLabel + ": " + message);
     return;
   }
 
@@ -560,16 +699,20 @@ function handleDerivMessage(data) {
     return;
   }
 
-  const context = data.req_id
-    ? tradingState.requestContexts.get(data.req_id)
-    : null;
+  const context = (data.req_id ? tradingState.requestContexts.get(data.req_id) : null) ||
+    (data.subscription?.id ? tradingState.candleSubscriptions.get(data.subscription.id) : null);
 
-  if (data.req_id) {
+  if (data.req_id && !data.subscription?.id) {
     tradingState.requestContexts.delete(data.req_id);
+  }
+  if (data.subscription?.id && context && (data.msg_type === "candles" || data.msg_type === "ohlc")) {
+    tradingState.candleSubscriptions.set(data.subscription.id, context);
   }
 
   if (data.msg_type === "candles" && Array.isArray(data.candles)) {
     if (!context) return;
+    tradingState.lastMarketDataAt = Date.now();
+    tradingState.lastAnalysisAt = tradingState.lastMarketDataAt;
 
     const key = candleKey(context.symbol, context.timeframe);
 
@@ -579,9 +722,9 @@ function handleDerivMessage(data) {
       .slice(-150);
 
     renderTimeframeAnalysis(context.symbol, context.timeframe);
-    if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+    if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
       const smcRecord = window.SMCIntradayEngine.evaluate(
-        context.symbol, context.timeframe, tradingState.candles[key]
+        context.symbol, context.timeframe, tradingState.candles[key], tradingState.mode
       );
       publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
       renderSMCMultiFrame(context.symbol);
@@ -590,16 +733,20 @@ function handleDerivMessage(data) {
   }
 
   if (data.msg_type === "ohlc" && data.ohlc && context) {
+    tradingState.lastMarketDataAt = Date.now();
+    tradingState.lastAnalysisAt = tradingState.lastMarketDataAt;
     const key = candleKey(context.symbol, context.timeframe);
     const list = tradingState.candles[key] || [];
     const candle = normalizeCandle(data.ohlc);
 
     if (isValidCandle(candle)) {
-      list.push(candle);
+      const existing = list.findIndex(item => item.epoch === candle.epoch);
+      if (existing >= 0) list[existing] = candle;
+      else list.push(candle);
       tradingState.candles[key] = list.slice(-150);
-      if (tradingState.strategy === "smc" && window.SMCIntradayEngine) {
+      if ((tradingState.strategy === "smc" || tradingState.strategy === "both") && window.SMCIntradayEngine) {
         const smcRecord = window.SMCIntradayEngine.evaluate(
-          context.symbol, context.timeframe, tradingState.candles[key]
+          context.symbol, context.timeframe, tradingState.candles[key], tradingState.mode
         );
         publishSMCSignal(context.symbol, context.timeframe, smcRecord, tradingState.candles[key]);
         renderSMCMultiFrame(context.symbol);
@@ -630,9 +777,11 @@ function renderSMCFormationMonitor(record) {
     return;
   }
   const f=record.formations||{};
-  const labels=[["BOS","BOS"],["MSS","MSS"],["CHoCH","CHoCH"],["liquiditySweep","Liquidity sweep"],["EQH","Equal highs"],["EQL","Equal lows"],["FVG","FVG"],["IFVG","IFVG"],["orderBlock","Order Block"],["breakerBlock","Breaker Block"],["displacement","Displacement"]];
+  const labels=[["BOS","BOS"],["MSS","MSS"],["CHoCH","CHoCH"],["liquiditySweep","Liquidity sweep"],["EQH","Equal highs"],["EQL","Equal lows"],["FVG","FVG"],["IFVG","IFVG"],["supply","Supply"],["demand","Demand"],["orderBlock","Order Block"],["breakerBlock","Breaker Block"],["displacement","Displacement"]];
   const found=labels.filter(([k])=>f[k]).map(([,v])=>v);
-  setText("smcFormationStatus","Detected formations ("+record.timeframe+"): "+(found.length?found.join(" • "):"none on latest candle"));
+  const confirmations=record.count??Object.values(record.confirmations||{}).filter(Boolean).length;
+  const models=Array.isArray(record.entryModels)?record.entryModels:[];
+  setText("smcFormationStatus","SMC formations ("+record.timeframe+"): "+(found.length?found.join(" • "):"none detected")+" | Independent confirmations: "+confirmations+" | Models: "+(models.length?models.join(" / "):"none"));
   const zones=(record.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
   setText("smcZoneStatus","Zones: "+(zones.length?zones.join(" | "):"none detected")+"\n"+(record.note||""));
 }
@@ -641,46 +790,60 @@ function renderSMCEntryPlan(symbol) {
   const output = $("smcEntryPlanStatus");
   if (!window.SMCIntradayEngine || !output) return;
   const lot = Number(valueOf("lotSize")) || 0.01;
-  const frames = window.SMCIntradayEngine.frames;
+  const frames = window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
   const fmt = value => Number(value).toPrecision(7);
   const lines = frames.map(timeframe => {
     const record = window.SMCIntradayEngine.state.latest.get(symbol + "|" + timeframe);
     if (!record) return timeframe.toUpperCase() + " — waiting for candle analysis";
     if (!record.ready) return timeframe.toUpperCase() + " — " + (record.status || "waiting for enough candles");
     if (!record.confirmed) return timeframe.toUpperCase() + " — scanning; no confirmed entry yet";
-    const candles = tradingState.candles[symbol + "|" + timeframe] || [];
-    const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-    if (!plan) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — plan needs more candle data";
-    if (plan.blocked) return timeframe.toUpperCase() + " " + record.side + " CONFIRMED — SL/TP held: " + plan.reason;
-    return timeframe.toUpperCase() + " " + plan.side +
-      " | Entry " + fmt(plan.entry) +
-      " | SL " + fmt(plan.sl) +
-      " | TP1 " + fmt(plan.tp1) +
-      " | TP2 " + fmt(plan.tp2) +
-      " | TP3 " + fmt(plan.tp3) +
-      " | Lot " + lot +
-      " | POI " + plan.zone + " (" + plan.zoneStatus + ")";
+    const plan = record.tradePlan;
+    if (!plan) return timeframe.toUpperCase() + " " + record.side + " — trade plan unavailable; WAIT";
+    if (plan.blocked || !record.tradeReady) return timeframe.toUpperCase() + " " + record.side + " — NOT TRADE-READY; WAIT: " + (plan.reason || "plan validation failed");
+    return [
+      timeframe.toUpperCase() + " " + plan.side,
+      "Entry " + fmt(plan.entry),
+      "SL " + fmt(plan.sl),
+      "TP (structure) " + fmt(plan.tp),
+      "R:R " + plan.rr.toFixed(2) + "R",
+      "Target " + plan.targetSource,
+      "Lot " + lot,
+      "POI " + plan.zone + " (" + plan.zoneStatus + ")"
+    ].join(" | ");
   });
   output.style.whiteSpace = "pre-line";
   setText("smcEntryPlanStatus",
-    "SMC INTRADAY — " + symbol + " — each timeframe is calculated independently.\n" +
+    "SMC " + tradingState.mode.toUpperCase() + " — " + symbol + " — each timeframe is calculated independently.\n" +
     "DEMO PREVIEW — fixed lot " + lot + " per qualifying entry.\n" +
     lines.join("\n") +
-    "\nSL is based on that timeframe's POI/structure + ATR buffer; TP1/TP2/TP3 = 1.5R/2R/3R. " +
+    "\nEach timeframe uses its own POI/structure invalidation for SL and nearest opposing structure/liquidity for TP. Minimum reward-to-risk: 2R. " +
     "A timeframe only receives levels after its own setup is confirmed and a valid reacting/touching POI is available.");
 }
+
 function renderSMCMultiFrame(symbol) {
   if (!window.SMCIntradayEngine) return;
-  const rows=window.SMCIntradayEngine.frames.map(tf=>{
+  const frames=window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
+  const rows=frames.map(tf=>{
     const r=window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf);
     return tf+": "+(r?(r.confirmed?r.side+" CONFIRMED ("+r.score+"/100)":r.ready?"no setup":"waiting for candles"):"waiting for candles");
   });
-  setText("smcFormationStatus","SMC timeframes — "+symbol+": "+rows.join(" | "));
-  const best=window.SMCIntradayEngine.best(symbol);
-  setText("smcEngineStatus",best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes");
-  const all=window.SMCIntradayEngine.frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const best=window.SMCIntradayEngine.best(symbol,frames);
+  setText("smcEngineStatus",(best?"Best SMC: "+best.side+" "+best.timeframe.toUpperCase()+" • "+best.score+"/100":"No confirmed SMC setup across scanned timeframes")+" | "+rows.join(" | "));
+  const all=frames.map(tf=>window.SMCIntradayEngine.state.latest.get(symbol+"|"+tf)).filter(Boolean);
+  const formationRecord=best||all.slice().reverse().find(record=>record&&record.ready)||null;
+  renderSMCFormationMonitor(formationRecord);
   const zones=all.flatMap(r=>(r.zones||[]).map(z=>({...z,timeframe:r.timeframe}))).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,12);
-  setText("smcZoneStatus",zones.length?"Top ranked POIs: "+zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"Zones: none currently detected");
+  const lifecycleZones=(formationRecord?.zones||[]).map(z=>z.type+" "+z.side+" ["+z.low+"–"+z.high+"] "+z.status);
+  const lifecycleNote=formationRecord?.note||"Waiting for a confirmed SMC formation.";
+  const rankedPoiText=zones.length?zones.map(z=>tfZone(z.timeframe,z)).join(" | "):"none currently detected";
+  setText("smcZoneStatus",
+    "Zone lifecycle ("+(formationRecord?.timeframe||"latest") + "): "+
+    (lifecycleZones.length?lifecycleZones.join(" | "):"none detected")+
+    " | "+lifecycleNote+"\nTop ranked POIs: "+rankedPoiText);
   renderSMCEntryPlan(symbol);
 }
 function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"–"+z.high+"] rank "+Math.round(z.score||0)+"/100 ("+(z.tests||0)+" tests)";}
@@ -688,15 +851,20 @@ function tfZone(tf,z){return tf+" "+z.type+" "+z.side+" "+z.status+" ["+z.low+"�
 // Each SMC timeframe can publish its own demo signal independently.
 // This records a signal preview only; it never sends a broker order.
 function publishSMCSignal(symbol, timeframe, record, candles) {
-  if (!record || !record.confirmed || !window.SMCIntradayEngine) return;
-  const plan = window.SMCIntradayEngine.makeEntryPlan(record, candles, 2);
-  if (!plan || plan.blocked) return;
+  if (!window.SMCIntradayEngine) return;
+  const allowedFrames = window.SMCIntradayEngine.framesForMode
+    ? window.SMCIntradayEngine.framesForMode(tradingState.mode)
+    : window.SMCIntradayEngine.frames;
+  // APA may request H4/D1 context candles, but those are never SMC entries.
+  if (!allowedFrames.includes(timeframe)) return;
+  if (!record || !record.confirmed || !record.tradeReady || !record.tradePlan) return;
+  const plan = record.tradePlan;
   recordCandidateSignal(symbol, timeframe, {
     strategy: "smc",
     signal: plan.side + " — SMC " + timeframe.toUpperCase() + " confirmed",
     entry: plan.entry,
     sl: plan.sl,
-    tp: plan.tp2,
+    tp: plan.tp,
     trend: plan.side,
     reasoning: record.entryModels.join(" | ")
   }, candles);
@@ -866,12 +1034,29 @@ function isValidCandle(candle) {
 function requestCandles(symbol, timeframe) {
   const granularity = GRANULARITY[timeframe];
   if (!granularity) return;
+  const subscribed = [...tradingState.candleSubscriptions.values()].some(
+    context => context.symbol === symbol && context.timeframe === timeframe
+  );
+  const queued = tradingState.scanQueue.some(job => job.symbol === symbol && job.timeframe === timeframe);
+  if (subscribed || queued) return;
 
   tradingState.scanQueue.push({ symbol, timeframe, granularity });
   processScanQueue();
 }
 
+function commitCompletedScanBatch(state) {
+  if (!state || !Number.isInteger(state.pendingScanCursor)) return false;
+  state.scanUniverseCursor = state.pendingScanCursor;
+  state.pendingScanCursor = null;
+  return true;
+}
+function discardPendingScanBatch(state) {
+  if (!state) return;
+  state.pendingScanCursor = null;
+}
+
 function clearScanQueue() {
+  discardPendingScanBatch(tradingState);
   tradingState.scanQueue.length = 0;
   if (tradingState.scanQueueTimer) {
     clearInterval(tradingState.scanQueueTimer);
@@ -891,9 +1076,11 @@ function processScanQueue() {
 
     const job = tradingState.scanQueue.shift();
     if (!job) {
+      commitCompletedScanBatch(tradingState);
       clearInterval(tradingState.scanQueueTimer);
       tradingState.scanQueueTimer = null;
       tradingState.scanInProgress = false;
+      tradingState.lastScanAt = Date.now();
       return;
     }
 
@@ -903,7 +1090,8 @@ function processScanQueue() {
       count: 100,
       end: "latest",
       style: "candles",
-      granularity: job.granularity
+      granularity: job.granularity,
+      subscribe: 1
     }, { symbol: job.symbol, timeframe: job.timeframe });
   }, 500);
 }
@@ -1408,6 +1596,8 @@ function getAPASequence(candles, poi, direction) {
     return { swept: true, confirmed: Boolean(structureBreak && displacement), sweepIndex: i,
       sweepExtreme: direction === "bullish" ? sweep.low : sweep.high,
       sweepLevel: direction === "bullish" ? poolLow : poolHigh,
+      confirmationEpoch: Number(confirm.epoch),
+      setupHigh: Number(confirm.high), setupLow: Number(confirm.low),
       structureLabel: structureBreak
         ? (direction === "bullish" ? "Bullish BOS after sell-side sweep" : "Bearish BOS after buy-side sweep")
         : "Sweep detected — waiting for later BOS/MSS",
@@ -1500,9 +1690,108 @@ function analyseAPA(entryCandles, higherCandles, lowerCandles) {
     breakerFound: false, demandSupport: nearDemand, supplyResistance: nearSupply,
     structureDetails: structure, fvgDetails: getFVGState(confirmedEntry),
     orderBlock: higherTrend === "Bullish" ? bullishOB : bearishOB,
+    apaSequence: buyReady ? bullishSequence : sellReady ? bearishSequence : null,
     displacement: bullishSequence.displacement || bearishSequence.displacement };
 }
 
+
+function isAPATrendStackAligned(direction,trends) {
+  const expected=direction==="BUY"?"Bullish":direction==="SELL"?"Bearish":null;
+  // Only D1/H4/H1 are the directional context stack. Entry timeframes
+  // M15/M5 have their own setup/trigger rules and are not forced to trend-align.
+  return Boolean(expected&&Array.isArray(trends)&&trends.length===3&&trends.every(value=>value===expected));
+}
+function isAPAM5PairedTrigger(direction,m15Setup,m5Candle,structure,displacement,invalidation={}) {
+  if (!m15Setup || !m5Candle || !Number.isFinite(Number(m15Setup.epoch)) ||
+      !Number.isFinite(Number(m5Candle.epoch)) || !structure || !displacement) return false;
+  const setupHigh=Number(m15Setup.high), setupLow=Number(m15Setup.low);
+  const m5Open=Number(m5Candle.open), m5High=Number(m5Candle.high),
+    m5Low=Number(m5Candle.low), m5Close=Number(m5Candle.close);
+  if (![setupHigh,setupLow,m5Open,m5High,m5Low,m5Close].every(Number.isFinite) ||
+      setupHigh < setupLow || m5High < m5Low || m5High < Math.max(m5Open,m5Close) ||
+      m5Low > Math.min(m5Open,m5Close)) return false;
+  // Explicit invalidation flag or price crossing the invalidation level cancels the setup.
+  if (invalidation.invalidated === true) return false;
+  const invalidationLevel=Number(invalidation.level);
+  const currentPrice=Number(invalidation.currentPrice);
+  if (Number.isFinite(invalidationLevel) && Number.isFinite(currentPrice) &&
+      ((direction==="BUY" && currentPrice<=invalidationLevel) ||
+       (direction==="SELL" && currentPrice>=invalidationLevel))) return false;
+  const setupCloseEpoch = Number(m15Setup.epoch) + 15 * 60;
+  const m5Epoch = Number(m5Candle.epoch);
+  if (m5Epoch < setupCloseEpoch || m5Epoch > setupCloseEpoch + 15 * 60) return false;
+  const breaksSetup = direction === "BUY"
+    ? m5Close > setupHigh && Boolean(structure.bosUp || structure.mssUp || structure.chochUp)
+    : direction === "SELL"
+      ? m5Close < setupLow && Boolean(structure.bosDown || structure.mssDown || structure.chochDown)
+      : false;
+  const candleAgrees = direction === "BUY" ? m5Close > m5Open
+    : direction === "SELL" ? m5Close < m5Open : false;
+  return Boolean(breaksSetup && candleAgrees);
+}
+function isAPAEntryTrigger(direction,lastCandle,structure,displacement) {
+  if(!lastCandle||!structure||!displacement)return false;
+  const bullish=direction==="BUY"&&Number(lastCandle.close)>Number(lastCandle.open);
+  const bearish=direction==="SELL"&&Number(lastCandle.close)<Number(lastCandle.open);
+  const structureBreak=direction==="BUY"
+    ? Boolean(structure.bosUp||structure.mssUp||structure.chochUp)
+    : direction==="SELL"
+      ? Boolean(structure.bosDown||structure.mssDown||structure.chochDown)
+      : false;
+  return Boolean((bullish||bearish)&&structureBreak);
+}
+
+/* APA TOP-DOWN ENGINE: D1 -> H4 -> H1 context; M15 setup -> M5 entry confirmation. */
+function analyseAPATopDown(symbol) {
+  if (tradingState.mode !== "intraday") {
+    return { ready: false, strategy: "apa", signal: "APA is Intraday-only — select Intraday to analyse APA", entry: null, sl: null, tp: null, reasoning: "APA does not generate Scalping or Swing signals." };
+  }
+  const setupTimeframe = APA_SETUP_FRAME.intraday;
+  const entryTimeframe = APA_ENTRY_FRAME.intraday;
+  const daily = tradingState.candles[candleKey(symbol, "1d")] || [];
+  const h4 = tradingState.candles[candleKey(symbol, "4h")] || [];
+  const h1 = tradingState.candles[candleKey(symbol, "1h")] || [];
+  const setup = tradingState.candles[candleKey(symbol, setupTimeframe)] || [];
+  const m5 = tradingState.candles[candleKey(symbol, entryTimeframe)] || [];
+  const closed = candles => Array.isArray(candles) ? candles.slice(0, -1) : [];
+  const d1Trend = getTrend(closed(daily)), h4Trend = getTrend(closed(h4)), h1Trend = getTrend(closed(h1));
+  const m15Trend = getTrend(closed(setup)), m5Trend = getTrend(closed(m5));
+  const enough = closed(daily).length >= 12 && closed(h4).length >= 12 &&
+    closed(h1).length >= 12 && closed(setup).length >= 20 && closed(m5).length >= 20;
+  const context = [d1Trend,h4Trend,h1Trend];
+  const bullishContext = isAPATrendStackAligned("BUY",context);
+  const bearishContext = isAPATrendStackAligned("SELL",context);
+  // M15 is the APA setup timeframe. M5 is the preferred entry-confirmation timeframe.
+  const base = analyseAPA(setup, daily, m5);
+  const direction = /\bBUY\b/i.test(base.signal || "") ? "BUY" : /\bSELL\b/i.test(base.signal || "") ? "SELL" : "";
+  const m5Closed = closed(m5), m5Structure = getStructure(m5Closed), m5Sweep = getLiquidity(m5Closed), m5Displacement = getDisplacement(m5Closed);
+  const lastM5 = m5Closed[m5Closed.length - 1];
+  const m5BuyTrigger = isAPAEntryTrigger("BUY",lastM5,m5Structure,m5Displacement);
+  const m5SellTrigger = isAPAEntryTrigger("SELL",lastM5,m5Structure,m5Displacement);
+  const contextAligned = direction === "BUY" ? bullishContext : direction === "SELL" ? bearishContext : false;
+  const m15SetupCandle = closed(setup).slice(-1)[0];
+  const pairedTrigger = isAPAM5PairedTrigger(direction, m15SetupCandle, lastM5, m5Structure, m5Displacement, { level: base.sl, currentPrice: lastM5 ? lastM5.close : null });
+  const trigger = Boolean((direction === "BUY" ? m5BuyTrigger : direction === "SELL" ? m5SellTrigger : false) && pairedTrigger);
+  const entry = lastM5 ? Number(lastM5.close) : null, sl = direction ? base.sl : null;
+  const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;
+  const tp = risk > 0 ? (direction === "BUY" ? entry + risk * 2 : entry - risk * 2) : null;
+  const valid = Boolean(enough && base.ready && direction && contextAligned && trigger && Number.isFinite(entry) && risk > 0);
+  const contextText = "D1 " + d1Trend + " / H4 " + h4Trend + " / H1 " + h1Trend + " / M15 " + m15Trend + " / M5 " + m5Trend;
+  const waitReason = !enough ? "Waiting for sufficient CLOSED candles on D1/H4/H1/M15/M5" : !direction ? "M15 has no completed APA setup sequence" : !contextAligned ? "D1/H4/H1 directional context is not aligned" : !trigger ? "Waiting for a fresh M5 BOS/MSS/CHoCH and displacement that breaks the confirmed M15 setup candle" : "APA sequence confirmed";
+  return { ...base, ready: true, strategy: "apa", setupTimeframe, entryTimeframe, trend: contextText,
+    signal: valid ? "Potential APA " + direction + " — M15 setup and M5 trigger confirmed" : "APA WAIT — " + waitReason,
+    entry: valid ? entry : null, sl: valid ? sl : null, tp: valid ? tp : null, invalidation: valid ? sl : null, riskReward: valid && risk > 0 ? 2 : null,
+    checks: [["D1 trend/context", d1Trend === (direction === "BUY" ? "Bullish" : "Bearish")],
+      ["H4 trend alignment", h4Trend === (direction === "BUY" ? "Bullish" : "Bearish")],
+      ["H1 trend alignment", h1Trend === (direction === "BUY" ? "Bullish" : "Bearish")],
+      ["M15 APA setup: POI sweep → later BOS/MSS → displacement", Boolean(direction && /confirmed/i.test(base.signal || ""))],
+      ["M5 directional displacement", Boolean(direction && m5Displacement && (direction === "BUY" ? lastM5?.close > lastM5?.open : lastM5?.close < lastM5?.open))],
+      ["M5 BOS/MSS/CHoCH structure break", Boolean(direction && (direction === "BUY" ? (m5Structure.bosUp || m5Structure.mssUp || m5Structure.chochUp) : (m5Structure.bosDown || m5Structure.mssDown || m5Structure.chochDown)))],
+      ["M5 trigger breaks the confirmed M15 setup candle within 15 minutes", pairedTrigger],
+      ["M5 entry trigger", valid]],
+    reasoning: "Top-down: D1/H4/H1 directional context → M15 APA POI/sweep/BOS setup → M5 directional structure break plus displacement. " + contextText + ". " + waitReason + ". " + (base.reasoning || ""),
+    m5Structure, m5Sweep, m5Displacement, pairedTrigger };
+}
 
 /* =========================================================
    NEWS TRADING — SEPARATE FOREX NEWS STRATEGY
@@ -1530,9 +1819,14 @@ function getForexPairCurrencies(symbol) {
     : null;
 }
 
-function getNewsCurrenciesForRequest() {
+function getNewsCurrenciesForRequest(symbols = null) {
+  const requestSymbols = Array.isArray(symbols)
+    ? symbols
+    : tradingState.mode === "intraday"
+      ? tradingState.availableSymbols.map(item => item.symbol)
+      : [...tradingState.selectedSymbols];
   const currencies = new Set();
-  tradingState.selectedSymbols.forEach(symbol => {
+  requestSymbols.forEach(symbol => {
     const pair = getForexPairCurrencies(symbol);
     if (pair) {
       currencies.add(pair.base);
@@ -1540,6 +1834,43 @@ function getNewsCurrenciesForRequest() {
     }
   });
   return currencies.size ? [...currencies].join(",") : "";
+}
+
+function hasNewsValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+function normalizeNewsCalendarEvents(events, nowMs = Date.now()) {
+  if (!Array.isArray(events)) throw new Error("Calendar response did not contain an events list");
+  const nowSeconds=Math.floor(nowMs/1000);
+  const unique=new Map();
+  for(const raw of events){
+    if(!raw||typeof raw!=="object")continue;
+    const currency=String(raw.currency||"").trim().toUpperCase();
+    const impact=String(raw.impact||"").trim().toLowerCase();
+    const title=String(raw.title||"").trim();
+    let timestamp=typeof raw.ts==="number"?raw.ts:
+      (typeof raw.ts==="string"&&raw.ts.trim()!==""?Number(raw.ts):NaN);
+    if(!Number.isFinite(timestamp)&&raw.date){
+      const parsed=Date.parse(raw.date);
+      if(Number.isFinite(parsed))timestamp=parsed/1000;
+    }
+    // Accept Unix milliseconds as well as seconds, then store seconds consistently.
+    if(Number.isFinite(timestamp)&&timestamp>1e12)timestamp=Math.floor(timestamp/1000);
+    if(!NEWS_CURRENCIES.has(currency)||!["high","medium"].includes(impact)||
+       !title||!Number.isFinite(timestamp)||timestamp<=0)continue;
+    // Keep the provider's requested horizon plus the recent-release window only.
+    if(timestamp<nowSeconds-2*60*60||timestamp>nowSeconds+3*24*60*60)continue;
+    const event={
+      ...raw,ts:Math.floor(timestamp),currency,impact,title,
+      actual:hasNewsValue(raw.actual)?String(raw.actual).trim():"",
+      forecast:hasNewsValue(raw.forecast)?String(raw.forecast).trim():"",
+      status:String(raw.status||"scheduled").trim().toLowerCase(),
+      confidence:String(raw.confidence||"").trim().toLowerCase()
+    };
+    const key=[currency,event.ts,title.toLowerCase()].join("|");
+    unique.set(key,event);
+  }
+  return [...unique.values()].sort((a,b)=>Number(a.ts)-Number(b.ts));
 }
 
 function renderNewsCalendar() {
@@ -1579,6 +1910,7 @@ function renderNewsCalendar() {
 
 async function loadNewsCalendar(force = false) {
   if (tradingState.newsLoading) return;
+  let refreshSucceeded = false;
   if (!force && Date.now() - tradingState.newsLoadedAt < 15 * 60 * 1000) return;
 
   tradingState.newsLoading = true;
@@ -1593,15 +1925,17 @@ async function loadNewsCalendar(force = false) {
     if (!payload || !Array.isArray(payload.events)) {
       throw new Error("Calendar response did not contain an events list");
     }
-    tradingState.newsEvents = payload.events;
+    const normalizedEvents=normalizeNewsCalendarEvents(payload.events);
+    if(payload.events.length>0&&!normalizedEvents.length){
+      throw new Error("Calendar returned events, but none passed timestamp, currency and impact validation");
+    }
+    tradingState.newsEvents = normalizedEvents;
     tradingState.newsLoadedAt = Date.now();
     tradingState.newsError = "";
     setText("newsCalendarStatus",
-      `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${payload.count ?? payload.events.length} events`);
+      `Updated ${new Date(tradingState.newsLoadedAt).toLocaleTimeString()} — ${normalizedEvents.length} valid high/medium-impact events`);
     renderNewsCalendar();
-    if (tradingState.lastAnalysedSymbol) {
-      analyseMainSelection(tradingState.lastAnalysedSymbol);
-    }
+    refreshSucceeded = true;
   } catch (error) {
     tradingState.newsError = error && error.message ? error.message : "Unknown calendar error";
     tradingState.newsEvents = [];
@@ -1614,6 +1948,11 @@ async function loadNewsCalendar(force = false) {
     setText("newsSignal", "WAIT — no calendar data");
   } finally {
     tradingState.newsLoading = false;
+    // Re-run only after the loading flag is cleared, so analyseNews sees
+    // the newly refreshed calendar as available rather than returning WAIT.
+    if (tradingState.lastAnalysedSymbol) {
+      analyseMainSelection(tradingState.lastAnalysedSymbol);
+    }
   }
 }
 
@@ -1700,24 +2039,49 @@ function analyseNews(symbol, candles) {
   }
 
   const now = Date.now();
+  const nowSeconds = Math.floor(now / 1000);
+  const selectedTimeframe = valueOf("timeframe") || "1m";
+  const candleSeconds = GRANULARITY[selectedTimeframe] || 60;
+  const preReleaseBlackoutMs = 30 * 60 * 1000;
   const recentEvents = tradingState.newsEvents
     .filter(event => {
       const currency = String(event.currency || "").toUpperCase();
       const age = now - Number(event.ts) * 1000;
       return (currency === pair.base || currency === pair.quote) &&
         Number.isFinite(Number(event.ts)) &&
+        ["high","medium"].includes(String(event.impact||"").toLowerCase()) &&
         age >= 0 && age <= 2 * 60 * 60 * 1000 &&
-        event.actual && event.forecast;
+        hasNewsValue(event.actual) && hasNewsValue(event.forecast);
     })
     .sort((a, b) => Number(b.ts) - Number(a.ts));
 
   const upcoming = tradingState.newsEvents
     .filter(event => {
       const currency = String(event.currency || "").toUpperCase();
+      const eventTime = Number(event.ts);
+      const impact = String(event.impact || "").toLowerCase();
       return (currency === pair.base || currency === pair.quote) &&
-        Number(event.ts) * 1000 >= now;
+        Number.isFinite(eventTime) && eventTime * 1000 >= now &&
+        (impact === "high" || impact === "medium");
     })
     .sort((a, b) => Number(a.ts) - Number(b.ts))[0];
+
+  // Do not open a news trade shortly before a matching high/medium-impact
+  // release, even if another event has already produced a recent signal.
+  if (upcoming && Number(upcoming.ts) * 1000 - now <= preReleaseBlackoutMs) {
+    const minutesUntil = Math.max(0, Math.ceil((Number(upcoming.ts) * 1000 - now) / 60000));
+    return {
+      ready: true, strategy: "news", trend: "Upcoming high-impact event blackout",
+      structure: "Entry blocked before scheduled release",
+      liquidity: "Not used by news engine",
+      signal: "WAIT — upcoming news blackout",
+      reasoning: `WAIT on ${pair.pair}: ${upcoming.currency} ${upcoming.title} (${String(upcoming.impact).toUpperCase()}) is scheduled in approximately ${minutesUntil} minute(s). News entries are blocked during the 30-minute pre-release safety window.`,
+      checks: [["Forex pair identified", true], ["30-minute pre-release blackout clear", false]],
+      entry: null, sl: null, tp: null, invalidation: null,
+      supply: null, demand: null, breaker: "Not used by News Trading",
+      orderBlock: null, displacement: false, structureDetails: {}, fvgDetails: {}
+    };
+  }
 
   const last = candles[candles.length - 1];
 
@@ -1743,9 +2107,12 @@ function analyseNews(symbol, candles) {
   const eventAgeMinutes = Math.round((now - Number(event.ts) * 1000) / 60000);
   const sourceConfidence = event.confidence || "not supplied";
   const eventSummary = `${event.currency} ${event.title} (${event.impact} impact), ${eventAgeMinutes} minutes ago. Actual: ${event.actual}; forecast: ${event.forecast}.`;
-  const postReleaseCandles = candles.filter(c =>
-    Number(c.epoch) >= Number(event.ts)
-  ).slice(-4);
+  const postReleaseCandles = candles.filter(c => {
+    const candleOpen = Number(c.epoch);
+    return Number.isFinite(candleOpen) &&
+      candleOpen >= Number(event.ts) &&
+      candleOpen + candleSeconds <= nowSeconds;
+  }).slice(-4);
 
   if (postReleaseCandles.length < 3) {
     return {
@@ -1847,17 +2214,18 @@ function renderTimeframeAnalysis(symbol, timeframe) {
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
   const box = $("timeframeResults");
   if (!box) return;
+  if (box.textContent.trim() === "No timeframe analysis available.") {
+    box.replaceChildren();
+  }
   const analyses = tradingState.strategy === "both"
     ? [
-        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
+        ...(timeframe === "5m" ? [analyseAPATopDown(symbol)] : []),
         analyseSMC(candles)
       ]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
         : tradingState.strategy === "apa"
-          ? (timeframe === selectedEntryTimeframe
-              ? analyseAPA(candles, higherCandles, lowerCandles)
-              : { ready: false, strategy: "apa", trend: "Context timeframe only", structure: "No entry analysis on this timeframe", signal: "Context only — APA entries are restricted to selected " + selectedEntryTimeframe.toUpperCase(), supply: null, demand: null })
+          ? (timeframe === "5m" ? analyseAPATopDown(symbol) : { ready: false, strategy: "apa", trend: "Top-down APA context timeframe", structure: "Entry confirmation is evaluated on M5", signal: "APA context loaded — waiting for final M5 entry analysis", supply: null, demand: null })
           : analyseSMC(candles)];
   const zoneText = zone => zone ? formatPrice(zone.low) + "–" + formatPrice(zone.high) : "not identified";
   const priceText = price => price == null || !Number.isFinite(Number(price)) ? "--" : formatPrice(Number(price));
@@ -2037,14 +2405,11 @@ function analyseMainSelection(symbol) {
   const lowerCandles = tradingState.candles[candleKey(symbol, lowerFrame)] || [];
   const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
   const analysisResults = tradingState.strategy === "both"
-    ? [
-        ...(timeframe === selectedEntryTimeframe ? [analyseAPA(candles, higherCandles, lowerCandles)] : []),
-        analyseSMC(candles)
-      ]
+    ? [analyseAPATopDown(symbol), analyseSMC(candles)]
     : [tradingState.strategy === "news"
         ? analyseNews(symbol, candles)
         : tradingState.strategy === "apa"
-          ? analyseAPA(candles, higherCandles, lowerCandles)
+          ? analyseAPATopDown(symbol)
           : analyseSMC(candles)];
   renderDashboardStrategyResults(symbol, timeframe, analysisResults);
   const readyResults = analysisResults.filter(item => item && item.ready);
@@ -2085,7 +2450,7 @@ function analyseMainSelection(symbol) {
   const showDirection = (up, down) => up ? "Bullish detected" : down ? "Bearish detected" : "Not detected";
   setText("bosStatus", showDirection(structureState.bosUp, structureState.bosDown));
   setText("mssStatus", showDirection(structureState.mssUp, structureState.mssDown));
-  setText("chochStatus", showDirection(structureState.mssUp, structureState.mssDown));
+  setText("chochStatus", showDirection(structureState.chochUp, structureState.chochDown));
   setText("fvgStatus", showDirection(fvgState.bullishFVG, fvgState.bearishFVG));
   setText("ifvgStatus", showDirection(fvgState.bullishIFVG, fvgState.bearishIFVG));
   setText("displacementStatus", result.displacement ? "Detected" : "Not detected");
@@ -2119,7 +2484,7 @@ function analyseMainSelection(symbol) {
   }
   tradingState.lastSignals[symbol] = result;
   (tradingState.strategy === "both" ? readyResults : [result])
-    .forEach(item => recordCandidateSignal(symbol, timeframe, item, candles));
+    .forEach(item => recordCandidateSignal(symbol, item.strategy === "apa" ? "5m" : timeframe, item, item.strategy === "apa" ? (tradingState.candles[candleKey(symbol, "5m")] || []) : candles));
 }
 
 /* =========================================================
@@ -2163,7 +2528,7 @@ function renderDemoPositions() {
     box.appendChild(empty);
     return;
   }
-  open.slice(0, 20).forEach((record, index) => {
+  open.slice().sort(compareOpportunityPriority).slice(0, 20).forEach((record, index) => {
     const row = document.createElement("div");
     row.className = "result-item";
     const legacySmcScalp = record.strategy === "smc" && record.mode === "scalping";
@@ -2174,7 +2539,7 @@ function renderDemoPositions() {
         : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nStatus: OPEN — waiting for individual TP or SL`;
     row.textContent =
       `Entry ${index + 1} | ${record.symbol} | ${record.direction} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()}\n` +
-      details;
+      details+"\nOpportunity rank: "+(Number.isFinite(Number(record.opportunityRank))?record.opportunityRank+"/100":"not scored");
     box.appendChild(row);
   });
 }
@@ -2232,17 +2597,123 @@ function renderScalpActivity() {
   }
 }
 
+function summarizeDemoLedger(records) {
+  const summary = { total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0, groups: {} };
+  (Array.isArray(records) ? records : []).forEach(record => {
+    if (!record || !record.status) return;
+    summary.total++;
+    const status = String(record.status).toUpperCase();
+    if (status === "OPEN") summary.open++;
+    else if (status === "TP HIT") summary.wins++;
+    else if (status === "SL HIT") summary.losses++;
+    else if (status.startsWith("REVIEW")) summary.review++;
+    else summary.otherClosed++;
+    const strategy = String(record.strategy || "APA").toLowerCase();
+    const timeframe = String(record.timeframe || "unknown").toLowerCase();
+    const key = strategy + "|" + timeframe;
+    if (!summary.groups[key]) summary.groups[key] = { strategy, timeframe, total: 0, open: 0, wins: 0, losses: 0, review: 0, otherClosed: 0, plannedRRTotal: 0, plannedRRCount: 0 };
+    const group = summary.groups[key];
+    group.total++;
+    if (status === "OPEN") group.open++;
+    else if (status === "TP HIT") group.wins++;
+    else if (status === "SL HIT") group.losses++;
+    else if (status.startsWith("REVIEW")) group.review++;
+    else group.otherClosed++;
+    const rr = Number(record.riskReward ?? record.plannedRR);
+    if (Number.isFinite(rr) && rr > 0 && record.mode !== "scalping" && status !== "OPEN") {
+      group.plannedRRTotal += rr; group.plannedRRCount++;
+      summary.plannedRRTotal += rr; summary.plannedRRCount++;
+    }
+  });
+  summary.averagePlannedRR = summary.plannedRRCount ? summary.plannedRRTotal / summary.plannedRRCount : null;
+  Object.values(summary.groups).forEach(group => { group.averagePlannedRR = group.plannedRRCount ? group.plannedRRTotal / group.plannedRRCount : null; });
+  return summary;
+}
+
+function calculateDemoRiskGuard(records, settings = {}) {
+ const history=Array.isArray(records)?records:[];
+ const riskPct=Math.max(0.01,Number(settings.riskPercent ?? valueOf("riskPercent"))||0.5);
+ const dailyLimitPct=Math.max(0.01,Number(settings.dailyLossLimit ?? valueOf("dailyLossLimit"))||2);
+ const maxConsecutive=Math.max(1,Number(settings.maxConsecutiveLosses ?? valueOf("maxConsecutiveLosses"))||3);
+ const limitR=dailyLimitPct/riskPct;
+ let persisted=null;try{persisted=JSON.parse(localStorage.getItem(DEMO_RISK_LOCK_KEY)||"null");}catch{}
+ const resetAt=persisted&&!persisted.locked?Number(persisted.resetAt||0):0;
+ const sessionHistory=resetAt?history.filter(r=>Number(r.closedAt||r.createdAt||0)>resetAt):history;
+ const dayStart=new Date();dayStart.setHours(0,0,0,0);
+ const daily=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")&&Number(r.closedAt||0)>=Math.max(dayStart.getTime(),resetAt));
+ const dailyNetR=daily.reduce((sum,r)=>sum+(r.status==="TP HIT"?Math.max(0,Number(r.riskReward??r.plannedRR)||0):-1),0);
+ const closed=sessionHistory.filter(r=>r&&r.mode!=="scalping"&&(r.status==="TP HIT"||r.status==="SL HIT")).sort((a,b)=>Number(a.closedAt||a.createdAt||0)-Number(b.closedAt||b.createdAt||0));
+ let consecutiveLosses=0;for(let i=closed.length-1;i>=0;i--){if(closed[i].status==="SL HIT")consecutiveLosses++;else break;}
+ const eq=calculateDemoEquity(sessionHistory);const reasons=[];
+ if(dailyNetR<=-limitR)reasons.push("Daily loss limit reached");
+ if(consecutiveLosses>=maxConsecutive)reasons.push("Consecutive-loss limit reached");
+ if(eq.maxDrawdownR>=limitR)reasons.push("Maximum drawdown limit reached");
+ if(reasons.length){const lock={locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now(),source:"risk-calculation"};try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify(lock));}catch{}}
+ const activeLock=reasons.length?{locked:true,lockReasons:Array.from(new Set([...(persisted?.lockReasons||[]),...reasons])),lockedAt:persisted?.lockedAt||Date.now()}:persisted?.locked?persisted:null;
+ return {locked:Boolean(activeLock),lockReasons:activeLock?.lockReasons||[],lockedAt:activeLock?.lockedAt||null,resetAt,dailyNetR,dailyLimitR:limitR,consecutiveLosses,maxConsecutiveLosses:maxConsecutive,maxDrawdownR:eq.maxDrawdownR,maxDrawdownLimitR:limitR};
+}
+
+
+function calculateDemoEquity(records) {
+  const closed = (Array.isArray(records) ? records : []).filter(record => record && record.status !== "OPEN" && !String(record.status).toUpperCase().startsWith("REVIEW") && record.mode !== "scalping" && (record.status === "TP HIT" || record.status === "SL HIT"));
+  closed.sort((a,b) => Number(a.closedAt || a.createdAt || 0) - Number(b.closedAt || b.createdAt || 0));
+  let equityR = 0, peakR = 0, maxDrawdownR = 0;
+  const points = [];
+  closed.forEach(record => {
+    const planned = Number(record.riskReward ?? record.plannedRR);
+    const outcomeR = record.status === "TP HIT" && Number.isFinite(planned) && planned > 0 ? planned : -1;
+    equityR += outcomeR;
+    peakR = Math.max(peakR, equityR);
+    maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
+    points.push({ id: record.id || String(record.closedAt || record.createdAt || points.length), strategy: String(record.strategy || "APA"), timeframe: String(record.timeframe || "unknown"), status: record.status, outcomeR, equityR, drawdownR: peakR-equityR });
+  });
+  return { closedTrades: closed.length, netR: equityR, maxDrawdownR, points };
+}
+
+function renderDemoRiskStatus() {
+ const target=$("tradeHistory");if(!target)return;
+ const guard=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);
+ const row=document.createElement("div");row.className="result-item";
+ row.textContent=guard.locked?"DEMO RISK PAUSED | "+guard.lockReasons.join("; ")+" | Locked since "+new Date(guard.lockedAt||Date.now()).toLocaleString():"Demo risk guard | Daily net "+guard.dailyNetR.toFixed(2)+"R | Consecutive losses "+guard.consecutiveLosses+"/"+guard.maxConsecutiveLosses+" | Max drawdown "+guard.maxDrawdownR.toFixed(2)+"R";
+ target.appendChild(row);
+ const reset=document.createElement("button");reset.type="button";reset.textContent="Reset demo risk lock (manual)";reset.disabled=!guard.locked;reset.addEventListener("click",()=>{try{localStorage.setItem(DEMO_RISK_LOCK_KEY,JSON.stringify({locked:false,resetAt:Date.now(),source:"manual-reset"}));}catch{}const current=calculateDemoRiskGuard(tradingState.signalHistory,tradingState.settings);addResult(current.locked?"Risk lock reset attempted, but current limits are still breached: "+current.lockReasons.join("; "):"Demo risk lock manually reset. Historical trades remain unchanged.","tradeHistory");renderSignalHistory();});
+ target.appendChild(reset);
+}
+
 function renderSignalHistory() {
   renderDemoPositions();
   renderScalpActivity();
   const box = $("tradeHistory");
   if (!box) return;
   box.replaceChildren();
+  const summary = summarizeDemoLedger(tradingState.signalHistory);
+  const summaryRow = document.createElement("div");
+  summaryRow.className = "result-item";
+  summaryRow.textContent = `Demo ledger | Total ${summary.total} | Open ${summary.open} | Wins ${summary.wins} | Losses ${summary.losses} | Review ${summary.review} | Avg planned RR ${summary.averagePlannedRR == null ? "--" : summary.averagePlannedRR.toFixed(2)}`;
+  box.appendChild(summaryRow);
+  const equity = calculateDemoEquity(tradingState.signalHistory);
+  const equityRow = document.createElement("div");
+  equityRow.className = "result-item";
+  equityRow.textContent = `Demo closed-trade curve | ${equity.closedTrades} eligible closes | Net ${equity.netR >= 0 ? "+" : ""}${equity.netR.toFixed(2)}R | Max drawdown ${equity.maxDrawdownR.toFixed(2)}R`;
+  box.appendChild(equityRow);
+  renderDemoRiskStatus();
+  if (equity.points.length) {
+    const curveRow = document.createElement("div");
+    curveRow.className = "result-item";
+    curveRow.textContent = "Equity R sequence: " + equity.points.map(point => `${point.strategy.toUpperCase()} ${point.timeframe.toUpperCase()} ${point.equityR >= 0 ? "+" : ""}${point.equityR.toFixed(2)}R`).join(" → ");
+    box.appendChild(curveRow);
+  }
+  Object.values(summary.groups).sort((a,b) => a.strategy.localeCompare(b.strategy) || a.timeframe.localeCompare(b.timeframe)).forEach(group => {
+    const groupRow = document.createElement("div");
+    groupRow.className = "result-item";
+    groupRow.textContent = `${group.strategy.toUpperCase()} ${group.timeframe.toUpperCase()} | Total ${group.total} | Open ${group.open} | Wins ${group.wins} | Losses ${group.losses} | Review ${group.review} | Avg planned RR ${group.averagePlannedRR == null ? "--" : group.averagePlannedRR.toFixed(2)}`;
+    box.appendChild(groupRow);
+  });
   if (!tradingState.signalHistory.length) {
     box.textContent = "No signals recorded yet. Start the scanner to build signal history.";
     return;
   }
-  tradingState.signalHistory.slice(0, 50).forEach(record => {
+  tradingState.signalHistory.slice().sort(compareOpportunityPriority).slice(0, 50).forEach(record => {
     const row = document.createElement("div");
     row.className = "result-item";
     const date = new Date(record.createdAt).toLocaleString();
@@ -2259,9 +2730,26 @@ function renderSignalHistory() {
         : `Entry ${formatPrice(record.entry)} | SL ${formatPrice(record.sl)} | TP ${formatPrice(record.tp)}\nResult: ${outcome}`;
     row.textContent =
       `${date} | ${record.symbol} | ${String(record.strategy || "APA").toUpperCase()} ${String(record.timeframe || "").toUpperCase()} | ${record.direction}\n` +
-      details;
+      details+"\nOpportunity rank: "+(Number.isFinite(Number(record.opportunityRank))?record.opportunityRank+"/100":"not scored");
     box.appendChild(row);
   });
+}
+
+function getSignalExpiryBars(timeframe) {
+  const limits={"1m":30,"M1":30,"5m":24,"M5":24,"15m":16,"M15":16,
+    "30m":12,"M30":12,"1h":10,"H1":10,"4h":8,"H4":8,"1d":5,"D1":5};
+  return limits[String(timeframe||"")]||12;
+}
+function getTimeframeSeconds(timeframe) {
+  const values={"1m":60,"M1":60,"5m":300,"M5":300,"15m":900,"M15":900,
+    "30m":1800,"M30":1800,"1h":3600,"H1":3600,"4h":14400,"H4":14400,"1d":86400,"D1":86400};
+  return values[String(timeframe||"")]||60;
+}
+function isClosedOutcomeCandle(candle,timeframe,nowEpoch=Math.floor(Date.now()/1000)) {
+  const epoch=Number(candle?.epoch);
+  const seconds=getTimeframeSeconds(timeframe);
+  return Number.isFinite(epoch) && Number.isFinite(seconds) && seconds>0 &&
+    Number.isFinite(Number(nowEpoch)) && Number(nowEpoch)>=epoch+seconds;
 }
 
 function evaluateSignalHistory(symbol, timeframe, candles) {
@@ -2270,16 +2758,19 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
 
   tradingState.signalHistory.forEach(record => {
     if (record.status !== "OPEN" || record.symbol !== symbol || record.timeframe !== timeframe) return;
-    // Scalp baskets exit from market-data ticks at the first positive
-    // combined price move. Fixed SL and TP are not used in Scalping for now.
+    // Scalp baskets follow their separate all-positions-profitable exit rule.
+    // Never expire or force-close a scalp basket through this intraday timer.
     if (record.mode === "scalping") return;
 
     // Recheck every later candle on each OHLC update. Deriv updates the
     // current candle repeatedly, so checking an epoch only once can miss
     // a TP/SL touched later while that same candle is still forming.
     const signalEpoch = Number(record.signalCandleEpoch ?? record.lastCheckedCandleEpoch ?? 0);
+    // Finalize demo outcomes only after the candle has closed; live OHLC can reverse.
     const laterCandles = candles.filter(candle =>
-      Number.isFinite(Number(candle.epoch)) && Number(candle.epoch) > signalEpoch
+      Number.isFinite(Number(candle.epoch)) &&
+      Number(candle.epoch) > signalEpoch &&
+      isClosedOutcomeCandle(candle,timeframe)
     ).sort((x, y) => Number(x.epoch) - Number(y.epoch));
 
     for (const candle of laterCandles) {
@@ -2314,20 +2805,119 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
         break;
       }
     }
+    if (record.status === "OPEN" && laterCandles.length) {
+      const lastEpoch=Number(laterCandles[laterCandles.length-1].epoch);
+      const expiryEpoch=signalEpoch+getTimeframeSeconds(timeframe)*getSignalExpiryBars(timeframe);
+      if (lastEpoch>=expiryEpoch) {
+        record.status="REVIEW — signal expired without TP or SL";
+        record.closedAt=Date.now();
+        record.outcomeCandleEpoch=lastEpoch;
+        record.expired=true;
+        changed=true;
+      }
+    }
   });
 
   if (changed) saveSignalHistory();
+}
+
+function buildCandidateSignalKey(symbol,strategy,mode,timeframe,direction,candleEpoch) {
+  return [symbol,strategy,mode,timeframe,direction,Number(candleEpoch)||0].join("|");
+}
+function compareOpportunityPriority(a,b) {
+  const openA=a?.status==="OPEN"?1:0;
+  const openB=b?.status==="OPEN"?1:0;
+  if(openA!==openB)return openB-openA;
+  const rankA=Number.isFinite(Number(a?.opportunityRank))?Number(a.opportunityRank):0;
+  const rankB=Number.isFinite(Number(b?.opportunityRank))?Number(b.opportunityRank):0;
+  if(rankA!==rankB)return rankB-rankA;
+  const scoreA=Number.isFinite(Number(a?.opportunityScore))?Number(a.opportunityScore):0;
+  const scoreB=Number.isFinite(Number(b?.opportunityScore))?Number(b.opportunityScore):0;
+  if(scoreA!==scoreB)return scoreB-scoreA;
+  const createdA=Number.isFinite(Number(a?.createdAt))?Number(a.createdAt):0;
+  const createdB=Number.isFinite(Number(b?.createdAt))?Number(b.createdAt):0;
+  return createdB-createdA;
+}
+function hasDuplicateCandidateSignal(history, candidate) {
+  const records=Array.isArray(history)?history:[];
+  return records.some(record =>
+    record && (
+      record.signalKey === candidate.signalKey ||
+      (!record.signalKey && record.symbol === candidate.symbol &&
+        record.strategy === candidate.strategy && record.mode === candidate.mode &&
+        record.timeframe === candidate.timeframe && record.direction === candidate.direction &&
+        Number(record.signalCandleEpoch) === Number(candidate.candleEpoch))
+    )
+  );
+}
+function rankCandidateOpportunity(result) {
+  const rawScore=Number(result?.score);
+  const score=Number.isFinite(rawScore)?Math.max(0,Math.min(100,rawScore)):0;
+  const confirmations=Number.isFinite(Number(result?.count))
+    ? Math.max(0,Number(result.count))
+    : Object.values(result?.confirmations||{}).filter(Boolean).length;
+  const models=Array.isArray(result?.entryModels)?result.entryModels.length:0;
+  return {
+    score,
+    confirmations,
+    models,
+    rank: Math.round(Math.max(0,Math.min(100,score+Math.min(12,confirmations*2)+Math.min(6,models*2))))
+  };
+}
+function hasOpposingOpenSignal(history,symbol,direction) {
+  return (Array.isArray(history)?history:[]).some(record =>
+    record && record.status==="OPEN" && record.symbol===symbol &&
+    record.direction && record.direction!==direction
+  );
+}
+function authorizeFinalEntry({strategy,mode,timeframe,direction,entry,sl,tp,symbol,selectedSymbols,availableSymbols,selectedStrategy,demo,liveLocked}) {
+  const blocked = reason => ({authorized:false,reason});
+  if (demo !== true || liveLocked !== true)
+    return blocked("Demo-only safety state is not confirmed; live execution remains locked.");
+  const isSelected = selectedSymbols && typeof selectedSymbols.has === "function" && selectedSymbols.has(symbol);
+  const isAvailableIntraday = mode === "intraday" && Array.isArray(availableSymbols) && availableSymbols.includes(symbol);
+  if (!symbol || (!isSelected && !isAvailableIntraday))
+    return blocked(mode === "intraday" ? "Pair is not in the broker market universe." : "Pair is not selected by the user.");
+  if (!["apa","smc"].includes(strategy))
+    return blocked("Only APA and SMC engines may publish entries.");
+  if (selectedStrategy && selectedStrategy !== "both" && selectedStrategy !== strategy)
+    return blocked("This strategy is not enabled in the user's selection.");
+  const scalp = strategy === "smc" && mode === "scalping";
+  const tf = String(timeframe || "").toLowerCase();
+  const allowed = mode === "scalping" ? ["1m","m1","5m","m5"] :
+    mode === "intraday" ? ["1m","m1","5m","m5","15m","m15","30m","m30","1h","h1"] : [];
+  if (!allowed.includes(tf)) return blocked("Timeframe is not enabled for this strategy mode.");
+  if (strategy === "apa" && mode !== "intraday") return blocked("APA is Intraday-only.");
+  if (strategy === "apa" && tf !== "5m" && tf !== "m5") return blocked("APA entries are authorized only on M5.");
+  if (mode === "scalping" && !scalp) return blocked("Only SMC may publish Scalping entries.");
+  if (scalp) return {authorized:true,reason:"SMC Scalping uses its separate basket exit policy.",rr:null};
+  const e=Number(entry), stop=Number(sl), target=Number(tp);
+  if (![e,stop,target].every(Number.isFinite) || e<=0 || stop<=0 || target<=0)
+    return blocked("Entry, SL and TP must be valid positive prices.");
+  const buy=direction==="BUY", sell=direction==="SELL";
+  if ((!buy&&!sell) || (buy && !(stop<e && target>e)) || (sell && !(target<e && stop>e)))
+    return blocked("SL and TP must be on the correct sides of entry.");
+  const risk=Math.abs(e-stop), reward=Math.abs(target-e), rr=reward/risk;
+  if (!Number.isFinite(rr) || rr<2)
+    return {authorized:false,reason:"Structural target must offer at least 2R; otherwise WAIT.",rr};
+  return {authorized:true,reason:"Final entry checks passed; signal only, no order execution.",rr};
+}
+
+function isMarketDataFresh(candles,timeframe,nowEpoch=Math.floor(Date.now()/1000)) {
+  const granularity=GRANULARITY[timeframe];
+  if (!Array.isArray(candles) || !candles.length || !Number.isFinite(granularity) || granularity<=0) return false;
+  const latest=candles.reduce((max,c)=>Math.max(max,Number(c?.epoch)||0),0);
+  if (!latest || !Number.isFinite(Number(nowEpoch))) return false;
+  // Allow up to two candle intervals of lag, with a 2-minute floor for sparse feeds.
+  const tolerance=Math.max(granularity*2,120);
+  return Number(nowEpoch)<=latest+granularity+tolerance;
 }
 
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
   // is allowed to create an entry signal or signal-history record.
-  if (result.strategy === "apa") {
-    const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
-    const selectedEntryTimeframe = valueOf("timeframe") || frames[0];
-    if (timeframe !== selectedEntryTimeframe) return;
-  }
+  if (result.strategy === "apa" && timeframe !== "5m") return;
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";
@@ -2335,7 +2925,11 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   // Keep a live scan trace even when analysis says WAIT. A WAIT is
   // an observation, never an opened or simulated trade.
   const activeStrategy = result.strategy || tradingState.strategy;
-  const isScalp = activeStrategy !== "smc" && tradingState.mode === "scalping";
+  // APA is Intraday-only. SMC alone owns the Scalping mode.
+  if (tradingState.mode === "scalping" && activeStrategy === "apa") return;
+  const isScalp = activeStrategy === "smc" && tradingState.mode === "scalping";
+  // A scalp candidate must belong to a pair explicitly selected by the user.
+  if (isScalp && (!tradingState.selectedSymbols || !tradingState.selectedSymbols.has(symbol))) return;
 
   if (isScalp) {
     const observation = {
@@ -2354,6 +2948,10 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     renderScalpActivity();
   }
   if (!direction) return;
+  if (!isMarketDataFresh(candles,timeframe)) {
+    addResult("ENTRY BLOCKED: "+symbol+" "+timeframe.toUpperCase()+" — market data is stale or unavailable; waiting for fresh candles.");
+    return;
+  }
 
   const entry = Number(result.entry);
   const sl = isScalp ? null : Number(result.sl);
@@ -2363,14 +2961,44 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     return;
   }
   if (!isScalp && (![sl, tp].every(Number.isFinite) || sl <= 0 || tp <= 0)) {
-    console.warn("Signal not saved: valid SL and TP are required for Intraday/Swing.", { symbol, timeframe, signal: signalText, entry, sl, tp });
+    console.warn("Signal not saved: valid SL and TP are required for Intraday.", { symbol, timeframe, signal: signalText, entry, sl, tp });
+    return;
+  }
+  const authorization=authorizeFinalEntry({
+    strategy:activeStrategy,mode:tradingState.mode,timeframe,direction,entry,sl,tp,
+    symbol,selectedSymbols:tradingState.selectedSymbols,availableSymbols:tradingState.availableSymbols.map(item => item.symbol),selectedStrategy:tradingState.strategy,
+    demo:tradingState.demo,liveLocked:tradingState.liveLocked
+  });
+  if (!authorization.authorized) {
+    addResult("ENTRY BLOCKED: "+symbol+" "+direction+" — "+authorization.reason,"scannerResults");
     return;
   }
 
   const lastCandle = candles[candles.length - 1];
   const candleEpoch = Number(lastCandle?.epoch) || Math.floor(Date.now() / 1000);
   const strategy = activeStrategy;
+  const signalKey = buildCandidateSignalKey(symbol,strategy,tradingState.mode,timeframe,direction,candleEpoch);
+  // A signal is recorded at most once for this strategy, symbol, timeframe,
+  // direction and candle, even if a later scan or another renderer sees it again.
+  // Keep APA, SMC and News Trading records independent from one another.
+  if (hasDuplicateCandidateSignal(tradingState.signalHistory,{
+    signalKey,symbol,strategy,mode:tradingState.mode,timeframe,direction,candleEpoch
+  })) return;
   const openEntries = tradingState.signalHistory.filter(record => record.status === "OPEN");
+
+  // Never keep opposing open candidates on the same market, even when
+  // they came from different independent engines or different timeframes.
+  // This is a signal-ledger conflict guard only; it never sends broker orders.
+  if (hasOpposingOpenSignal(openEntries,symbol,direction)) {
+    addResult("CONFLICT BLOCKED: "+symbol+" "+direction+" opposes an existing open demo candidate. Review the existing setup before accepting another direction.","scannerResults");
+    return;
+  }
+
+  // SMC Scalping is locked to the user's active pair until its basket closes.
+  if (isScalp && openEntries.some(record =>
+    record.strategy === "smc" && record.mode === "scalping" && record.symbol !== symbol
+  )) return;
+
   const maxEntries = Math.max(1, Math.min(20, Number(valueOf("maxTrades")) || 2));
   if (openEntries.length >= maxEntries) return;
   if (!checked("multipleEntries") && openEntries.length > 0) return;
@@ -2388,12 +3016,24 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   );
   if (alreadyOpen) return;
 
+  const riskGuard = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (riskGuard.locked) {
+    addResult("DEMO RISK PAUSE: " + riskGuard.lockReasons.join("; ") + ". New signals blocked.", "scannerResults");
+    return;
+  }
+
+  const opportunityRank=rankCandidateOpportunity(result);
   const record = {
     id: `${symbol}-${strategy}-${timeframe}-${direction}-${Date.now()}`,
+    signalKey,
+    opportunityScore: opportunityRank.score,
+    confirmationCount: opportunityRank.confirmations,
+    modelCount: opportunityRank.models,
+    opportunityRank: opportunityRank.rank,
     symbol, strategy, timeframe, direction, entry, sl, tp,
     lotSize: Number(valueOf("lotSize")) || null,
-    mode: strategy === "smc" ? "intraday" : tradingState.mode,
-    exitPolicy: isScalp ? "basket-first-positive" : "individual-tp-sl",
+    mode: isScalp ? "scalping" : "intraday",
+    exitPolicy: isScalp ? "all-positions-positive-basket" : "individual-tp-sl",
     createdAt: Date.now(),
     signalCandleEpoch: candleEpoch,
     lastCheckedCandleEpoch: candleEpoch,
@@ -2421,49 +3061,206 @@ function updateMarketPrice(symbol, quote) {
 }
 
 function manageScalpingBasketSimulation(symbol, quote) {
-  const open = tradingState.signalHistory.filter(record =>
-    record.status === "OPEN" && record.mode === "scalping" && record.symbol === symbol
-  );
-  if (!open.length) return;
+  const price = Number(quote);
+  if (!Number.isFinite(price) || price <= 0) return;
 
-  // Separate basket per strategy and direction. Fixed SL/TP are not used in
-  // Scalping for now; each basket exits on its first positive price movement.
-  let changed = false;
-  const strategies = [...new Set(open.map(record => record.strategy))];
-  strategies.forEach(strategy => {
-    const entries = open.filter(record => record.strategy === strategy);
-    const directions = [...new Set(entries.map(record => record.direction))];
-    directions.forEach(direction => {
-      const basket = entries.filter(record => record.direction === direction);
-      const netMove = basket.reduce((sum, record) => sum + (
-        direction === "BUY" ? Number(quote) - Number(record.entry)
-                            : Number(record.entry) - Number(quote)
-      ), 0);
-      if (netMove > 0) {
-        const closedAt = Date.now();
-        basket.forEach(record => {
-          record.status = "SCALP BASKET CLOSED — FIRST POSITIVE MOVE";
-          record.closedAt = closedAt;
-          record.exitPrice = Number(quote);
-        });
-        changed = true;
-        addResult(`Scalp ${strategy.toUpperCase()} basket simulation closed at first positive price move: ${symbol} ${direction}. Fixed SL/TP not used.`, "tradeHistory");
-      }
-    });
+  // Only SMC scalp positions on this exact symbol belong to this basket.
+  const basket = tradingState.signalHistory.filter(record =>
+    record.status === "OPEN" &&
+    record.strategy === "smc" &&
+    record.mode === "scalping" &&
+    record.symbol === symbol
+  );
+  if (!basket.length) return;
+
+  // Every position must be individually profitable at this same quote.
+  const allIndividuallyProfitable = basket.every(record => {
+    const entry = Number(record.entry);
+    if (!Number.isFinite(entry) || entry <= 0) return false;
+    return record.direction === "BUY" ? price > entry :
+      record.direction === "SELL" ? price < entry : false;
   });
-  if (changed) saveSignalHistory();
+  if (!allIndividuallyProfitable) return;
+
+  const closedAt = Date.now();
+  basket.forEach(record => {
+    record.status = "SCALP BASKET CLOSED — ALL POSITIONS PROFITABLE";
+    record.closedAt = closedAt;
+    record.exitPrice = price;
+  });
+  saveSignalHistory();
+  addResult(
+    `SMC scalp basket simulation closed: every position on user-selected pair ${symbol} was individually profitable at the same quote. Fixed SL/TP not used.`,
+    "tradeHistory"
+  );
 }
 
 /* =========================================================
    SCANNER
 ========================================================= */
 
+function recordMT5FeedHealth(symbol,timeframe,status,details={}) {
+  const key=candleKey(symbol,timeframe);
+  tradingState.mt5FeedHealth[key]={
+    symbol,timeframe,status,checkedAt:Date.now(),
+    ageSeconds:Number.isFinite(Number(details.ageSeconds))?Number(details.ageSeconds):null,
+    candles:Number(details.candles)||0,
+    reason:String(details.reason||"")
+  };
+}
+function renderMT5FeedHealth(symbols,frames,batch) {
+  const records=[];
+  for(const symbol of symbols)for(const timeframe of frames){
+    const item=tradingState.mt5FeedHealth[candleKey(symbol,timeframe)];
+    records.push(item||{symbol,timeframe,status:"NOT CHECKED",reason:"Waiting for first scan"});
+  }
+  const healthy=records.filter(x=>x.status==="FRESH").length;
+  const stale=records.filter(x=>x.status==="STALE").length;
+  const missing=records.filter(x=>x.status==="MISSING"||x.status==="ERROR").length;
+  const unchecked=records.filter(x=>x.status==="NOT CHECKED").length;
+  const lines=records.map(x=>x.symbol+" "+x.timeframe.toUpperCase()+": "+x.status+
+    (x.ageSeconds!==null&&x.ageSeconds!==undefined?" ("+x.ageSeconds+"s old)":"")+
+    (x.candles?" • "+x.candles+" candles":"")+
+    (x.reason?" — "+x.reason:""));
+  setText("scannerStatus","MT5 feed health: "+healthy+"/"+records.length+" fresh • "+stale+" stale • "+missing+" missing/error • "+unchecked+" not checked. Batch "+(batch.total?batch.start+1+"–"+(batch.start+batch.symbols.length):"0")+"/"+batch.total+". Read-only demo analysis.");
+  setText("derivConnectionStatus","MT5 read-only feed health updated "+new Date(tradingState.mt5LastScanAt).toLocaleTimeString()+".");
+  setText("mt5FeedHealthStatus",lines.join("\n"));
+}
+async function fetchMT5MarketDataWithRetry(url,options={},attempts=3){
+  let lastError=null;
+  for(let attempt=0;attempt<attempts;attempt++){
+    try{
+      const response=await fetch(url,{...options,cache:"no-store"});
+      if(response.ok)return response;
+      // Retry only transient server/rate-limit responses. Permanent client
+      // errors should be surfaced immediately instead of hammering the bridge.
+      if(response.status!==408&&response.status!==425&&response.status!==429&&response.status<500){
+        return response;
+      }
+      lastError=new Error("HTTP "+response.status);
+    }catch(error){
+      lastError=error;
+    }
+    if(attempt<attempts-1){
+      await new Promise(resolve=>setTimeout(resolve,500*Math.pow(2,attempt)));
+    }
+  }
+  throw lastError||new Error("MT5 market-data request failed after retries");
+}
+async function scanMT5MarketData(){
+  if(!tradingState.running||tradingState.broker!=="mt5"||tradingState.mt5ScanInProgress)return;
+  tradingState.mt5ScanInProgress=true;
+  try {
+    const mode=valueOf("bridgeMode")||tradingState.mode||"scalping";
+    const strategy=valueOf("bridgeStrategy")||tradingState.strategy||"apa";
+    const rawSymbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+    const symbols=getScanSymbolsForMode(rawSymbols,mode,strategy);
+    if(mode==="scalping"&&(strategy==="smc"||strategy==="both")&&symbols.length!==1){
+      setText("scannerStatus","SMC Scalping requires exactly one user-selected MT5 pair. Enter one symbol only.");
+      return;
+    }
+    const allowed=getBridgeFrames(mode,strategy);
+    const checkedFrames=Array.from(document.querySelectorAll('[data-bridge-tf="1"]:checked')).map(x=>x.value);
+    const required=(mode==="intraday"&&(strategy==="apa"||strategy==="both"))?APA_REQUIRED_FRAMES:[];
+    const frames=[...new Set([...required,...(checkedFrames.length?checkedFrames.filter(tf=>allowed.includes(tf)):allowed)])];
+    if(!symbols.length){setText("scannerStatus","MT5 scanner: enter symbols in the MT5 bridge settings first.");return;}
+    const batch=getRotatingSymbolBatch(symbols,tradingState.mt5ScanCursor,10);
+    const scanGeneration=tradingState.scanGeneration;
+    for(const symbol of batch.symbols){
+      for(const timeframe of frames){
+        if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+          return;
+        }
+        try{
+          const url=MT5_MARKET_DATA_URL+"?symbol="+encodeURIComponent(symbol)+"&timeframe="+encodeURIComponent(timeframe);
+          const response=await fetchMT5MarketDataWithRetry(url,{},3);
+          if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+            return;
+          }
+          if(!response.ok){
+            recordMT5FeedHealth(symbol,timeframe,"MISSING",{reason:"HTTP "+response.status});
+            continue;
+          }
+          const packet=await response.json();
+          const age=Number(packet.ageSeconds);
+          if(packet.status!=="FRESH"||!Number.isFinite(age)||age>90){
+            recordMT5FeedHealth(symbol,timeframe,"STALE",{ageSeconds:age,reason:packet.status!=="FRESH"?"Bridge reports "+String(packet.status):"Packet older than 90 seconds"});
+            continue;
+          }
+          const bars=(packet.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(isValidCandle).slice(-150);
+          if(bars.length<30){
+            recordMT5FeedHealth(symbol,timeframe,"MISSING",{ageSeconds:age,candles:bars.length,reason:"Fewer than 30 valid candles"});
+            continue;
+          }
+          const lastBar=bars[bars.length-1];
+          const seconds=GRANULARITY[timeframe]||60;
+          const candleAge=Math.floor(Date.now()/1000)-(lastBar.epoch+seconds);
+          if(!Number.isFinite(candleAge)||candleAge>Math.max(180,seconds*2)){
+            recordMT5FeedHealth(symbol,timeframe,"STALE",{ageSeconds:Math.max(age,candleAge),candles:bars.length,reason:"Latest candle is stale or not closed"});
+            continue;
+          }
+          const key=candleKey(symbol,timeframe);
+          tradingState.candles[key]=bars;
+          tradingState.lastMarketDataAt=Date.now();
+          tradingState.lastAnalysisAt=tradingState.lastMarketDataAt;
+          recordMT5FeedHealth(symbol,timeframe,"FRESH",{ageSeconds:Math.max(age,candleAge),candles:bars.length});
+          if(timeframe==="1m") manageScalpingBasketSimulation(symbol,lastBar.close);
+          renderTimeframeAnalysis(symbol,timeframe);
+          if((tradingState.strategy==="smc"||tradingState.strategy==="both")&&window.SMCIntradayEngine){
+            const record=window.SMCIntradayEngine.evaluate(symbol,timeframe,bars,tradingState.mode);
+            publishSMCSignal(symbol,timeframe,record,bars);
+            renderSMCMultiFrame(symbol);
+          }
+          analyseMainSelection(symbol);
+          addResult("MT5 DATA "+symbol+" "+timeframe.toUpperCase()+" • "+bars.length+" candles • feed age "+Math.max(age,candleAge)+"s","scannerResults");
+        }catch(error){
+          recordMT5FeedHealth(symbol,timeframe,"ERROR",{reason:error?.message||"Network or parsing error"});
+        }
+      }
+    }
+    if(!tradingState.running||tradingState.scanGeneration!==scanGeneration){
+      return;
+    }
+    tradingState.mt5ScanCursor=batch.nextCursor;
+    tradingState.mt5LastScanAt=Date.now();
+    tradingState.lastScanAt=tradingState.mt5LastScanAt;
+    renderMT5FeedHealth(batch.symbols,frames,batch);
+  } finally {
+    tradingState.mt5ScanInProgress=false;
+  }
+}
+function startMT5Scanner(){
+  const mode=valueOf("bridgeMode")||"scalping";
+  const strategy=valueOf("bridgeStrategy")||"apa";
+  const rawSymbols=valueOf("bridgeSymbols").split(",").map(s=>s.trim()).filter(Boolean);
+  const symbols=getScanSymbolsForMode(rawSymbols,mode,strategy);
+  if(!symbols.length){
+    const message=mode==="scalping"&&(strategy==="smc"||strategy==="both")
+      ?"SMC Scalping requires exactly one user-selected MT5 pair. Enter one symbol only."
+      :"MT5 scanner requires at least one symbol in bridge settings.";
+    addResult(message);setText("scannerStatus",message);return;
+  }
+  stopScanner(false);
+  tradingState.scannerDesired=true;tradingState.running=true;tradingState.scanGeneration++;
+  tradingState.mt5ScanCursor=0;
+  tradingState.mode=mode;
+  tradingState.strategy=strategy;
+  tradingState.selectedSymbols=new Set(symbols);
+  setText("scannerResults","MT5 market-data scanner started. Waiting for fresh candles.");
+  setText("scannerStatus","MT5 data scanner starting — read-only.");
+  scanMT5MarketData();
+  tradingState.mt5ScannerTimer=setInterval(scanMT5MarketData,15000);
+}
 function startScanner(resume = false) {
-  if (tradingState.broker === "mt5") {
-    addResult("MT5 scanning is not active yet. Use Deriv API for market scanning until the Windows VPS and secure MT5 bridge are installed.");
-    setText("scannerStatus", "MT5 bridge not installed — use Deriv API for now");
+  const persistedRisk = calculateDemoRiskGuard(tradingState.signalHistory, tradingState.settings);
+  if (persistedRisk.locked) {
+    tradingState.scannerDesired = false;
+    tradingState.running = false;
+    setText("scannerStatus", "DEMO RISK PAUSED — " + persistedRisk.lockReasons.join("; "));
+    addResult("Scanner start blocked by persisted demo risk lock: " + persistedRisk.lockReasons.join("; "), "scannerResults");
     return;
   }
+  if (tradingState.broker === "mt5") { startMT5Scanner(); return; }
 
   if (!tradingState.derivConnected || !isSocketOpen()) {
     addResult("Connect Deriv first.");
@@ -2471,8 +3268,15 @@ function startScanner(resume = false) {
     return;
   }
 
-  if (!tradingState.selectedSymbols.size) {
-    addResult("Select at least one market first.");
+  if (tradingState.mode === "scalping" && !tradingState.selectedSymbols.size) {
+    addResult("Select one market first for Scalping.");
+    return;
+  }
+  if (tradingState.mode === "scalping" &&
+      (tradingState.strategy === "smc" || tradingState.strategy === "both") &&
+      tradingState.selectedSymbols.size !== 1) {
+    addResult("SMC Scalping requires exactly one user-selected pair. Clear other pairs and select one.");
+    setText("scannerStatus", "SMC Scalping paused — select exactly one pair.");
     return;
   }
 
@@ -2495,11 +3299,32 @@ function startScanner(resume = false) {
 
 function scanSelectedMarkets() {
   if (!tradingState.running || !isSocketOpen()) return;
-
-  const symbols = [...tradingState.selectedSymbols];
-  const frames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
-
+  const selected = [...tradingState.selectedSymbols];
+  if (tradingState.mode === "scalping" &&
+      (tradingState.strategy === "smc" || tradingState.strategy === "both") &&
+      selected.length !== 1) {
+    tradingState.running = false;
+    setText("scannerStatus", "SMC Scalping paused — exactly one user-selected pair is required.");
+    return;
+  }
+  // Do not advance the market cursor while a previous batch is still queued.
   if (tradingState.scanInProgress || tradingState.scanQueue.length) return;
+
+  const universe = tradingState.mode === "intraday"
+    ? tradingState.availableSymbols.map(item => item.symbol)
+    : selected;
+  const batch = getScannerUniverseBatch(universe, tradingState.mode, tradingState.strategy,
+    tradingState.scanUniverseCursor, 10);
+  const symbols = batch.symbols;
+  // Commit cursor only after every request in this batch has drained.
+  // If scanning stops or disconnects mid-batch, retry this same market slice.
+  tradingState.pendingScanCursor = batch.nextCursor;
+  const modeFrames = TIMEFRAMES[tradingState.mode] || TIMEFRAMES.scalping;
+  const frames = tradingState.strategy === "apa"
+    ? [...APA_REQUIRED_FRAMES]
+    : tradingState.strategy === "both"
+      ? [...new Set([...modeFrames, ...APA_REQUIRED_FRAMES])]
+      : modeFrames;
 
   tradingState.scanInProgress = true;
   symbols.forEach(symbol => {
@@ -2510,14 +3335,21 @@ function scanSelectedMarkets() {
 
   setText(
     "scannerStatus",
-    `Scanner active: ${symbols.length} markets / ${frames.length} timeframes`
+    `APA all-market rotation: ${symbols.length}/${batch.total} markets in this batch / ${frames.length} timeframes`
   );
 }
 
 function stopScanner(showMessage = true) {
   tradingState.running = false;
   tradingState.scannerDesired = false;
+  if(tradingState.mt5ScannerTimer){clearInterval(tradingState.mt5ScannerTimer);tradingState.mt5ScannerTimer=null;}
+  // Keep the in-flight MT5 request lock until its finally block runs. This
+  // prevents a rapid stop/restart from overlapping two feed scans.
   clearScanQueue();
+  for (const subscriptionId of tradingState.candleSubscriptions.keys()) {
+    if (isSocketOpen()) sendRequest({ forget: subscriptionId });
+  }
+  tradingState.candleSubscriptions.clear();
 
   if (tradingState.scanTimer) {
     clearInterval(tradingState.scanTimer);
@@ -2550,7 +3382,10 @@ function collectSettings() {
   const settings = {};
 
   ids.forEach(id => {
-    settings[id] = valueOf(id);
+    const element = $(id);
+    settings[id] = element?.type === "checkbox"
+      ? Boolean(element.checked)
+      : valueOf(id);
   });
 
   settings.mode = valueOf("tradingStyle") || "scalping";
@@ -2675,6 +3510,9 @@ function initApp() {
   $("scannerBroker")?.addEventListener("change", () => updateBrokerPanels("scannerBroker"));
   $("connectMT5")?.addEventListener("click", prepareMT5Connection);
   $("refreshMT5Bridge")?.addEventListener("click", refreshMT5BridgeStatus);
+  $("bridgeMode")?.addEventListener("change", renderBridgeTimeframes);
+  $("syncBridgeConfig")?.addEventListener("click", syncMT5BridgeConfig);
+  $("refreshBridgeConfig")?.addEventListener("click", refreshMT5BridgeConfig);
   $("mt5Broker")?.addEventListener("change", () => {
     setText("mt5ConnectionStatus", "Broker selected. The VPS and secure MT5 bridge are still required.");
   });
@@ -2705,7 +3543,13 @@ function initApp() {
   updateBrokerPanels("brokerType");
   updatePairCount();
 
+  renderBridgeTimeframes();
   refreshMT5BridgeStatus();
+  updateRuntimeHealth();
+  tradingState.healthMonitorTimer = setInterval(() => {
+    updateRuntimeHealth();
+    if (tradingState.broker === "mt5") refreshMT5BridgeStatus();
+  }, 60000);
   setConnectionStatus("Not connected");
   setText("scannerStatus", "Scanner stopped");
   setText("cloudStatus", "Cloud engine status: Not verified");

@@ -44,12 +44,22 @@
     <p id="scannerStatus">Scanner: Stopped</p>
   </div>
 
+  <div class="panel" id="runtimeHealthPanel">
+    <h3>Runtime health monitor</h3>
+    <p id="runtimeHealthStatus">Runtime health: Waiting for first check.</p>
+    <p id="runtimeBrokerHealth">Broker: Not checked</p>
+    <p id="runtimeDataHealth">Market data: Not received</p>
+    <p id="runtimeScannerHealth">Scanner: Stopped</p>
+    <p id="runtimeSafetyHealth">Safety: DEMO ONLY • LIVE LOCKED</p>
+    <small class="muted">Checks browser-observed connection, recent data receipt, scanner activity and safety flags. It cannot prove broker order execution or VPS availability.</small>
+  </div>
+
   <div class="panel">
     <h3>APA strategy engine</h3>
     <p><strong>Website scanner: Updated APA confirmation logic</strong></p>
     <p class="muted">Checks closed candles in order: higher-timeframe trend → Order Block / supply-demand POI → liquidity sweep at the POI → later BOS/MSS with displacement → lower-timeframe confirmation.</p>
-    <p><strong>MT5 Expert Advisor source: v1.05</strong> — signal-only; no broker orders are placed.</p>
-    <p><a href="https://github.com/ssenkubuge731/Smc-sniper-pro/blob/main/mt5-bridge/SMC_Sniper_APA_EA_v1.mq5" target="_blank" rel="noopener">View / download APA EA v1.05 source</a></p>
+    <p><strong>MT5 Expert Advisor source: review build v0.20</strong> — signal-only; no broker orders are placed.</p>
+    <p><a href="https://github.com/ssenkubuge731/Smc-sniper-pro/blob/main/mt5-bridge/SMC_Sniper_APA_EA.mq5" target="_blank" rel="noopener">View / download signal-only APA EA source</a></p>
   </div>
 
   <div class="panel">
@@ -59,7 +69,6 @@
     
       <option value="scalping">Scalping</option>
       <option value="intraday">Intraday / Day Trading</option>
-      <option value="swing">Swing Trading</option>
     </select>
 
     <label for="timeframe">Analysis timeframe</label>
@@ -241,12 +250,12 @@
     <label class="check"><input type="checkbox" id="continuousScanning" checked> Continuous scanning</label>
     <label class="check"><input type="checkbox" id="multipleEntries" checked> Allow additional valid entries</label>
     <label class="check"><input type="checkbox" id="manageTrades" checked> Automatic trade management preference</label>
-    <p class="muted">Scalping uses the fast basket style for APA and News only. SMC always uses its own timeframe-specific structural Entry, SL and TP, even when the style selector is set to Scalping. Intraday and Swing keep their individual TP/SL rules. Demo simulation only; no broker order is sent. MT5 order execution still requires the VPS bridge.</p>
+    <p class="muted">Scalping uses the fast basket style for APA and News only. SMC always uses its own timeframe-specific structural Entry, SL and TP, even when the style selector is set to Scalping. Intraday keeps its individual TP/SL rules. Demo simulation only; no broker order is sent. MT5 order execution still requires the VPS bridge.</p>
   </div>
 
   <div class="panel">
     <h3>Open demo entries</h3>
-    <p class="muted">The bot selects BUY or SELL from confirmed analysis. APA and News use the fast basket exit when Scalping is selected. SMC always uses its own timeframe-specific Entry, SL and TP. Intraday and Swing retain individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
+    <p class="muted">The bot selects BUY or SELL from confirmed analysis. APA and News use the fast basket exit when Scalping is selected. SMC always uses its own timeframe-specific Entry, SL and TP. Intraday retains its individual TP/SL outcomes. Demo simulation only; no broker order is sent.</p>
     <div id="positionsList">No open demo entries.</div>
   </div>
 
@@ -307,7 +316,28 @@
     <h4>Cloud bridge status</h4>
     <p id="mt5BridgeStatus">Checking cloud bridge…</p>
     <p id="mt5LastHeartbeat">No heartbeat received yet.</p>
+    <p id="mt5FeedHealthStatus">Per-symbol MT5 market-data feed health will appear after a scanner check.</p>
     <button id="refreshMT5Bridge" type="button">Refresh bridge status</button>
+    <hr>
+    <h4>Website → EA configuration sync (demo-only)</h4>
+    <label for="bridgeToken">Private bridge token (same as Worker secret and EA input)</label>
+    <input id="bridgeToken" type="password" autocomplete="off" placeholder="Paste token locally; never save it in GitHub">
+    <label for="bridgeMode">Trading style</label>
+    <select id="bridgeMode"><option value="scalping">Scalping</option><option value="intraday">Intraday / Day Trading</option></select>
+    <label for="bridgeStrategy">Strategy engine</label>
+    <select id="bridgeStrategy"><option value="apa">APA</option><option value="smc">SMC</option><option value="both">BOTH (separate)</option></select>
+    <label for="bridgeSymbols">Symbols (comma separated, exact MT5 Market Watch names)</label>
+    <input id="bridgeSymbols" type="text" placeholder="e.g. XAUUSD, EURUSD">
+    <label>Timeframes allowed by style</label>
+    <div id="bridgeTimeframes" class="result-item">Choose style to display allowed frames.</div>
+    <label for="bridgeRisk">Risk per trade (%)</label><input id="bridgeRisk" type="number" min="0.01" max="5" step="0.01" value="0.5">
+    <label for="bridgeMaxTrades">Max open trades</label><input id="bridgeMaxTrades" type="number" min="1" max="10" step="1" value="2">
+    <label for="bridgeDailyLoss">Daily loss limit (%)</label><input id="bridgeDailyLoss" type="number" min="0.1" max="10" step="0.1" value="2">
+    <label for="bridgeLossStreak">Pause after consecutive losses</label><input id="bridgeLossStreak" type="number" min="1" max="10" step="1" value="3">
+    <p class="warning">Settings are synced only as configuration. This bridge does not send trading orders. Demo-only and live-lock flags are enforced.</p>
+    <button id="syncBridgeConfig" class="primary" type="button">Send settings to cloud bridge</button>
+    <p id="bridgeConfigStatus">Not synchronized yet.</p>
+    <button id="refreshBridgeConfig" type="button">Check saved cloud settings</button>
   </div>
 
   <div class="panel">
@@ -395,8 +425,8 @@
   <small>Market analysis and demo testing system. Trading involves financial risk.</small>
 </footer>
 
-<script src="./smc-intraday.js?v=20261116-2"></script>
-<script src="./app.js?v=20261119-smc-structure-levels-4"></script>
+<script src="./smc-intraday.js?v=20261120-smc-choch-count-fix-1"></script>
+<script src="./app.js?v=20261120-settings-choch-fix-1"></script>
   
 
 

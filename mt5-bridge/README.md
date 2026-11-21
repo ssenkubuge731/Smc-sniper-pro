@@ -40,3 +40,23 @@ The bridge communicates with the MT5 terminal, not with a broker-specific tradin
 - This phase is connectivity monitoring only, not a trading bot execution bridge.
 - Never put MT5 passwords, investor passwords, API secrets, or bearer tokens in this repository, GitHub Pages, screenshots, or chat.
 - Before any demo execution is added, a separate reviewed design must authenticate terminals, validate commands, enforce demo-only mode, and record acknowledgements and errors.
+
+## Phase 1.5 — Website settings synchronization (source upgrade)
+- The website can POST a validated configuration to `/mt5/config` using the private bearer token.
+- The MT5 read-only agent polls the protected `GET /mt5/config` endpoint using that same token and logs the configuration as received. It does not apply settings to trading or place orders.
+- Public `GET /mt5/public-config` exposes only configured/not-configured, timestamp, style and strategy metadata; it does not expose symbol lists or risk values.
+- Valid styles/timeframes: Scalping M1/M5; SMC Intraday M1/M5/M15/M30/H1; APA Intraday context D1/H4/H1 with M15 setup and M5 entry. Swing Trading is not currently enabled in the dashboard.
+- The website's token field is session-only (not stored in localStorage). Never share the token in chat or screenshots.
+- Worker source changes must be redeployed to the separate Cloudflare Worker before the new endpoints work. Existing Worker deployment is not automatically changed by GitHub commits.
+- The EA must be compiled and tested in MetaEditor/MT5 before claiming runtime validation.
+- This remains configuration synchronization only. No signal relay, trade command, or order execution is included.
+
+## Phase 2 — MT5 broker candle feed into website scanner
+- EA reads broker candles using `CopyRates` for configured symbols/timeframes and posts authenticated packets to `POST /mt5/market-data`.
+- Worker validates OHLC, ordered candle epochs, 30–150 candle limits, symbol/timeframe, and stores packets for 180 seconds.
+- Website scanner polls `GET /mt5/market-data?symbol=...&timeframe=...` and only analyses packets marked fresh (≤90 seconds old).
+- Fresh packets feed the APA display and SMC Intraday Engine. APA requires D1/H4/H1 context plus M15 setup and M5 entry; M30 and M1 are not mandatory APA frames. Scanner status reports fresh/stale/missing feeds.
+- Symbols/timeframes are taken from the website bridge configuration; EA publishes up to 10 symbols per polling cycle.
+- MT5 terminal must allow the Worker HTTPS origin under Tools > Options > Expert Advisors > WebRequest.
+- Worker deployment, EA compilation, and actual live MT5 candle delivery still require verification. This source upgrade is not a live validated connection.
+- This phase is market-data publishing/analysis only. No trading order execution.

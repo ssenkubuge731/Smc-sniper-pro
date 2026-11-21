@@ -1,7 +1,8 @@
 /* SMC INTRADAY ENGINE — independent from APA; signal-only */
 (function () {
   "use strict";
-  const FRAMES = ["1m","5m","15m","30m","1h"];
+  const FRAMES = ["1m","5m","15m","30m","1h","4h","1d"]; // H4/D1 remain available for context only.
+  const MODE_FRAMES = {scalping:["1m","5m"],intraday:["1m","5m","15m","30m","1h"]};
   const state = { latest:new Map(), zones:new Map(), lastPublished:new Map() };
   const N = (x)=>Number(x);
   const valid = c=>c && Number.isFinite(N(c.open)) && Number.isFinite(N(c.high)) && Number.isFinite(N(c.low)) && Number.isFinite(N(c.close));
@@ -18,6 +19,15 @@
     const bullBOS=N(c.close)>ph,bearBOS=N(c.close)<pl;
     const sh=hi(cs.slice(-8,-2)),sl=lo(cs.slice(-8,-2));
     const bullMSS=bull&&N(c.close)>sh&&N(p.close)<=sh,bearMSS=bear&&N(c.close)<sl&&N(p.close)>=sl;
+    // CHoCH is a change against the immediately preceding swing sequence;
+    // MSS remains the local structure break. Keep these events distinct.
+    const olderStructure=cs.slice(-14,-7),recentStructure=cs.slice(-7,-2);
+    const priorBullishStructure=olderStructure.length===7&&recentStructure.length===5&&
+      hi(recentStructure)>hi(olderStructure)&&lo(recentStructure)>lo(olderStructure);
+    const priorBearishStructure=olderStructure.length===7&&recentStructure.length===5&&
+      hi(recentStructure)<hi(olderStructure)&&lo(recentStructure)<lo(olderStructure);
+    const bullCHoCH=priorBearishStructure&&bullMSS;
+    const bearCHoCH=priorBullishStructure&&bearMSS;
     const bullFVG=N(cs.at(-2).low)>N(cs.at(-4).high),bearFVG=N(cs.at(-2).high)<N(cs.at(-4).low);
     const bullIFVG=bull&&N(c.close)>N(cs.at(-4).high)&&N(p.close)<=N(cs.at(-4).high);
     const bearIFVG=bear&&N(c.close)<N(cs.at(-4).low)&&N(p.close)>=N(cs.at(-4).low);
@@ -32,7 +42,7 @@
       const loZ=Math.min(N(z.low),N(z.high)),hiZ=Math.max(N(z.low),N(z.high));
       const post=cs.slice(origin+1);
       const touches=post.filter(x=>N(x.low)<=hiZ&&N(x.high)>=loZ);
-      const touched=touches.length>0,invalid=side==="BUY"?N(c.close)<loZ:N(c.close)>hiZ;
+      const touched=touches.length>0,invalid=post.some(x=>side==="BUY"?N(x.close)<loZ:N(x.close)>hiZ);
       const inZone=N(c.low)<=hiZ&&N(c.high)>=loZ;
       const reaction=inZone&&(side==="BUY"?bull&&N(c.close)>hiZ:bear&&N(c.close)<loZ);
       const fullyMitigated=post.some(x=>side==="BUY"?N(x.low)<=loZ:N(x.high)>=hiZ);
@@ -92,30 +102,43 @@
       if(pivotHigh)addZone("Supply",{low:Math.max(N(x.open),N(x.close)),high:N(x.high)},"SELL",i,downDeparture);
     }
     // Current sweep-reclaim candidates remain separately visible.
-    if(bullSweep)addZone("Sweep reclaim",{low:pl,high:N(c.low)},"BUY",cs.length-1,true);
-    if(bearSweep)addZone("Sweep reclaim",{low:N(c.high),high:ph},"SELL",cs.length-1,true);
+    if(bullSweep)addZone("Sweep reclaim",{low:N(c.low),high:pl},"BUY",cs.length-1,true);
+    if(bearSweep)addZone("Sweep reclaim",{low:ph,high:N(c.high)},"SELL",cs.length-1,true);
     // Rank valid candidates by freshness, origin impulse, mitigation and distance.
     for(const z of zones){const overlaps=zones.filter(q=>q!==z&&q.side===z.side&&q.low<=z.high&&q.high>=z.low).length;z.confluence=overlaps;z.score=Math.min(100,z.score+Math.min(15,overlaps*5));}
     zones.sort((a,b)=>b.score-a.score);
     // Flexible SMC model matrix: a setup may qualify through several distinct
     // valid routes; no fixed "two entry patterns" restriction is imposed.
-    const buy={sweep:bullSweep,structure:bullBOS||bullMSS,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,choch:bullMSS,ob:!!bullOB};
-    const sell={sweep:bearSweep,structure:bearBOS||bearMSS,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker,choch:bearMSS,ob:!!bearOB};
+    const buy={sweep:bullSweep,structure:bullBOS||bullMSS||bullCHoCH,displacement:bullDisp,imbalance:bullFVG||bullIFVG,breaker:!!bullBreaker,mss:bullMSS,choch:bullCHoCH,ob:!!bullOB};
+    const sell={sweep:bearSweep,structure:bearBOS||bearMSS||bearCHoCH,displacement:bearDisp,imbalance:bearFVG||bearIFVG,breaker:!!bearBreaker,mss:bearMSS,choch:bearCHoCH,ob:!!bearOB};
     const models=(x)=>[
-      {name:"Sweep → MSS → displacement",ok:x.sweep&&x.choch&&x.displacement},
+      {name:"Sweep → MSS → displacement",ok:x.sweep&&x.mss&&x.displacement},
       {name:"BOS → displacement → imbalance",ok:x.structure&&x.displacement&&x.imbalance},
       {name:"Breaker → structure → displacement",ok:x.breaker&&x.structure&&x.displacement},
       {name:"POI reaction → structure → displacement",ok:x.ob&&x.structure&&x.displacement},
-      {name:"MSS → displacement → FVG",ok:x.choch&&x.displacement&&x.imbalance},
+      {name:"MSS → displacement → FVG",ok:x.mss&&x.displacement&&x.imbalance},
+      {name:"CHoCH → displacement → FVG",ok:x.choch&&x.displacement&&x.imbalance},
       {name:"Liquidity reclaim → BOS → FVG",ok:x.sweep&&x.structure&&x.imbalance}
     ].filter(m=>m.ok).map(m=>m.name);
     const buyModels=models(buy),sellModels=models(sell);
     const bc=Object.values(buy).filter(Boolean).length,sc=Object.values(sell).filter(Boolean).length;
     // A complete qualifying model on each side is a hard conflict.
     // Do not let a larger raw evidence count on one side override it.
-    const conflict=buyModels.length>0&&sellModels.length>0;
+    const conflict=hasConflict(buyModels,sellModels);
     const side=conflict?"NONE":buyModels.length>sellModels.length?"BUY":sellModels.length>buyModels.length?"SELL":"NONE";
-    const conf=side==="BUY"?buy:side==="SELL"?sell:{},count=Object.values(conf).filter(Boolean).length;
+    const rawConf=side==="BUY"?buy:side==="SELL"?sell:{};
+    // Count independent evidence groups once. MSS/CHoCH are structure detail,
+    // not extra confirmations on top of the structure group.
+    const conf={sweep:!!rawConf.sweep,structure:!!rawConf.structure,
+      displacement:!!rawConf.displacement,imbalance:!!rawConf.imbalance,
+      block:!!(rawConf.breaker||rawConf.ob)};
+    // Supply/demand and block formations are exposed from the zone catalogue,
+    // so the dashboard can distinguish their presence from a current entry trigger.
+    const hasSupply=zones.some(z=>z.type==="Supply"&&z.valid);
+    const hasDemand=zones.some(z=>z.type==="Demand"&&z.valid);
+    const hasOrderBlock=zones.some(z=>z.type==="Order Block"&&z.valid);
+    const hasBreakerBlock=zones.some(z=>z.type==="Breaker Block"&&z.valid);
+    const count=Object.values(conf).filter(Boolean).length;
     // Fresh/tested POIs remain on the watchlist, but cannot trigger an entry
     // until current price actually interacts with a valid zone.
     const watchZones=zones.filter(z=>z.valid&&z.side===side&&["fresh","partially_mitigated","fully_mitigated","reacting","touching"].includes(z.status));
@@ -123,30 +146,52 @@
     const zoneSupport=entryZones.length>0;
     const entryModels=side==="BUY"?buyModels:side==="SELL"?sellModels:[];
     const confirmed=side!=="NONE"&&!conflict&&entryModels.length>0&&zoneSupport;
-    const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.breaker?10:0)+(zoneSupport?8:0)-(conflict?30:0));
+    const score=Math.min(100,entryModels.length*18+count*7+(conf.sweep?8:0)+(conf.imbalance?8:0)+(conf.block?10:0)+(zoneSupport?8:0)-(conflict?30:0));
     return {ready:true,side,confirmations:conf,count,confirmed,conflict,score,entryModels,price:N(c.close),zones,
-      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullMSS||bearMSS,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,orderBlock:!!(bullOB||bearOB),breakerBlock:!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
+      formations:{BOS:bullBOS||bearBOS,MSS:bullMSS||bearMSS,CHoCH:bullCHoCH||bearCHoCH,liquiditySweep:bullSweep||bearSweep,EQH:eqh,EQL:eql,FVG:bullFVG||bearFVG,IFVG:bullIFVG||bearIFVG,supply:hasSupply,demand:hasDemand,supplyDemand:hasSupply||hasDemand,orderBlock:hasOrderBlock||!!(bullOB||bearOB),breakerBlock:hasBreakerBlock||!!(bullBreaker||bearBreaker),displacement:bullDisp||bearDisp,inducement:false},
       note:conflict?"Conflicting BUY/SELL evidence — blocked.":!zoneSupport?"Fresh POIs are watchlisted; wait for price to interact with a valid zone.":entryModels.length?"Qualified model(s): "+entryModels.join(" | "):"No complete SMC entry model yet; wait for confirmation."};
   }
 
-  function makeEntryPlan(record, candles, rr=2) {
-    if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<15) return null;
-    const side=record.side, price=Number(record.price);
-    const candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status));
+  function hasConflict(buyModels,sellModels){return Array.isArray(buyModels)&&Array.isArray(sellModels)&&buyModels.length>0&&sellModels.length>0;}
+  function makeEntryPlan(record, candles, minimumRR=2) {
+    if(!record||!record.confirmed||!Array.isArray(candles)||candles.length<20) return null;
+    const side=record.side,maxPoiAge=40,currentClose=N(candles.at(-1).close), candidates=(record.zones||[]).filter(z=>z.valid&&z.side===side&&["reacting","touching"].includes(z.status)&&(!Number.isFinite(N(z.age))||N(z.age)<=maxPoiAge)&&(side==="BUY"?currentClose>=N(z.low):currentClose<=N(z.high)));
     if(!candidates.length)return {blocked:true,reason:"Price has not interacted with a valid supporting POI yet"};
-    // Strength-first selection: a fresh, high-quality zone can outrank a nearer weak zone.
     candidates.sort((a,b)=>(b.score||0)-(a.score||0)||a.distance-b.distance);
     const z=candidates[0], entry=(z.low+z.high)/2;
-    const tr=candles.slice(-14); let sum=0;
-    for(let i=1;i<tr.length;i++)sum+=Math.max(Number(tr[i].high)-Number(tr[i].low),Math.abs(Number(tr[i].high)-Number(tr[i-1].close)),Math.abs(Number(tr[i].low)-Number(tr[i-1].close)));
-    const atr=sum/(tr.length-1),buffer=Math.max(atr*.12,(z.high-z.low)*.08);
-    const sl=side==="BUY"?z.low-buffer:z.high+buffer;
-    const risk=Math.abs(entry-sl);
-    if(!Number.isFinite(risk)||risk<=0)return {blocked:true,reason:"Invalid risk distance"};
-    const tp1=side==="BUY"?entry+risk*1.5:entry-risk*1.5;
-    const tp2=side==="BUY"?entry+risk*rr:entry-risk*rr;
-    const tp3=side==="BUY"?entry+risk*3:entry-risk*3;
-    return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp1,tp2,tp3,rr,method:"Zone midpoint entry preview; SL beyond zone + ATR buffer",warning:"Illustrative levels only; spread, tick size, contract rules and chart validation required."};
+    const sample=candles.slice(-80), recent=sample.slice(-8);
+    const ranges=sample.slice(-14).map(x=>Math.max(0,Number(x.high)-Number(x.low))).filter(Number.isFinite);
+    const avgRange=ranges.length?ranges.reduce((sum,x)=>sum+x,0)/ranges.length:0;
+    const buffer=Math.max(avgRange*.10,(z.high-z.low)*.03);
+    const localLow=Math.min(...recent.map(x=>Number(x.low)));
+    const localHigh=Math.max(...recent.map(x=>Number(x.high)));
+    const sl=side==="BUY"?Math.min(z.low,localLow)-buffer:Math.max(z.high,localHigh)+buffer;
+    const risk=side==="BUY"?entry-sl:sl-entry;
+    if(!Number.isFinite(risk)||risk<=0)return {blocked:true,reason:"POI/swing invalidation is on the wrong side of entry"};
+    // Use the nearest confirmed opposing swing beyond entry; otherwise the
+    // nearest valid opposing supply/demand zone. No arbitrary RR TP is created.
+    let target=null,targetSource="";
+    for(let i=2;i<sample.length-2;i++){
+      const x=sample[i];
+      const swingHigh=Number(x.high)>Number(sample[i-1].high)&&Number(x.high)>Number(sample[i-2].high)&&Number(x.high)>=Number(sample[i+1].high)&&Number(x.high)>=Number(sample[i+2].high);
+      const swingLow=Number(x.low)<Number(sample[i-1].low)&&Number(x.low)<Number(sample[i-2].low)&&Number(x.low)<=Number(sample[i+1].low)&&Number(x.low)<=Number(sample[i+2].low);
+      if(side==="BUY"&&swingHigh&&Number(x.high)>entry&&Number(x.high)>Number(sample[sample.length-1].close)&&(target===null||Number(x.high)<target)){target=Number(x.high);targetSource="confirmed swing high / buy-side liquidity";}
+      if(side==="SELL"&&swingLow&&Number(x.low)<entry&&Number(x.low)<Number(sample[sample.length-1].close)&&(target===null||Number(x.low)>target)){target=Number(x.low);targetSource="confirmed swing low / sell-side liquidity";}
+    }
+    if(target===null){
+      const opposing=(record.zones||[]).filter(q=>q.valid&&q.side!==(side)&&q.status!=="invalidated");
+      opposing.sort((a,b)=>side==="BUY"?a.low-b.low:b.high-a.high);
+      const currentPrice=Number(sample[sample.length-1].close);
+      const q=opposing.find(q=>side==="BUY"?q.low>entry&&q.low>currentPrice:q.high<entry&&q.high<currentPrice);
+      if(q){target=side==="BUY"?q.low:q.high;targetSource="opposing "+q.type+" zone";}
+    }
+    if(target===null)return {blocked:true,entry,sl,risk,reason:"No confirmed opposing swing/liquidity target beyond entry — WAIT"};
+    const reward=side==="BUY"?target-entry:entry-target;
+    const rr=reward/risk;
+    if(!Number.isFinite(reward)||reward<=0||rr<minimumRR)return {blocked:true,entry,sl,risk,tp:target,rr,reason:"Structural target offers less than "+minimumRR.toFixed(1)+"R — WAIT"};
+    return {blocked:false,side,zone:z.type,zoneStatus:z.status,zoneLow:z.low,zoneHigh:z.high,entry,sl,risk,tp:target,rr,targetSource,
+      method:"Entry at selected POI midpoint; SL beyond POI and recent swing with volatility buffer; TP at nearest opposing structural target",
+      warning:"Signal-only preview. Verify spread, tick size, contract rules and chart levels; no orders are placed."};
   }
   function backtest(candles,opts={}){
     const minBars=Math.max(30,opts.warmup||40),horizon=Math.max(5,opts.horizon||30),rr=Number(opts.rr||2);
@@ -156,7 +201,7 @@
       const history=candles.slice(0,i+1),record=detect(history);
       if(!record.ready||!record.confirmed)continue;
       const plan=makeEntryPlan(record,history,rr);if(!plan||plan.blocked)continue;
-      const entry=Number(record.price),sl=Number(plan.sl),tp=Number(plan.tp2);
+      const entry=Number(plan.entry),sl=Number(plan.sl),tp=Number(plan.tp);
       let outcome="OPEN",exitPrice=null,bars=0;
       for(let j=i+1;j<=Math.min(candles.length-1,i+horizon);j++){
         const bar=candles[j],hitSL=record.side==="BUY"?Number(bar.low)<=sl:Number(bar.high)>=sl;
@@ -164,10 +209,10 @@
         bars++;
         if(hitSL&&hitTP){outcome="AMBIGUOUS_SL_FIRST";exitPrice=sl;ambiguous++;break;}
         if(hitSL){outcome="SL";exitPrice=sl;break;}
-        if(hitTP){outcome="TP2";exitPrice=tp;break;}
+        if(hitTP){outcome="TP";exitPrice=tp;break;}
       }
       const r=record.side==="BUY"?(exitPrice-entry)/Math.abs(entry-sl):(entry-exitPrice)/Math.abs(entry-sl);
-      if(outcome==="TP2")wins++;else if(outcome==="SL"||outcome==="AMBIGUOUS_SL_FIRST")losses++;
+      if(outcome==="TP")wins++;else if(outcome==="SL"||outcome==="AMBIGUOUS_SL_FIRST")losses++;
       trades.push({index:i,side:record.side,score:record.score,entry,sl,tp,outcome,bars,r:exitPrice===null?null:r});
       i+=Math.max(0,bars-1); // avoid overlapping entries while one setup is being resolved
     }
@@ -176,18 +221,23 @@
       winRate:resolved?100*wins/resolved:0,avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0,
       note:"Candle replay approximation. If one candle hits SL and TP, SL is counted first. No spread/slippage/commission; not proof of profitability."};
   }
-  function evaluate(symbol,timeframe,candles){
+  function evaluate(symbol,timeframe,candles,mode="intraday"){
     if(!FRAMES.includes(timeframe))return null;
-    const result=detect(candles),key=symbol+"|"+timeframe,record=Object.assign({symbol,timeframe,time:Date.now()},result);
+    const result=detect(candles),key=symbol+"|"+timeframe;
+    const plan=result.ready&&result.confirmed?makeEntryPlan(result,candles,2):null;
+    const record=Object.assign({symbol,timeframe,time:Date.now()},result,{tradePlan:plan,tradeReady:!!(result.confirmed&&plan&&!plan.blocked)});
     state.latest.set(key,record);state.zones.set(key,result.zones||[]);
-    if(record.confirmed){const sig=key+"|"+record.side+"|"+record.count;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
+    // H4/D1 can be analysed as context, but only frames enabled for the
+    // active SMC mode may publish a trade-ready signal.
+    const modeAllowsFrame=framesForMode(mode).includes(timeframe);
+    if(record.tradeReady&&modeAllowsFrame){const sig=key+"|"+record.side+"|"+record.count+"|"+record.tradePlan.entry+"|"+record.tradePlan.sl+"|"+record.tradePlan.tp;if(state.lastPublished.get(key)!==sig){state.lastPublished.set(key,sig);window.dispatchEvent(new CustomEvent("smc:signal",{detail:record}));}}
     return record;
   }
-  function best(symbol){
-    const list=FRAMES.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.confirmed);
-    // Prefer higher evidence; on tie prefer context frames (15m/30m/1h) over noisy 1m.
-    const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5 };
+  function framesForMode(mode){return (MODE_FRAMES[mode]||MODE_FRAMES.scalping).slice();}
+  function best(symbol,allowedFrames=FRAMES){
+    const list=allowedFrames.map(tf=>state.latest.get(symbol+"|"+tf)).filter(x=>x&&x.tradeReady);
+    const rank={ "1m":1,"5m":2,"15m":3,"30m":4,"1h":5,"4h":6,"1d":7 };
     return list.sort((a,b)=>b.score-a.score||(rank[b.timeframe]||0)-(rank[a.timeframe]||0))[0]||null;
   }
-  window.SMCIntradayEngine={frames:FRAMES.slice(),evaluate,best,makeEntryPlan,backtest,state};
+  window.SMCIntradayEngine={frames:FRAMES.slice(),modeFrames:MODE_FRAMES,framesForMode,detect,hasConflict,evaluate,best,makeEntryPlan,backtest,state};
 })();

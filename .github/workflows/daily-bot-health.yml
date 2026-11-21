@@ -1,0 +1,39 @@
+name: Daily bot health check
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 08:00 Uganda time (UTC+3)
+  workflow_dispatch:
+  push:
+    branches:
+      - upgrade/apa-topdown-m1-entry-20261120
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  daily-health:
+    name: Source and strategy health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check application syntax
+        run: node --check app.js
+      - name: Check SMC engine syntax
+        run: node --check smc-intraday.js
+      - name: Check MT5 Worker syntax
+        run: node --input-type=module --check < mt5-bridge/worker.js
+      - name: Run synthetic SMC tests
+        run: node tests/smc-synthetic.test.js
+      - name: Run APA top-down regression tests
+        run: node tests/apa-topdown.test.js
+      - name: Run daily strategy and safety checks
+        run: node tests/daily-health.test.js

@@ -1000,7 +1000,8 @@ test("MT5 APA bridge requires D1/H4/H1 context plus M15/M5 setup-entry feeds",()
  const worker=fs.readFileSync(path.join(__dirname,"../mt5-bridge/worker.js"),"utf8");
  assert.match(worker,/const APA_FRAMES = \["1d", "4h", "1h", "15m", "5m"\]/);
  assert.match(worker,/Required strategy timeframes are missing/);
- assert.match(worker,/if \(strategy === "apa"\) return APA_FRAMES;/);\n assert.match(worker,/if \(strategy === "both"\) return \\[\.\.\.new Set\\(\\[\.\.\.FRAMES\\.intraday, \.\.\.APA_FRAMES\\]\\)\\];/);
+ assert.match(worker,/if \(strategy === "apa"\) return APA_FRAMES;/);
+ assert.match(worker,/if \(strategy === "both"\) return \[\.\.\.new Set\(\[\.\.\.FRAMES\.intraday, \.\.\.APA_FRAMES\]\)\];/);
 });
 test("MT5 scanner feeds latest M1 quote into SMC scalp basket simulation",()=>{
  const source=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");

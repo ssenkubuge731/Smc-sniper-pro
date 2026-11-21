@@ -1818,9 +1818,14 @@ function getForexPairCurrencies(symbol) {
     : null;
 }
 
-function getNewsCurrenciesForRequest() {
+function getNewsCurrenciesForRequest(symbols = null) {
+  const requestSymbols = Array.isArray(symbols)
+    ? symbols
+    : tradingState.mode === "intraday"
+      ? tradingState.availableSymbols.map(item => item.symbol)
+      : [...tradingState.selectedSymbols];
   const currencies = new Set();
-  tradingState.selectedSymbols.forEach(symbol => {
+  requestSymbols.forEach(symbol => {
     const pair = getForexPairCurrencies(symbol);
     if (pair) {
       currencies.add(pair.base);

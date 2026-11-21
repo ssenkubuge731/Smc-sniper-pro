@@ -1700,27 +1700,34 @@ function isAPATrendStackAligned(direction,trends) {
   // M15/M5 have their own setup/trigger rules and are not forced to trend-align.
   return Boolean(expected&&Array.isArray(trends)&&trends.length===3&&trends.every(value=>value===expected));
 }
-function isAPAM5PairedTrigger(direction,m15Setup,m5Candle,structure,displacement) {
+function isAPAM5PairedTrigger(direction,m15Setup,m5Candle,structure,displacement,invalidation={}) {
   if (!m15Setup || !m5Candle || !Number.isFinite(Number(m15Setup.epoch)) ||
       !Number.isFinite(Number(m5Candle.epoch)) || !structure || !displacement) return false;
+  const setupHigh=Number(m15Setup.high), setupLow=Number(m15Setup.low);
+  const m5Open=Number(m5Candle.open), m5High=Number(m5Candle.high),
+    m5Low=Number(m5Candle.low), m5Close=Number(m5Candle.close);
+  if (![setupHigh,setupLow,m5Open,m5High,m5Low,m5Close].every(Number.isFinite) ||
+      setupHigh < setupLow || m5High < m5Low || m5High < Math.max(m5Open,m5Close) ||
+      m5Low > Math.min(m5Open,m5Close)) return false;
+  // Explicit invalidation flag or price crossing the invalidation level cancels the setup.
+  if (invalidation.invalidated === true) return false;
+  const invalidationLevel=Number(invalidation.level);
+  const currentPrice=Number(invalidation.currentPrice);
+  if (Number.isFinite(invalidationLevel) && Number.isFinite(currentPrice) &&
+      ((direction==="BUY" && currentPrice<=invalidationLevel) ||
+       (direction==="SELL" && currentPrice>=invalidationLevel))) return false;
   const setupCloseEpoch = Number(m15Setup.epoch) + 15 * 60;
   const m5Epoch = Number(m5Candle.epoch);
-  // M5 must be a later closed candle, within 15 minutes of the M15 setup close.
   if (m5Epoch < setupCloseEpoch || m5Epoch > setupCloseEpoch + 15 * 60) return false;
   const breaksSetup = direction === "BUY"
-    ? Number(m5Candle.close) > Number(m15Setup.high) &&
-      Boolean(structure.bosUp || structure.mssUp || structure.chochUp)
+    ? m5Close > setupHigh && Boolean(structure.bosUp || structure.mssUp || structure.chochUp)
     : direction === "SELL"
-      ? Number(m5Candle.close) < Number(m15Setup.low) &&
-        Boolean(structure.bosDown || structure.mssDown || structure.chochDown)
+      ? m5Close < setupLow && Boolean(structure.bosDown || structure.mssDown || structure.chochDown)
       : false;
-  const candleAgrees = direction === "BUY"
-    ? Number(m5Candle.close) > Number(m5Candle.open)
-    : direction === "SELL"
-      ? Number(m5Candle.close) < Number(m5Candle.open) : false;
+  const candleAgrees = direction === "BUY" ? m5Close > m5Open
+    : direction === "SELL" ? m5Close < m5Open : false;
   return Boolean(breaksSetup && candleAgrees);
 }
-
 function isAPAEntryTrigger(direction,lastCandle,structure,displacement) {
   if(!lastCandle||!structure||!displacement)return false;
   const bullish=direction==="BUY"&&Number(lastCandle.close)>Number(lastCandle.open);

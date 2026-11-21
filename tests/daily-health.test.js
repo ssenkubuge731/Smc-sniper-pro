@@ -6,6 +6,8 @@ const fs = require("node:fs");
 const app = fs.readFileSync("app.js", "utf8");
 const smc = fs.readFileSync("smc-intraday.js", "utf8");
 const worker = fs.readFileSync("mt5-bridge/worker.js", "utf8");
+const mt5EA = fs.readFileSync("mt5-bridge/SMC_Sniper_APA_EA.mq5", "utf8");
+const html = fs.readFileSync("index.html", "utf8");
 
 const checks = [
   ["Scalping is restricted to M1 and M5", /scalping:\s*\["1m",\s*"5m"\]/.test(app)],
@@ -17,7 +19,10 @@ const checks = [
   ["Market-data freshness updates only after valid candle data", /lastAnalysisAt=tradingState.lastMarketDataAt/.test(app) && !/lastMarketDataAt=tradingState\.mt5LastScanAt/.test(app)],
   ["Dashboard contains the runtime health monitor", /id="runtimeHealthPanel"/.test(fs.readFileSync("index.html", "utf8"))],
   ["SMC engine exposes its public analysis interface", /SMCIntradayEngine/.test(smc)],
-  ["MT5 Worker source contains heartbeat handling", /heartbeat/i.test(worker)]
+  ["MT5 Worker source contains heartbeat handling", /heartbeat/i.test(worker)],
+  ["Legacy MT5 EA is demo-only and permanently signal-only", /IsDemoAccount\(\)/.test(mt5EA) && /ORDER EXECUTION DISABLED/.test(mt5EA) && !/InpEnableTrading/.test(mt5EA)],
+  ["Legacy MT5 EA has no order execution or position-close API calls", !/\btrade\.(Buy|Sell|PositionClose|PositionModify|PositionOpen)\s*\(/.test(mt5EA) && !/#include\s*<Trade\/Trade\.mqh>/.test(mt5EA)],
+  ["MT5 scanner health has a matching DOM display target", /id="mt5FeedHealthStatus"/.test(html) && /setText\("mt5FeedHealthStatus"/.test(app)]
 ];
 
 let failed = 0;

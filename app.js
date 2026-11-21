@@ -2181,8 +2181,8 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
 
   // Prevent duplicate signal-history rows for the same SMC candle, including
   // after a simulated entry has closed.
-  const duplicateCandleSignal = tradingState.signalHistory.some(record =>
-    record.symbol === symbol && record.strategy === strategy &&
+  const duplicateCandleSignal = strategy === "smc" && tradingState.signalHistory.some(record =>
+    record.symbol === symbol && record.strategy === "smc" &&
     record.timeframe === timeframe && record.direction === direction &&
     Number(record.signalCandleEpoch) === candleEpoch
   );

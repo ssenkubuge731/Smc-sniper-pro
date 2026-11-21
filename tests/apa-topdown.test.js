@@ -38,38 +38,54 @@ assert.equal(aligned("BUY", ["Bullish", "Bullish"]), false);
 assert.equal(aligned("NONE", ["Bullish", "Bullish", "Bullish"]), false);
 
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 1900, open: 105, close: 106 }, structureUp, true), true,
+  { epoch: 1900, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), true,
   "first M5 candle after the M15 setup closes may confirm");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 2800, open: 105, close: 106 }, structureUp, true), true,
+  { epoch: 2800, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), true,
   "the exact 15-minute freshness boundary is inclusive");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 2801, open: 105, close: 106 }, structureUp, true), false,
+  { epoch: 2801, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), false,
   "a trigger one second beyond the freshness window must be rejected");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 1899, open: 105, close: 106 }, structureUp, true), false,
+  { epoch: 1899, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), false,
   "a trigger before the M15 setup candle closes must be rejected");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 1900, open: 105, close: 106 }, structureUp, false), false,
+  { epoch: 1900, open: 105, high: 107, low: 104, close: 106 }, structureUp, false), false,
   "displacement is mandatory");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 1900, open: 105, close: 106 }, { bosUp: false }, true), false,
+  { epoch: 1900, open: 105, high: 107, low: 104, close: 106 }, { bosUp: false }, true), false,
   "directional structure break is mandatory");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: 1900, open: 106, close: 105 }, structureUp, true), false,
+  { epoch: 1900, open: 106, high: 107, low: 104, close: 105 }, structureUp, true), false,
   "the M5 candle must agree with BUY direction");
 assert.equal(paired("SELL", setupSell,
-  { epoch: 1900, open: 95, close: 94 }, structureDown, true), true);
+  { epoch: 1900, open: 95, high: 96, low: 93, close: 94 }, structureDown, true), true);
 assert.equal(paired("SELL", setupSell,
-  { epoch: 1900, open: 94, close: 95 }, structureDown, true), false,
+  { epoch: 1900, open: 94, high: 96, low: 93, close: 95 }, structureDown, true), false,
   "the M5 candle must agree with SELL direction");
 assert.equal(paired("BUY", { epoch: NaN, high: 105 },
-  { epoch: 1900, open: 105, close: 106 }, structureUp, true), false,
+  { epoch: 1900, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), false,
   "invalid setup timestamps must fail closed");
 assert.equal(paired("BUY", setupBuy,
-  { epoch: Infinity, open: 105, close: 106 }, structureUp, true), false,
+  { epoch: Infinity, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), false,
   "invalid entry timestamps must fail closed");
 assert.equal(paired("HOLD", setupBuy,
-  { epoch: 1900, open: 105, close: 106 }, structureUp, true), false);
+  { epoch: 1900, open: 105, high: 107, low: 104, close: 106 }, structureUp, true), false);
 
-console.log("APA top-down regression: 14 assertions passed");
+
+assert.equal(paired("BUY", setupBuy,
+  { epoch:1900, open:105, high:107, low:104, close:106 }, structureUp, true,
+  { invalidated:true }), false, "explicit invalidation cancels the setup");
+assert.equal(paired("BUY", setupBuy,
+  { epoch:1900, open:105, high:107, low:104, close:106 }, structureUp, true,
+  { level:96, currentPrice:95 }), false, "BUY invalidation level breach rejects entry");
+assert.equal(paired("SELL", setupSell,
+  { epoch:1900, open:95, high:96, low:93, close:94 }, structureDown, true,
+  { level:104, currentPrice:105 }), false, "SELL invalidation level breach rejects entry");
+assert.equal(paired("BUY", setupBuy,
+  { epoch:1900, open:105, high:104, low:106, close:106 }, structureUp, true), false,
+  "malformed M5 candle high/low fails closed");
+assert.equal(paired("BUY", {epoch:1000,high:94,low:105},
+  { epoch:1900, open:105, high:107, low:104, close:106 }, structureUp, true), false,
+  "malformed M15 setup range fails closed");
+console.log("APA top-down regression: 19 assertions passed");

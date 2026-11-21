@@ -2054,6 +2054,51 @@ function evaluateSignalHistory(symbol, timeframe, candles) {
   if (changed) saveSignalHistory();
 }
 
+// Shared SMC safety gate for both the main analyser and the independent intraday engine.
+// A candidate may be countertrend only after a same-timeframe structure break + liquidity sweep.
+function getSMCEntrySafetyBlock(direction, candles) {
+  if (!Array.isArray(candles) || candles.length < 20) {
+    return "SMC candidate blocked: at least 20 candles are required for safety validation.";
+  }
+
+  const analysis = analyseSMC(candles);
+  if (!analysis || !analysis.ready) {
+    return "SMC candidate blocked: safety analysis is not ready.";
+  }
+
+  const bullishCount = Number(analysis.bullishConfirmations) || 0;
+  const bearishCount = Number(analysis.bearishConfirmations) || 0;
+  if (bullishCount >= 2 && bearishCount >= 2) {
+    return "SMC candidate blocked: conflicting bullish and bearish confirmation groups.";
+  }
+  if (direction === "BUY" && bearishCount >= 2) {
+    return "SMC BUY blocked: opposing bearish evidence has at least 2 independent confirmations.";
+  }
+  if (direction === "SELL" && bullishCount >= 2) {
+    return "SMC SELL blocked: opposing bullish evidence has at least 2 independent confirmations.";
+  }
+
+  const trend = analysis.trend;
+  const structure = analysis.structureDetails || {};
+  const liquidity = getLiquidity(candles);
+  const bullishReversal = Boolean((structure.mssUp || structure.chochUp) && liquidity.sweepLow);
+  const bearishReversal = Boolean((structure.mssDown || structure.chochDown) && liquidity.sweepHigh);
+
+  if (direction === "BUY" && trend === "Bearish" && !bullishReversal) {
+    return "SMC BUY blocked: bearish trend; bullish structure break plus sell-side sweep required for reversal.";
+  }
+  if (direction === "SELL" && trend === "Bullish" && !bearishReversal) {
+    return "SMC SELL blocked: bullish trend; bearish structure break plus buy-side sweep required for reversal.";
+  }
+  if (direction === "BUY" && analysis.supplyResistance && !bullishReversal) {
+    return "SMC BUY blocked at supply: bullish reversal is not confirmed.";
+  }
+  if (direction === "SELL" && analysis.demandSupport && !bearishReversal) {
+    return "SMC SELL blocked at demand: bearish reversal is not confirmed.";
+  }
+  return "";
+}
+
 function recordCandidateSignal(symbol, timeframe, result, candles) {
   if (!result || !result.signal) return;
   // APA is multi-timeframe for context, but only the user's selected timeframe
@@ -2066,10 +2111,18 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
   const signalText = String(result.signal);
   const direction = /\bBUY\b/i.test(signalText) ? "BUY" :
     /\bSELL\b/i.test(signalText) ? "SELL" : "";
+  const activeStrategy = result.strategy || tradingState.strategy;
+
+  if (direction && activeStrategy === "smc") {
+    const safetyBlock = getSMCEntrySafetyBlock(direction, candles);
+    if (safetyBlock) {
+      addResult(safetyBlock, "scannerResults");
+      return;
+    }
+  }
 
   // Keep a live scan trace even when analysis says WAIT. A WAIT is
   // an observation, never an opened or simulated trade.
-  const activeStrategy = result.strategy || tradingState.strategy;
   const isScalp = activeStrategy !== "smc" && tradingState.mode === "scalping";
 
   if (isScalp) {
@@ -2115,6 +2168,25 @@ function recordCandidateSignal(symbol, timeframe, result, candles) {
     record.strategy === strategy
   );
   if (isScalp && sameSymbolScalpBasket.some(record => record.direction !== direction)) return;
+
+  // SMC cannot keep opposite demo entries open for the same market, even
+  // when they were produced by different timeframe scans.
+  if (strategy === "smc" && openEntries.some(record =>
+    record.symbol === symbol && record.strategy === "smc" &&
+    record.direction !== direction
+  )) {
+    addResult("SMC signal blocked: an opposite-direction SMC demo entry is already open for this market.", "scannerResults");
+    return;
+  }
+
+  // Prevent duplicate signal-history rows for the same SMC candle, including
+  // after a simulated entry has closed.
+  const duplicateCandleSignal = tradingState.signalHistory.some(record =>
+    record.symbol === symbol && record.strategy === strategy &&
+    record.timeframe === timeframe && record.direction === direction &&
+    Number(record.signalCandleEpoch) === candleEpoch
+  );
+  if (duplicateCandleSignal) return;
 
   const alreadyOpen = openEntries.some(record =>
     record.symbol === symbol && record.strategy === strategy &&

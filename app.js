@@ -2081,8 +2081,8 @@ function getSMCEntrySafetyBlock(direction, candles) {
   const trend = analysis.trend;
   const structure = analysis.structureDetails || {};
   const liquidity = getLiquidity(candles);
-  const bullishReversal = Boolean((structure.mssUp || structure.chochUp) && liquidity.sweepLow);
-  const bearishReversal = Boolean((structure.mssDown || structure.chochDown) && liquidity.sweepHigh);
+  const bullishReversal = Boolean((structure.bosUp || structure.mssUp || structure.chochUp) && liquidity.sweepLow);
+  const bearishReversal = Boolean((structure.bosDown || structure.mssDown || structure.chochDown) && liquidity.sweepHigh);
 
   if (direction === "BUY" && trend === "Bearish" && !bullishReversal) {
     return "SMC BUY blocked: bearish trend; bullish structure break plus sell-side sweep required for reversal.";

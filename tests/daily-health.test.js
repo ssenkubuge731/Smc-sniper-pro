@@ -23,7 +23,8 @@ const checks = [
   ["Legacy MT5 EA is demo-only and permanently signal-only", /IsDemoAccount\(\)/.test(mt5EA) && /ORDER EXECUTION DISABLED/.test(mt5EA) && !/InpEnableTrading/.test(mt5EA)],
   ["Legacy MT5 EA has no order execution or position-close API calls", !/\btrade\.(Buy|Sell|PositionClose|PositionModify|PositionOpen)\s*\(/.test(mt5EA) && !/#include\s*<Trade\/Trade\.mqh>/.test(mt5EA)],
   ["MT5 scanner health has a matching DOM display target", /id="mt5FeedHealthStatus"/.test(html) && /setText\("mt5FeedHealthStatus"/.test(app)],
-  ["News calendar currency filter follows full intraday scanner universe", app.includes("tradingState.availableSymbols.map(item => item.symbol)") && app.includes("[...tradingState.selectedSymbols]")]
+  ["News calendar currency filter follows full intraday scanner universe", app.includes("tradingState.availableSymbols.map(item => item.symbol)") && app.includes("[...tradingState.selectedSymbols]")],
+  ["MT5 BOTH intraday feed includes both SMC and APA timeframe sets", /strategy===\"both\"\) return \[\.\.\.new Set\(\[\.\.\.BRIDGE_ALLOWED_FRAMES\.intraday,\.\.\.APA_REQUIRED_FRAMES\]\)\]/.test(app) && /strategy === \"both\"\) return \[\.\.\.new Set\(\[\.\.\.FRAMES\.intraday, \.\.\.APA_FRAMES\]\)\]/.test(worker)]
 ];
 
 let failed = 0;

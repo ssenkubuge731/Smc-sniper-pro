@@ -361,13 +361,13 @@ test("APA M5 trigger must break the exact M15 setup candle while fresh",()=>{
  const paired=sandbox.isAPAM5PairedTrigger;
  const setup={epoch:1000,high:105,low:95};
  const structure={bosUp:true,bosDown:false};
- assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:106},structure,true),true,"later M5 break of M15 high passes");
- assert.equal(paired("BUY",setup,{epoch:1600,open:104,close:106},structure,true),false,"M5 candle before M15 close is rejected");
- assert.equal(paired("BUY",setup,{epoch:2801,open:105,close:106},structure,true),false,"stale M5 trigger is rejected");
- assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:104},structure,true),false,"wrong-direction M5 candle is rejected");
- assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:106},{bosUp:false},true),false,"M5 must have directional structure break");
- assert.equal(paired("BUY",setup,{epoch:1900,open:105,close:104},structure,true),false,"M5 must close beyond the M15 setup high");
- assert.equal(paired("SELL",{epoch:1000,high:105,low:95},{epoch:1900,open:95,close:94},{mssDown:true},true),true);
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,high:107,low:104,close:106},structure,true),true,"later M5 break of M15 high passes");
+ assert.equal(paired("BUY",setup,{epoch:1600,open:104,high:107,low:103,close:106},structure,true),false,"M5 candle before M15 close is rejected");
+ assert.equal(paired("BUY",setup,{epoch:2801,open:105,high:107,low:104,close:106},structure,true),false,"stale M5 trigger is rejected");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,high:106,low:103,close:104},structure,true),false,"wrong-direction M5 candle is rejected");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,high:107,low:104,close:106},{bosUp:false},true),false,"M5 must have directional structure break");
+ assert.equal(paired("BUY",setup,{epoch:1900,open:105,high:106,low:103,close:104},structure,true),false,"M5 must close beyond the M15 setup high");
+ assert.equal(paired("SELL",{epoch:1000,high:105,low:95},{epoch:1900,open:95,high:96,low:93,close:94},{mssDown:true},true),true);
  assert.equal(paired("SELL",{epoch:1000,high:105,low:95},{epoch:1900,open:95,close:96},{mssDown:true},true),false);
 });
 

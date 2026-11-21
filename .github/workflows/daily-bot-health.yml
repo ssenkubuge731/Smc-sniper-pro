@@ -32,6 +32,8 @@ jobs:
       - name: Check MT5 Worker syntax
         run: node --input-type=module --check < mt5-bridge/worker.js
       - name: Run synthetic SMC tests
-        run: node tests/smc-synthetic.test.js\n      - name: Run APA top-down regression tests\n        run: node tests/apa-topdown.test.js
+        run: node tests/smc-synthetic.test.js
+      - name: Run APA top-down regression tests
+        run: node tests/apa-topdown.test.js
       - name: Run daily strategy and safety checks
         run: node tests/daily-health.test.js

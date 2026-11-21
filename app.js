@@ -1769,7 +1769,7 @@ function analyseAPATopDown(symbol) {
   const m5SellTrigger = isAPAEntryTrigger("SELL",lastM5,m5Structure,m5Displacement);
   const contextAligned = direction === "BUY" ? bullishContext : direction === "SELL" ? bearishContext : false;
   const m15SetupCandle = closed(setup).slice(-1)[0];
-  const pairedTrigger = isAPAM5PairedTrigger(direction, m15SetupCandle, lastM5, m5Structure, m5Displacement);
+  const pairedTrigger = isAPAM5PairedTrigger(direction, m15SetupCandle, lastM5, m5Structure, m5Displacement, { level: base.sl, currentPrice: lastM5 ? lastM5.close : null });
   const trigger = Boolean((direction === "BUY" ? m5BuyTrigger : direction === "SELL" ? m5SellTrigger : false) && pairedTrigger);
   const entry = lastM5 ? Number(lastM5.close) : null, sl = direction ? base.sl : null;
   const risk = direction && Number.isFinite(entry) && Number.isFinite(Number(sl)) ? Math.abs(entry - Number(sl)) : null;

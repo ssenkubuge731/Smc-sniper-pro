@@ -16,7 +16,9 @@ const APA_FRAMES = ["1d", "4h", "1h", "15m", "5m"];
 const ALL_MARKET_FRAMES = [...new Set([...Object.values(FRAMES).flat(), ...APA_FRAMES])];
 function allowedConfigFrames(mode, strategy) {
   if (mode === "scalping") return FRAMES.scalping;
-  return strategy === "apa" || strategy === "both" ? APA_FRAMES : FRAMES.intraday;
+  if (strategy === "apa") return APA_FRAMES;
+  if (strategy === "both") return [...new Set([...FRAMES.intraday, ...APA_FRAMES])];
+  return FRAMES.intraday;
 }
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {status,headers:{

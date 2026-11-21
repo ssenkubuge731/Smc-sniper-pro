@@ -15,13 +15,13 @@ function extract(startMarker, endMarker, exportName, sandbox = {}) {
 
 const paired = extract(
   "function isAPAM5PairedTrigger(",
-  "\\nfunction isAPAEntryTrigger",
+  "\nfunction isAPAEntryTrigger",
   "isAPAM5PairedTrigger",
   { Number, Boolean }
 );
 const aligned = extract(
   "function isAPATrendStackAligned(",
-  "\\nfunction isAPAM5PairedTrigger",
+  "\nfunction isAPAM5PairedTrigger",
   "isAPATrendStackAligned",
   { Array, Boolean }
 );

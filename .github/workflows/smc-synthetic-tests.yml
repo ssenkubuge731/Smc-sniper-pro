@@ -18,4 +18,5 @@ jobs:
       - run: node --check app.js # syntax gate after APA routing test update
       - run: node --check smc-intraday.js
       - run: node --input-type=module --check < mt5-bridge/worker.js
-      - run: node tests/smc-synthetic.test.js\n      - run: node tests/apa-topdown.test.js
+      - run: node tests/smc-synthetic.test.js
+      - run: node tests/apa-topdown.test.js

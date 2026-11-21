@@ -331,7 +331,8 @@ function getScannerUniverseBatch(symbols, mode, strategy, cursor = 0, batchSize 
 }
 function getBridgeFrames(mode,strategy){
   if(mode==="scalping") return [...BRIDGE_ALLOWED_FRAMES.scalping];
-  if(strategy==="apa"||strategy==="both") return [...APA_REQUIRED_FRAMES];
+  if(strategy==="apa") return [...APA_REQUIRED_FRAMES];
+  if(strategy==="both") return [...new Set([...BRIDGE_ALLOWED_FRAMES.intraday,...APA_REQUIRED_FRAMES])];
   return [...BRIDGE_ALLOWED_FRAMES.intraday];
 }
 function renderBridgeTimeframes(){
